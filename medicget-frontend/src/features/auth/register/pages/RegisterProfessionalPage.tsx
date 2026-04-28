@@ -37,7 +37,7 @@ export const RegisterProfessionalPage = () => {
             </p>
           </header>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl">
+          <div className="bg-white dark:bg-slate-950 rounded-2xl">
             <ProfessionalForm form={form} setForm={setForm} />
             
             <div className="border-t border-slate-50 dark:border-slate-800 mt-4">
@@ -58,7 +58,7 @@ export const RegisterProfessionalPage = () => {
         <div className="lg:col-span-5 lg:sticky lg:top-10">
           <div className="relative">
             {/* Elemento decorativo detrás de la tarjeta */}
-            <div className="absolute -top-4 -right-4 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full blur-2xl"></div>
+            <div className="absolute -top-4 -right-4 w-24 h-24 bg-blue-50 dark:bg-slate-950 rounded-full blur-2xl"></div>
             
             <div className="relative bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-6 rounded-3xl overflow-hidden">
               <div className="flex items-center justify-between mb-6">

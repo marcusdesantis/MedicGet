@@ -35,7 +35,7 @@ export const AutocompleteSelect = ({
 
       {/* INPUT */}
       <div
-        className="flex items-center border border-slate-300 rounded-lg px-3 bg-white dark:bg-slate-900"
+        className="flex items-center border border-slate-300 dark:border-slate-700 rounded-lg px-3 bg-white dark:bg-slate-900"
         onClick={() => setOpen(true)}
       >
         <Search size={16} className="text-slate-400 mr-2" />
@@ -53,7 +53,7 @@ export const AutocompleteSelect = ({
 
       {/* DROPDOWN */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 rounded-lg shadow max-h-48 overflow-auto">
+        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow max-h-48 overflow-auto">
 
           {filtered.length === 0 && (
             <div className="p-2 text-sm text-slate-400">

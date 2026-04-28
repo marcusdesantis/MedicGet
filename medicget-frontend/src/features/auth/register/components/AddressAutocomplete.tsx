@@ -31,12 +31,12 @@ export const AddressAutocomplete = ({ form, setForm }: any) => {
           setForm({ ...form, address: e.target.value });
           search(e.target.value);
         }}
-        className="w-full dark:bg-slate-900 dark:text-white border rounded-lg p-3"
+        className="w-full dark:bg-slate-900 dark:text-white border dark:border-slate-700 rounded-lg p-3"
         placeholder="Buscar dirección..."
       />
 
       {results.length > 0 && (
-        <div className="absolute w-full bg-white dark:bg-slate-900 dark:text-white border mt-1 rounded-lg shadow z-50">
+        <div className="absolute w-full bg-white dark:bg-slate-900 dark:text-white border dark:border-slate-700 mt-1 rounded-lg shadow z-50">
           {results.map((r, i) => (
             <div
               key={i}
