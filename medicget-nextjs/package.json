@@ -1,0 +1,18 @@
+{
+  "name": "medicget-nextjs",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev:auth": "npm run dev -w services/svc-auth",
+    "build:auth": "npm run build -w services/svc-auth",
+    "prisma:generate": "npm run prisma:generate -w @medicget/shared",
+    "prisma:migrate": "npm run prisma:migrate -w @medicget/shared",
+    "prisma:studio": "npm run prisma:studio -w @medicget/shared",
+    "compose:up": "docker compose up -d",
+    "compose:down": "docker compose down"
+  }
+}

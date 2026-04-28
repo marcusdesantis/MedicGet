@@ -1,0 +1,26 @@
+{
+  "name": "@medicget/svc-auth",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 4001",
+    "build": "next build",
+    "start": "next start -p 4001",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@medicget/shared": "*",
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^2.4.3",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.9.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.6.3"
+  }
+}

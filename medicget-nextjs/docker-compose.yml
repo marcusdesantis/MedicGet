@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: medicget-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medicget
+      POSTGRES_PASSWORD: medicget
+      POSTGRES_DB: medicget
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medicget -d medicget"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  svc-auth:
+    build:
+      context: .
+      dockerfile: services/svc-auth/Dockerfile
+    container_name: medicget-svc-auth
+    restart: unless-stopped
+    env_file:
+      - ./services/svc-auth/.env
+    environment:
+      DATABASE_URL: postgresql://medicget:medicget@postgres:5432/medicget?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "4001"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: medicget-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - svc-auth
+
+volumes:
+  postgres_data:

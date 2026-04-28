@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "medicget",
+    "slug": "medicget",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "scheme": "medicget",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.medicget.app"
+    },
+    "android": {
+      "package": "com.medicget.app"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
