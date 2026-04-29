@@ -7,12 +7,33 @@
     "services/*"
   ],
   "scripts": {
-    "dev:auth": "npm run dev -w services/svc-auth",
-    "build:auth": "npm run build -w services/svc-auth",
+    "dev:auth": "npm run dev -w @medicget/svc-auth",
+    "dev:users": "npm run dev -w @medicget/svc-users",
+    "dev:clinic": "npm run dev -w @medicget/svc-clinic",
+    "dev:doctor": "npm run dev -w @medicget/svc-doctor",
+    "dev:patient": "npm run dev -w @medicget/svc-patient",
+    "dev:appointment": "npm run dev -w @medicget/svc-appointment",
+    "dev:dashboard": "npm run dev -w @medicget/svc-dashboard",
+    "dev:all": "concurrently --kill-others-on-fail --names \"auth,users,clinic,doctor,patient,appt,dash\" --prefix-colors \"cyan,green,blue,magenta,yellow,red,white\" \"npm run dev -w @medicget/svc-auth\" \"npm run dev -w @medicget/svc-users\" \"npm run dev -w @medicget/svc-clinic\" \"npm run dev -w @medicget/svc-doctor\" \"npm run dev -w @medicget/svc-patient\" \"npm run dev -w @medicget/svc-appointment\" \"npm run dev -w @medicget/svc-dashboard\"",
+    "build:auth": "npm run build -w @medicget/svc-auth",
+    "build:users": "npm run build -w @medicget/svc-users",
+    "build:clinic": "npm run build -w @medicget/svc-clinic",
+    "build:doctor": "npm run build -w @medicget/svc-doctor",
+    "build:patient": "npm run build -w @medicget/svc-patient",
+    "build:appointment": "npm run build -w @medicget/svc-appointment",
+    "build:dashboard": "npm run build -w @medicget/svc-dashboard",
+    "build:all": "npm run build:auth && npm run build:users && npm run build:clinic && npm run build:doctor && npm run build:patient && npm run build:appointment && npm run build:dashboard",
     "prisma:generate": "npm run prisma:generate -w @medicget/shared",
-    "prisma:migrate": "npm run prisma:migrate -w @medicget/shared",
-    "prisma:studio": "npm run prisma:studio -w @medicget/shared",
+    "prisma:migrate": "npm run prisma:migrate  -w @medicget/shared",
+    "prisma:deploy": "npm run prisma:deploy   -w @medicget/shared",
+    "prisma:studio": "npm run prisma:studio   -w @medicget/shared",
+    "prisma:reset": "npm run prisma:reset -w @medicget/shared",
+    "prisma:seed": "npm run prisma:seed     -w @medicget/shared",
     "compose:up": "docker compose up -d",
-    "compose:down": "docker compose down"
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
   }
 }

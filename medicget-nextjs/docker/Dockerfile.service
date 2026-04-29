@@ -1,0 +1,125 @@
+# =============================================================================
+# Dockerfile.service — shared multi-stage build for all MedicGet microservices
+#
+# Build context : medicget-nextjs/  (monorepo root)
+# Required args : SERVICE_NAME  (e.g. svc-auth)
+#                 PORT          (e.g. 4001)
+#
+# Usage via docker compose (recommended):
+#   docker compose up -d --build
+#   docker compose up -d --build svc-auth
+#
+# Usage standalone:
+#   docker build \
+#     --build-arg SERVICE_NAME=svc-auth \
+#     --build-arg PORT=4001 \
+#     -f docker/Dockerfile.service \
+#     -t medicget-svc-auth .
+# =============================================================================
+
+# ── Declare top-level build args (available to all stages) ───────────────────
+ARG SERVICE_NAME
+ARG PORT=4000
+
+# ── Base image ────────────────────────────────────────────────────────────────
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# Install OpenSSL + ca-certificates so Prisma can:
+#   1. Detect the OpenSSL version at `prisma generate` time (otherwise it
+#      defaults to OpenSSL 1.1, which Alpine 3.19+ does not ship).
+#   2. Load the OpenSSL 3 query engine at runtime.
+# Without this Prisma fails with:
+#   "Error loading shared library libssl.so.1.1: No such file or directory"
+RUN apk add --no-cache openssl ca-certificates
+
+# =============================================================================
+# Stage 1 — deps
+# Install ALL workspace dependencies using the full manifest graph.
+# All service package.jsons must be present so npm can resolve workspaces.
+# =============================================================================
+FROM base AS deps
+
+# Re-declare ARG so it is in scope for this stage
+ARG SERVICE_NAME
+
+# Root manifests
+COPY package.json package-lock.json* ./
+
+# Shared package manifest
+COPY packages/shared/package.json ./packages/shared/
+
+# All service manifests (needed for workspace resolution even when building one service)
+COPY services/svc-auth/package.json        ./services/svc-auth/
+COPY services/svc-users/package.json       ./services/svc-users/
+COPY services/svc-clinic/package.json      ./services/svc-clinic/
+COPY services/svc-doctor/package.json      ./services/svc-doctor/
+COPY services/svc-patient/package.json     ./services/svc-patient/
+COPY services/svc-appointment/package.json ./services/svc-appointment/
+COPY services/svc-dashboard/package.json   ./services/svc-dashboard/
+
+RUN npm install --frozen-lockfile
+
+# =============================================================================
+# Stage 2 — builder
+# Copy source for shared package + target service, generate Prisma client,
+# then build Next.js in standalone mode.
+# =============================================================================
+FROM base AS builder
+
+ARG SERVICE_NAME
+
+WORKDIR /app
+
+# Bring installed node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Root manifest (needed for workspace resolution)
+COPY package.json ./package.json
+
+# Shared package (Prisma schema + shared utilities)
+COPY packages/shared/ ./packages/shared/
+
+# Target service source only
+COPY services/${SERVICE_NAME}/ ./services/${SERVICE_NAME}/
+
+# Generate Prisma client — no database connection required
+RUN node_modules/.bin/prisma generate \
+      --schema=./packages/shared/prisma/schema.prisma
+
+# Build Next.js standalone output
+WORKDIR /app/services/${SERVICE_NAME}
+RUN ../../node_modules/.bin/next build
+
+# =============================================================================
+# Stage 3 — runner
+# Minimal production image — only the standalone server bundle.
+# =============================================================================
+FROM node:20-alpine AS runner
+
+# OpenSSL is required at runtime for the Prisma query engine.
+RUN apk add --no-cache openssl ca-certificates
+
+ARG SERVICE_NAME
+ARG PORT=4000
+
+# Promote build args to runtime env vars
+ENV NODE_ENV=production
+ENV SERVICE_NAME=${SERVICE_NAME}
+ENV PORT=${PORT}
+ENV HOSTNAME=0.0.0.0
+
+WORKDIR /app
+
+# Standalone bundle already contains everything the server needs (node_modules included)
+COPY --from=builder /app/services/${SERVICE_NAME}/.next/standalone/ ./
+
+# Static assets are NOT part of standalone and must be copied separately
+COPY --from=builder /app/services/${SERVICE_NAME}/.next/static/ \
+                    ./services/${SERVICE_NAME}/.next/static/
+
+# Expose the configured port
+EXPOSE ${PORT}
+
+# Shell form so $SERVICE_NAME is expanded from the runtime ENV at container start
+CMD node services/${SERVICE_NAME}/server.js

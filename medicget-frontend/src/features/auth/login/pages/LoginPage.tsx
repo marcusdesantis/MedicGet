@@ -10,42 +10,66 @@ import { Divider } from '../../register/components/Divider';
 import { SocialButton } from '../../register/components/SocialButton';
 import { useAuth } from '@/context/AuthContext';
 
+// Demo credentials now map to real API email/password pairs
 const ROLE_HINTS = [
-  { label: 'Paciente', username: 'paciente', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300' },
-  { label: 'Médico',   username: 'medico',   color: 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300' },
-  { label: 'Clínica',  username: 'clinica',  color: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' },
+  {
+    label:    'Paciente',
+    email:    'paciente@medicget.com',
+    password: 'paciente',
+    color:    'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300',
+  },
+  {
+    label:    'Médico',
+    email:    'medico@medicget.com',
+    password: 'medico',
+    color:    'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300',
+  },
+  {
+    label:    'Clínica',
+    email:    'clinica@medicget.com',
+    password: 'clinica',
+    color:    'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300',
+  },
 ];
+
+const ROLE_REDIRECTS: Record<string, string> = {
+  patient: '/patient',
+  doctor:  '/doctor',
+  clinic:  '/clinic',
+};
 
 export const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState({ username: '', password: '' });
+  const [submitting,   setSubmitting]   = useState(false);
+  const [error,        setError]        = useState('');
+  const [form, setForm] = useState({ email: '', password: '' });
 
   const handle = (field: string, value: string) => {
     setForm((f) => ({ ...f, [field]: value }));
     setError('');
   };
 
-  const handleLogin = () => {
-    const result = login(form.username, form.password);
-    if (!result.success) {
-      setError(result.error ?? 'Error al iniciar sesión');
-      return;
+  const handleLogin = async () => {
+    if (submitting) return;
+    setError('');
+    setSubmitting(true);
+    try {
+      const result = await login(form.email.trim(), form.password);
+      if (!result.success) {
+        setError(result.error ?? 'Error al iniciar sesión');
+        return;
+      }
+      navigate(ROLE_REDIRECTS[result.role ?? 'patient'] ?? '/patient');
+    } finally {
+      setSubmitting(false);
     }
-    const stored = localStorage.getItem('mg_user');
-    const user = stored ? JSON.parse(stored) : null;
-    const redirects: Record<string, string> = {
-      patient: '/patient',
-      doctor:  '/doctor',
-      clinic:  '/clinic',
-    };
-    navigate(redirects[user?.role] ?? '/');
   };
 
-  const quickFill = (username: string) => setForm({ username, password: username });
+  const quickFill = (email: string, password: string) =>
+    setForm({ email, password });
 
   return (
     <AuthLayout>
@@ -67,8 +91,8 @@ export const LoginPage = () => {
           <div className="flex gap-2">
             {ROLE_HINTS.map((r) => (
               <button
-                key={r.username}
-                onClick={() => quickFill(r.username)}
+                key={r.email}
+                onClick={() => quickFill(r.email, r.password)}
                 className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition hover:opacity-80 ${r.color}`}
               >
                 {r.label}
@@ -91,9 +115,10 @@ export const LoginPage = () => {
         <div className="space-y-4">
           <FormField>
             <Input
-              placeholder="Usuario (paciente / medico / clinica)"
-              value={form.username}
-              onChange={(e) => handle('username', e.target.value)}
+              type="email"
+              placeholder="Email (paciente@medicget.com)"
+              value={form.email}
+              onChange={(e) => handle('email', e.target.value)}
               className="h-12 rounded-full"
             />
           </FormField>
@@ -124,9 +149,10 @@ export const LoginPage = () => {
         {/* Login button */}
         <Button
           onClick={handleLogin}
-          className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-full"
+          disabled={submitting}
+          className="w-full mt-6 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-3 rounded-full"
         >
-          Iniciar sesión
+          {submitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
         </Button>
 
         {/* Forgot password */}

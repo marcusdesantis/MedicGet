@@ -2,4 +2,6 @@ export * from './response';
 export * from './auth';
 export * from './errors';
 export * from './env';
+export * from './paginate';
+export * from './validate';
 export { prisma } from './prisma';

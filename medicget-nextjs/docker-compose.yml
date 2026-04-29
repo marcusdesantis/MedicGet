@@ -1,38 +1,194 @@
 services:
+  # ── Database ──────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: medicget-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: medicget
-      POSTGRES_PASSWORD: medicget
-      POSTGRES_DB: medicget
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: "1998jh"
+      POSTGRES_DB:       medicget_dev
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - medicget-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U medicget -d medicget"]
+      test:     ["CMD-SHELL", "pg_isready -U postgres -d medicget_dev"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout:  5s
+      retries:  10
 
+  # ── svc-auth  (4001) ──────────────────────────────────────────────────────────
   svc-auth:
     build:
-      context: .
-      dockerfile: services/svc-auth/Dockerfile
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-auth
+        PORT:         "4001"
     container_name: medicget-svc-auth
     restart: unless-stopped
-    env_file:
-      - ./services/svc-auth/.env
     environment:
-      DATABASE_URL: postgresql://medicget:medicget@postgres:5432/medicget?schema=public
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4001"
+    expose:
+      - "4001"
+    networks:
+      - medicget-net
     depends_on:
       postgres:
         condition: service_healthy
-    expose:
-      - "4001"
 
+  # ── svc-users  (4002) ─────────────────────────────────────────────────────────
+  svc-users:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-users
+        PORT:         "4002"
+    container_name: medicget-svc-users
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4002"
+    expose:
+      - "4002"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── svc-clinic  (4003) ────────────────────────────────────────────────────────
+  svc-clinic:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-clinic
+        PORT:         "4003"
+    container_name: medicget-svc-clinic
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4003"
+    expose:
+      - "4003"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── svc-doctor  (4004) ────────────────────────────────────────────────────────
+  svc-doctor:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-doctor
+        PORT:         "4004"
+    container_name: medicget-svc-doctor
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4004"
+    expose:
+      - "4004"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── svc-patient  (4005) ───────────────────────────────────────────────────────
+  svc-patient:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-patient
+        PORT:         "4005"
+    container_name: medicget-svc-patient
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4005"
+    expose:
+      - "4005"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── svc-appointment  (4006) ───────────────────────────────────────────────────
+  svc-appointment:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-appointment
+        PORT:         "4006"
+    container_name: medicget-svc-appointment
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4006"
+    expose:
+      - "4006"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── svc-dashboard  (4007) ─────────────────────────────────────────────────────
+  svc-dashboard:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-dashboard
+        PORT:         "4007"
+    container_name: medicget-svc-dashboard
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4007"
+    expose:
+      - "4007"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Nginx reverse proxy  (8080 → services) ────────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
     container_name: medicget-nginx
@@ -41,8 +197,20 @@ services:
       - "8080:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - medicget-net
     depends_on:
       - svc-auth
+      - svc-users
+      - svc-clinic
+      - svc-doctor
+      - svc-patient
+      - svc-appointment
+      - svc-dashboard
+
+networks:
+  medicget-net:
+    driver: bridge
 
 volumes:
   postgres_data:

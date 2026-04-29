@@ -1,8 +1,318 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // `native`                       → host OS for local dev (Windows / macOS / Linux)
+  // `linux-musl-openssl-3.0.x`    → required by node:20-alpine (Alpine 3.19+ ships OpenSSL 3)
+  // Without this, Prisma generates the OpenSSL 1.1 engine and fails at runtime with:
+  //   "Error loading shared library libssl.so.1.1: No such file or directory"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  CLINIC
+  DOCTOR
+  PATIENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum AppointmentStatus {
+  PENDING
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  PENDING
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_REMINDER
+  PAYMENT_RECEIVED
+  REVIEW_RECEIVED
+  SYSTEM
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// ─── Core User / Identity ─────────────────────────────────────────────────────
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  profile       Profile?
+  clinic        Clinic?
+  doctor        Doctor?
+  patient       Patient?
+  notifications Notification[]
+
+  @@index([role])
+  @@index([status])
+  @@index([email])
+}
+
+model Profile {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  firstName String
+  lastName  String
+  phone     String?
+  avatarUrl String?
+  address   String?
+  city      String?
+  country   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Clinic ───────────────────────────────────────────────────────────────────
+
+model Clinic {
+  id          String     @id @default(cuid())
+  userId      String     @unique
+  name        String
+  address     String?
+  city        String?
+  country     String?
+  description String?
+  phone       String?
+  email       String?
+  website     String?
+  logoUrl     String?
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doctors      Doctor[]
+  appointments Appointment[]
+
+  @@index([status])
+}
+
+// ─── Doctor ───────────────────────────────────────────────────────────────────
+
+model Doctor {
+  id              String     @id @default(cuid())
+  userId          String     @unique
+  clinicId        String
+  specialty       String
+  licenseNumber   String?
+  experience      Int        @default(0)
+  pricePerConsult Float      @default(0)
+  bio             String?
+  consultDuration Int        @default(30)
+  languages       String[]
+  rating          Float      @default(0)
+  reviewCount     Int        @default(0)
+  available       Boolean    @default(true)
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic       Clinic               @relation(fields: [clinicId], references: [id])
+  appointments Appointment[]
+  availability DoctorAvailability[]
+  slots        AppointmentSlot[]
+  reviews      Review[]
+
+  @@index([clinicId])
+  @@index([specialty])
+  @@index([available])
+  @@index([status])
+}
+
+// ─── Doctor Availability / Schedule ──────────────────────────────────────────
+
+model DoctorAvailability {
+  id        String    @id @default(cuid())
+  doctorId  String
+  dayOfWeek DayOfWeek
+  startTime String
+  endTime   String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek])
+  @@index([doctorId])
+}
+
+// ─── Appointment Slots ────────────────────────────────────────────────────────
+
+model AppointmentSlot {
+  id            String   @id @default(cuid())
+  doctorId      String
+  date          DateTime @db.Date
+  time          String
+  isBooked      Boolean  @default(false)
+  appointmentId String?  @unique
+  createdAt     DateTime @default(now())
+
+  doctor      Doctor       @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@unique([doctorId, date, time])
+  @@index([doctorId])
+  @@index([date])
+  @@index([isBooked])
+}
+
+// ─── Patient ──────────────────────────────────────────────────────────────────
+
+model Patient {
+  id          String     @id @default(cuid())
+  userId      String     @unique
+  dateOfBirth DateTime?
+  bloodType   String?
+  allergies   String[]
+  notes       String?
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  reviews      Review[]
+
+  @@index([status])
+}
+
+// ─── Appointment ──────────────────────────────────────────────────────────────
+
+model Appointment {
+  id           String            @id @default(cuid())
+  patientId    String
+  doctorId     String
+  clinicId     String
+  date         DateTime          @db.Date
+  time         String
+  status       AppointmentStatus @default(PENDING)
+  price        Float
+  notes        String?
+  cancelReason String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+
+  slot    AppointmentSlot?
+  review  Review?
+  payment Payment?
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([clinicId])
+  @@index([date])
+  @@index([status])
+}
+
+// ─── Reviews / Ratings ────────────────────────────────────────────────────────
+
+model Review {
+  id            String   @id @default(cuid())
+  appointmentId String   @unique
+  patientId     String
+  doctorId      String
+  rating        Int
+  comment       String?
+  isPublic      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  patient     Patient     @relation(fields: [patientId], references: [id])
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId])
+  @@index([patientId])
+  @@index([rating])
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id            String        @id @default(cuid())
+  appointmentId String        @unique
+  amount        Float
+  method        PaymentMethod @default(PENDING)
+  status        PaymentStatus @default(PENDING)
+  transactionId String?
+  paidAt        DateTime?
+  refundedAt    DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@index([status])
+  @@index([method])
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
 }

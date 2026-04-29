@@ -1,0 +1,28 @@
+# Dependencies (reinstalled inside container)
+**/node_modules
+
+# Next.js build output (rebuilt inside container)
+**/.next
+
+# Environment files (injected by docker-compose at runtime)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Dev / editor files
+**/.git
+**/.gitignore
+**/README.md
+**/*.log
+**/.DS_Store
+**/Thumbs.db
+
+# TypeScript build info
+**/*.tsbuildinfo
+
+# Test files
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+
+# Prisma migrations folder is needed — do NOT ignore it
