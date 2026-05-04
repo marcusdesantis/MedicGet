@@ -1,5 +1,5 @@
 import { prisma } from '@medicget/shared/prisma';
-import { Role }   from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 
 export interface CreateUserInput {
   email:        string;
@@ -10,18 +10,31 @@ export interface CreateUserInput {
   phone?:       string;
 }
 
+/**
+ * Shared `include` block — every method that returns a User to the service
+ * layer must use this so all three return the same type. `sanitizeUser` is
+ * typed against `findById`'s return, so any divergence here breaks the
+ * register / login / me handlers in auth.service.ts.
+ */
+const USER_INCLUDE = {
+  profile: true,
+  clinic:  true,
+  doctor:  true,
+  patient: true,
+} satisfies Prisma.UserInclude;
+
 export const authRepository = {
   async findByEmail(email: string) {
     return prisma.user.findFirst({
       where: { email: email.toLowerCase(), status: { not: 'DELETED' } },
-      include: { profile: true },
+      include: USER_INCLUDE,
     });
   },
 
   async findById(id: string) {
     return prisma.user.findFirst({
       where: { id, status: { not: 'DELETED' } },
-      include: { profile: true, clinic: true, doctor: true, patient: true },
+      include: USER_INCLUDE,
     });
   },
 
@@ -33,7 +46,7 @@ export const authRepository = {
         role,
         profile: { create: { firstName, lastName, phone } },
       },
-      include: { profile: true },
+      include: USER_INCLUDE,
     });
   },
 };
