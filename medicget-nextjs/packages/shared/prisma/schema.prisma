@@ -136,7 +136,11 @@ model Clinic {
 model Doctor {
   id              String     @id @default(cuid())
   userId          String     @unique
-  clinicId        String
+  // clinicId is optional so doctors can self-register and complete their
+  // professional profile (specialty, license, prices) without immediately
+  // associating with a clinic. They can later link to a clinic from
+  // /doctor/setup or via a clinic invitation flow.
+  clinicId        String?
   specialty       String
   licenseNumber   String?
   experience      Int        @default(0)
@@ -152,7 +156,7 @@ model Doctor {
   updatedAt       DateTime   @updatedAt
 
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clinic       Clinic               @relation(fields: [clinicId], references: [id])
+  clinic       Clinic?              @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
   availability DoctorAvailability[]
   slots        AppointmentSlot[]

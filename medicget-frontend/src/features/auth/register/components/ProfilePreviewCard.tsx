@@ -22,7 +22,7 @@ export const ProfilePreviewCard = ({ form }: any) => {
           <MapPin size={16} />
           <div>
             <p className="font-medium">
-              {form.name || "Nombre de tu consulta"}
+              {form.consultName || form.name || "Nombre de tu consulta"}
             </p>
             <p>
               {form.address || "Dirección de tu consulta"}

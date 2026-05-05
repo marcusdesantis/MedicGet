@@ -9,7 +9,10 @@ services:
       POSTGRES_PASSWORD: "1998jh"
       POSTGRES_DB:       medicget_dev
     ports:
-      - "5432:5432"
+      # Host:Container — published on 5433 to avoid colliding with a native
+      # Postgres install on 5432 (e.g. PostgreSQL 17 on Windows). Inside the
+      # docker-compose network the services keep using `postgres:5432`.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:

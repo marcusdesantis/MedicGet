@@ -1,0 +1,414 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  ArrowLeft, Calendar as CalendarIcon, Clock, MapPin, Star, Stethoscope,
+  CheckCircle2, AlertCircle, Loader2,
+} from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { CardContainer } from '@/components/ui/CardContainer';
+import { Avatar } from '@/components/ui/Avatar';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useApi } from '@/hooks/useApi';
+import { useAuth } from '@/context/AuthContext';
+import {
+  doctorsApi, appointmentsApi,
+  type DoctorDto, type SlotDto,
+} from '@/lib/api';
+
+/**
+ * Formats a Date as YYYY-MM-DD in local time. Used for the slot API which
+ * expects a date string in that exact format and ignores timezone.
+ */
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Builds the upcoming-7-days strip used as the day picker. Today first, then
+ * the next 6 days. Each entry has a visible label ("Lun 06") and the
+ * machine-friendly key the API expects.
+ */
+function buildDayStrip(): { label: string; sublabel: string; key: string; isToday: boolean }[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days: { label: string; sublabel: string; key: string; isToday: boolean }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    days.push({
+      label:    d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', ''),
+      sublabel: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+      key:      dayKey(d),
+      isToday:  i === 0,
+    });
+  }
+  return days;
+}
+
+function fullName(d?: DoctorDto): string {
+  const p = d?.user?.profile;
+  return `Dr. ${[p?.firstName, p?.lastName].filter(Boolean).join(' ')}`.trim();
+}
+
+function initials(d?: DoctorDto): string {
+  const p = d?.user?.profile;
+  return ((p?.firstName?.[0] ?? '') + (p?.lastName?.[0] ?? '')).toUpperCase() || 'DR';
+}
+
+/**
+ * Patient — doctor detail + booking page.
+ *
+ * Layout:
+ *   • Left column   → doctor profile (avatar, specialty, bio, price, clinic)
+ *   • Right column  → booking widget: 7-day strip → slots for selected day
+ *                     → confirm modal → appointment created (status PENDING)
+ *
+ * Important constraint:
+ *   The Appointment model requires `clinicId`. If the doctor doesn't have a
+ *   clinic associated yet (a doctor that just registered without selecting
+ *   one), we disable the booking widget with a clear message.
+ */
+export function PatientDoctorDetailPage() {
+  const { id }   = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const days     = useMemo(() => buildDayStrip(), []);
+  const [selectedDay, setSelectedDay] = useState(days[0].key);
+
+  const doctorState = useApi<DoctorDto>(() => doctorsApi.getById(id!), [id]);
+  const slotsState  = useApi<SlotDto[]>(
+    () => doctorsApi.getSlots(id!, selectedDay),
+    [id, selectedDay],
+  );
+
+  // Booking modal state
+  const [bookingSlot, setBookingSlot] = useState<SlotDto | null>(null);
+  const [submitting, setSubmitting]   = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmedId, setConfirmedId] = useState<string | null>(null);
+  const [notes,        setNotes]      = useState('');
+
+  // Reset slot selection when day changes.
+  useEffect(() => { setBookingSlot(null); }, [selectedDay]);
+
+  if (doctorState.state.status === 'loading') {
+    return (
+      <div className="flex items-center gap-2 text-slate-500 py-20 justify-center">
+        <Loader2 className="animate-spin" size={20} /> Cargando perfil del médico…
+      </div>
+    );
+  }
+  if (doctorState.state.status === 'error') {
+    return (
+      <div className="max-w-xl mx-auto mt-12 text-center">
+        <Alert variant="error">
+          {doctorState.state.error.message}
+        </Alert>
+        <Link to="/patient/search" className="mt-4 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
+          <ArrowLeft size={14} /> Volver a la búsqueda
+        </Link>
+      </div>
+    );
+  }
+
+  const doc = doctorState.state.data;
+  const profile = doc.user?.profile;
+  const hasClinic = !!doc.clinic?.id;
+  const patientId = user?.dto.patient?.id;
+
+  const handleBook = async () => {
+    if (!bookingSlot || !patientId || !doc.clinic?.id) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await appointmentsApi.create({
+        patientId,
+        doctorId:  doc.id,
+        clinicId:  doc.clinic.id,
+        date:      selectedDay,
+        time:      bookingSlot.time,
+        price:     doc.pricePerConsult,
+        notes:     notes.trim() || undefined,
+      });
+      setConfirmedId(res.data.id);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? 'No se pudo crear la cita';
+      setSubmitError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Link to="/patient/search" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+        <ArrowLeft size={14} /> Volver a la búsqueda
+      </Link>
+
+      <PageHeader title={fullName(doc)} subtitle={doc.specialty} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LEFT — profile */}
+        <CardContainer className="lg:col-span-1 self-start">
+          <div className="flex flex-col items-center text-center">
+            <Avatar initials={initials(doc)} size="lg" shape="rounded" variant="blue" />
+            <h2 className="mt-3 font-semibold text-slate-800 dark:text-white">{fullName(doc)}</h2>
+            <p className="text-sm text-blue-600 font-medium">{doc.specialty}</p>
+            {doc.rating > 0 && (
+              <p className="mt-1 text-xs text-amber-500">★ {doc.rating.toFixed(1)} ({doc.reviewCount} reseñas)</p>
+            )}
+          </div>
+
+          <div className="mt-5 space-y-3 text-sm text-slate-600 dark:text-slate-400">
+            <Field icon={<Stethoscope size={14} />} label="Experiencia" value={`${doc.experience} años`} />
+            <Field icon={<Clock size={14} />}      label="Duración consulta" value={`${doc.consultDuration} min`} />
+            <Field
+              icon={<MapPin size={14} />}
+              label="Centro asociado"
+              value={doc.clinic?.name ?? 'Profesional independiente'}
+            />
+            {doc.languages && doc.languages.length > 0 && (
+              <Field icon={<Star size={14} />} label="Idiomas" value={doc.languages.join(', ')} />
+            )}
+          </div>
+
+          <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-xs text-slate-400">Precio por consulta</p>
+            <p className="text-3xl font-bold text-slate-800 dark:text-white mt-0.5">
+              {doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(2)}` : 'Consultar'}
+            </p>
+          </div>
+
+          {doc.bio && (
+            <>
+              <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sobre el especialista</p>
+                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                  {doc.bio}
+                </p>
+              </div>
+            </>
+          )}
+          {profile?.phone && (
+            <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
+              📞 {profile.phone}
+            </div>
+          )}
+        </CardContainer>
+
+        {/* RIGHT — booking */}
+        <div className="lg:col-span-2 space-y-6">
+          {!hasClinic && (
+            <Alert variant="warning">
+              <strong>Este médico todavía no acepta reservas en línea.</strong>
+              <span className="block text-xs mt-1 opacity-80">
+                Tiene su perfil completado pero no se ha asociado a ningún centro médico.
+              </span>
+            </Alert>
+          )}
+
+          <SectionCard
+            title="Selecciona un día"
+            subtitle="Próximos 7 días"
+          >
+            <div className="grid grid-cols-7 gap-2">
+              {days.map((d) => (
+                <button
+                  key={d.key}
+                  onClick={() => setSelectedDay(d.key)}
+                  className={`flex flex-col items-center justify-center py-3 rounded-xl border text-xs transition ${
+                    selectedDay === d.key
+                      ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  <span className="font-semibold uppercase">{d.label}</span>
+                  <span className="text-[11px] mt-0.5 opacity-80">{d.sublabel}</span>
+                  {d.isToday && <span className="text-[10px] mt-0.5 opacity-70">hoy</span>}
+                </button>
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Horarios disponibles"
+            subtitle={hasClinic ? 'Selecciona el horario que prefieras' : 'Sin disponibilidad — la reserva está deshabilitada'}
+          >
+            {slotsState.state.status === 'loading' && (
+              <div className="flex items-center justify-center py-8 text-slate-400">
+                <Loader2 className="animate-spin" size={18} />
+              </div>
+            )}
+            {slotsState.state.status === 'error' && (
+              <p className="text-sm text-rose-600">{slotsState.state.error.message}</p>
+            )}
+            {slotsState.state.status === 'ready' && (() => {
+              const free = slotsState.state.data.filter((s) => !s.isBooked);
+              if (free.length === 0) {
+                return (
+                  <EmptyState
+                    title="Sin horarios para este día"
+                    description="Probá con otro día de la semana o contactá al consultorio."
+                    icon={CalendarIcon}
+                  />
+                );
+              }
+              return (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                  {free.map((s) => {
+                    const isSelected = bookingSlot?.id === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        disabled={!hasClinic}
+                        onClick={() => setBookingSlot(s)}
+                        className={`py-2.5 rounded-lg border text-sm font-medium transition ${
+                          !hasClinic
+                            ? 'opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-700'
+                            : isSelected
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        {s.time}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </SectionCard>
+
+          {bookingSlot && hasClinic && !confirmedId && (
+            <SectionCard title="Confirmar reserva" subtitle="Revisa los datos antes de continuar">
+              <div className="space-y-2 text-sm">
+                <Row label="Médico"        value={fullName(doc)} />
+                <Row label="Especialidad"  value={doc.specialty} />
+                <Row label="Centro"        value={doc.clinic?.name ?? '—'} />
+                <Row label="Fecha y hora"  value={`${days.find((d) => d.key === selectedDay)?.sublabel} · ${bookingSlot.time}`} />
+                <Row label="Duración"      value={`${doc.consultDuration} min`} />
+                <Row label="Precio"        value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(2)}` : 'Gratuito'} bold />
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Notas (opcional)</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Cuéntale al médico el motivo de la consulta..."
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              {submitError && (
+                <div className="mt-3">
+                  <Alert variant="error">{submitError}</Alert>
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                <Button
+                  onClick={handleBook}
+                  disabled={submitting || !patientId}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Reservando...' : 'Confirmar reserva'}
+                </Button>
+                <Button
+                  onClick={() => setBookingSlot(null)}
+                  disabled={submitting}
+                  className="px-6 py-3 rounded-xl text-slate-500 hover:text-slate-700 font-medium text-sm transition disabled:opacity-50"
+                >
+                  Cancelar
+                </Button>
+              </div>
+
+              {!patientId && (
+                <p className="mt-3 text-xs text-rose-600">
+                  No se detectó tu perfil de paciente. <button type="button" className="underline" onClick={() => navigate('/login')}>Inicia sesión</button> de nuevo.
+                </p>
+              )}
+            </SectionCard>
+          )}
+
+          {confirmedId && (
+            <SectionCard
+              title="¡Reserva creada!"
+              subtitle="Tu cita está pendiente de pago"
+            >
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="text-emerald-500 mt-0.5" size={22} />
+                <div className="flex-1">
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
+                    Tu cita con {fullName(doc)} se reservó para el{' '}
+                    <strong>{days.find((d) => d.key === selectedDay)?.sublabel} a las {bookingSlot?.time}</strong>.
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Estado: <span className="font-semibold text-amber-600">PENDIENTE DE PAGO</span>.
+                    Te avisaremos por correo cuando esté confirmada.
+                  </p>
+
+                  <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                    <Link
+                      to="/patient/appointments"
+                      className="inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+                    >
+                      Ver mis citas
+                    </Link>
+                    <Link
+                      to="/patient"
+                      className="inline-flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 px-4 py-2"
+                    >
+                      Volver al panel
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {!user?.dto.patient && (
+            <Alert variant="warning" action={
+              <Link to="/login" className="text-sm font-medium underline whitespace-nowrap">Iniciar sesión</Link>
+            }>
+              <AlertCircle size={14} className="inline mr-1.5" />
+              Necesitas iniciar sesión como paciente para reservar.
+            </Alert>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Subcomponents ────────────────────────────────────────────────────────
+
+function Field({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-slate-400 mt-0.5">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] uppercase tracking-wider text-slate-400">{label}</p>
+        <p className="text-slate-700 dark:text-slate-300 truncate">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <span className="text-slate-500 dark:text-slate-400">{label}</span>
+      <span className={bold ? 'font-bold text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}>
+        {value}
+      </span>
+    </div>
+  );
+}

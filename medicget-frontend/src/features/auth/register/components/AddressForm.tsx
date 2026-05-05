@@ -2,15 +2,22 @@ import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { Alert } from "@/components/ui/Alert";
 import { AddressAutocomplete } from "./AddressAutocomplete";
+import type { DoctorDraft } from "../state";
 
-export const AddressForm = ({ form, setForm }: any) => {
-  const handleChange = (field: string, value: string) => {
-    setForm({ ...form, [field]: value });
-  };
+interface Props {
+  form: DoctorDraft;
+  setForm: (patch: Partial<DoctorDraft>) => void;
+}
 
+/**
+ * Doctor flow — step 2 form. Address fields are all optional so the user
+ * can skip them; therefore no validation is enforced here. The parent page
+ * keeps the "Finalizar registro" button enabled regardless of these
+ * values, but offers a "Skip" affordance too.
+ */
+export const AddressForm = ({ form, setForm }: Props) => {
   return (
     <div className="space-y-5">
-
       <Alert>
         Empieza con una dirección. Puedes añadir otras más tarde.
       </Alert>
@@ -18,31 +25,30 @@ export const AddressForm = ({ form, setForm }: any) => {
       <FormField label="Nombre de tu consulta">
         <Input
           placeholder="Ej: Clínica Dental Central"
-          value={form.name}
-          onChange={(e) => handleChange("name", e.target.value)}
+          value={form.consultName}
+          onChange={(e) => setForm({ consultName: e.target.value })}
         />
       </FormField>
 
       <FormField label="Calle y número">
         <AddressAutocomplete form={form} setForm={setForm} />
-    </FormField>
+      </FormField>
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Ciudad">
           <Input
             value={form.city}
-            onChange={(e) => handleChange("city", e.target.value)}
+            onChange={(e) => setForm({ city: e.target.value })}
           />
         </FormField>
 
         <FormField label="Código postal">
           <Input
             value={form.zip}
-            onChange={(e) => handleChange("zip", e.target.value)}
+            onChange={(e) => setForm({ zip: e.target.value })}
           />
         </FormField>
       </div>
-
     </div>
   );
 };

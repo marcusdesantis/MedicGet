@@ -1,149 +1,250 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Save, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { PageHeader }  from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-import { timeSlotStatusMap } from '@/lib/statusConfig';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { useApi } from '@/hooks/useApi';
+import { useAuth } from '@/context/AuthContext';
+import { doctorsApi, type AvailabilityDto } from '@/lib/api';
 
-const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+/**
+ * Doctor — weekly availability editor.
+ *
+ * The Prisma `DoctorAvailability` table uses one row per (doctorId, dayOfWeek)
+ * with `startTime`, `endTime`, `isActive`. This page renders one row per day
+ * of the week and lets the doctor toggle each on/off and pick start/end times.
+ *
+ * Save persists each ACTIVE day via `doctorsApi.upsertAvailability(...)`.
+ * Inactive days are intentionally NOT removed from the backend; the schema's
+ * `isActive` flag is what disables them. Removing rows would require a delete
+ * call per row, which we can wire later if/when the doctor wants to fully
+ * forget a day.
+ *
+ * Slot generation is automatic on the backend: when a patient queries
+ * `GET /doctors/:id/slots?date=YYYY-MM-DD`, the doctor service:
+ *   1. checks for existing AppointmentSlot rows for that date
+ *   2. if none, looks up the DoctorAvailability for that day-of-week
+ *   3. generates 30-min (or `consultDuration`) slots from start to end
+ *   4. persists them, then returns them
+ *
+ * So the doctor doesn't need a "generate slots" button — saving availability
+ * is enough.
+ */
 
-const BOOKED_DAYS: Record<string, { count: number; color: string }> = {
-  '2026-04-28': { count: 5, color: 'bg-blue-500' },
-  '2026-04-29': { count: 3, color: 'bg-teal-500' },
-  '2026-04-30': { count: 7, color: 'bg-blue-500' },
-  '2026-05-04': { count: 4, color: 'bg-teal-500' },
-  '2026-05-05': { count: 2, color: 'bg-teal-500' },
-  '2026-05-06': { count: 6, color: 'bg-blue-500' },
-};
+const DAYS: { key: AvailabilityDto['dayOfWeek']; label: string }[] = [
+  { key: 'MONDAY',    label: 'Lunes'     },
+  { key: 'TUESDAY',   label: 'Martes'    },
+  { key: 'WEDNESDAY', label: 'Miércoles' },
+  { key: 'THURSDAY',  label: 'Jueves'    },
+  { key: 'FRIDAY',    label: 'Viernes'   },
+  { key: 'SATURDAY',  label: 'Sábado'    },
+  { key: 'SUNDAY',    label: 'Domingo'   },
+];
 
-const TIME_SLOTS = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
-const BLOCKED_SLOTS = ['12:00', '12:30'];
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
+interface DayState {
+  active:    boolean;
+  startTime: string;  // "HH:MM"
+  endTime:   string;
 }
-function getFirstDayOfMonth(year: number, month: number) {
-  return new Date(year, month, 1).getDay();
-}
+
+const DEFAULT_DAY: DayState = { active: false, startTime: '09:00', endTime: '17:00' };
 
 export function DoctorCalendarPage() {
-  const today = new Date();
-  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
+  const { user } = useAuth();
+  const doctorId = user?.dto.doctor?.id ?? null;
 
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
+  const initialState: Record<string, DayState> = useMemo(() =>
+    DAYS.reduce((acc, d) => {
+      acc[d.key] = { ...DEFAULT_DAY };
+      return acc;
+    }, {} as Record<string, DayState>), []);
 
-  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+  const [days,        setDays]        = useState<Record<string, DayState>>(initialState);
+  const [saving,      setSaving]      = useState(false);
+  const [saveError,   setSaveError]   = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const dayKey = (day: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const isToday = (day: number) => day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+  const { state, refetch } = useApi<AvailabilityDto[]>(
+    () => doctorsApi.getAvailability(doctorId!),
+    [doctorId],
+  );
+
+  // Hydrate the form from the backend's current availability on first load.
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    const next: Record<string, DayState> = { ...initialState };
+    state.data.forEach((a) => {
+      next[a.dayOfWeek] = {
+        active:    a.isActive,
+        startTime: a.startTime,
+        endTime:   a.endTime,
+      };
+    });
+    setDays(next);
+  }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!doctorId) {
+    return (
+      <Alert variant="error">
+        No encontramos tu perfil de médico. Vuelve a iniciar sesión o completa tu registro.
+      </Alert>
+    );
+  }
+
+  if (state.status === 'loading') {
+    return (
+      <div className="flex items-center gap-2 text-slate-500 py-20 justify-center">
+        <Loader2 className="animate-spin" size={20} /> Cargando disponibilidad…
+      </div>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <Alert variant="error" action={
+        <button onClick={refetch} className="text-sm font-medium underline whitespace-nowrap">Reintentar</button>
+      }>
+        {state.error.message}
+      </Alert>
+    );
+  }
+
+  const updateDay = (key: string, patch: Partial<DayState>) => {
+    setDays((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+    setSaveSuccess(false);
+  };
+
+  const isValid = DAYS.every(({ key }) => {
+    const d = days[key];
+    if (!d.active) return true;
+    return d.startTime < d.endTime;
+  });
+
+  const handleSave = async () => {
+    if (!isValid || !doctorId) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      // Upsert each ACTIVE day. We submit them sequentially to keep error
+      // messages tied to the failing day (a Promise.all would mask which one).
+      for (const { key } of DAYS) {
+        const d = days[key];
+        if (!d.active) continue;
+        await doctorsApi.upsertAvailability(doctorId, {
+          dayOfWeek: key as AvailabilityDto['dayOfWeek'],
+          startTime: d.startTime,
+          endTime:   d.endTime,
+          isActive:  true,
+        });
+      }
+      setSaveSuccess(true);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? 'No se pudo guardar tu disponibilidad';
+      setSaveError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activeDayCount = DAYS.filter(({ key }) => days[key].active).length;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Calendario"
-        subtitle="Gestiona tu disponibilidad y horario de citas"
-        action={
-          <button className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700
-                             text-white text-sm font-medium rounded-xl transition shadow-sm">
-            <Plus size={15} /> Bloquear horario
-          </button>
-        }
+        title="Mi disponibilidad"
+        subtitle="Configura los días y horarios en que aceptas consultas"
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Calendar grid */}
-        <div className="xl:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200
-                        dark:border-slate-700 shadow-sm p-5">
-          {/* Month navigation */}
-          <div className="flex items-center justify-between mb-5">
-            <button onClick={prevMonth} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-400">
-              <ChevronLeft size={18} />
-            </button>
-            <h3 className="font-semibold text-slate-800 dark:text-white">
-              {MONTHS[month]} {year}
-            </h3>
-            <button onClick={nextMonth} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-400">
-              <ChevronRight size={18} />
-            </button>
-          </div>
+      <Alert variant="info">
+        <span className="text-sm">
+          <strong>¿Cómo funciona?</strong> Activá los días de la semana y elegí el rango horario.
+          El sistema genera automáticamente los espacios de {' '}
+          <span className="font-semibold">{user?.dto.doctor?.specialty ? '30 min' : 'la duración configurada en tu perfil'}</span>{' '}
+          cuando un paciente busca tus horarios.
+        </span>
+      </Alert>
 
-          {/* Day headers */}
-          <div className="grid grid-cols-7 mb-2">
-            {DAYS.map((d) => (
-              <div key={d} className="text-center text-xs font-medium text-slate-400 py-1">{d}</div>
-            ))}
-          </div>
-
-          {/* Day cells */}
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: firstDay }, (_, i) => <div key={`e-${i}`} />)}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const day = i + 1;
-              const key = dayKey(day);
-              const booked = BOOKED_DAYS[key];
-              const selected = selectedDay === day;
-              const todayFlag = isToday(day);
-
-              return (
-                <button
-                  key={day}
-                  onClick={() => setSelectedDay(day)}
-                  className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-sm font-medium transition
-                    ${selected ? 'bg-teal-600 text-white shadow-md' : todayFlag ? 'ring-2 ring-teal-500 text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                >
-                  {day}
-                  {booked && !selected && (
-                    <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${booked.color}`} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <span className="flex items-center gap-1.5 text-xs text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-blue-500" /> Con citas
-            </span>
-            <span className="flex items-center gap-1.5 text-xs text-slate-400">
-              <span className="w-2 h-2 rounded-full ring-2 ring-teal-500" /> Hoy
-            </span>
-          </div>
-        </div>
-
-        {/* Time slots */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200
-                        dark:border-slate-700 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="font-semibold text-slate-800 dark:text-white">
-              {selectedDay ? `${selectedDay} ${MONTHS[month]}` : 'Selecciona un día'}
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">Horario de consultas</p>
-          </div>
-          <div className="p-3 space-y-1.5 overflow-y-auto max-h-[380px]">
-            {TIME_SLOTS.map((slot) => {
-              const blocked = BLOCKED_SLOTS.includes(slot);
-              return (
-                <div key={slot}
-                     className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition
-                       ${blocked
-                         ? 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800'
-                         : 'bg-slate-50 dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 cursor-pointer'}`}>
-                  <span className={`font-medium ${blocked ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {slot}
+      <SectionCard
+        title="Horario semanal"
+        subtitle={`${activeDayCount} ${activeDayCount === 1 ? 'día activo' : 'días activos'}`}
+        noPadding
+      >
+        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          {DAYS.map(({ key, label }) => {
+            const d = days[key];
+            const invalid = d.active && d.startTime >= d.endTime;
+            return (
+              <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
+                {/* Day toggle */}
+                <label className="flex items-center gap-3 sm:w-44 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={d.active}
+                    onChange={(e) => updateDay(key, { active: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                  />
+                  <span className={`font-medium ${d.active ? 'text-slate-800 dark:text-white' : 'text-slate-400'}`}>
+                    {label}
                   </span>
-                  <StatusBadge status={blocked ? 'blocked' : 'free'} statusMap={timeSlotStatusMap} size="sm" />
+                </label>
+
+                {/* Time range */}
+                <div className={`flex items-center gap-3 flex-1 ${d.active ? '' : 'opacity-40 pointer-events-none'}`}>
+                  <input
+                    type="time"
+                    value={d.startTime}
+                    onChange={(e) => updateDay(key, { startTime: e.target.value })}
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <span className="text-sm text-slate-400">a</span>
+                  <input
+                    type="time"
+                    value={d.endTime}
+                    onChange={(e) => updateDay(key, { endTime: e.target.value })}
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  {invalid && (
+                    <span className="flex items-center gap-1 text-xs text-rose-600">
+                      <AlertCircle size={12} /> El horario de inicio debe ser anterior al de fin
+                    </span>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
+      </SectionCard>
+
+      {saveError && <Alert variant="error">{saveError}</Alert>}
+
+      {saveSuccess && (
+        <Alert variant="success">
+          <CheckCircle2 size={14} className="inline mr-1.5" />
+          Disponibilidad guardada. Los pacientes ya pueden ver tus horarios al buscarte.
+        </Alert>
+      )}
+
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={!isValid || saving}
+          className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-semibold shadow-sm shadow-teal-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? (
+            <>
+              <Loader2 size={16} className="animate-spin" /> Guardando...
+            </>
+          ) : (
+            <>
+              <Save size={16} /> Guardar cambios
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );

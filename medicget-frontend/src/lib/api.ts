@@ -44,9 +44,23 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 // ─── Response interceptor — handle errors globally ───────────────────────────
 
+/**
+ * Shape of a typed API error body. The `details` bag is optional; the auth
+ * service uses `details.field` to point at the form field that triggered a
+ * unique-violation conflict (e.g. `{ field: "email" }`).
+ */
+export interface ApiErrorBody {
+  ok:    false;
+  error: {
+    code:     string;
+    message:  string;
+    details?: { field?: string } & Record<string, unknown>;
+  };
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ ok: false; error: { code: string; message: string } }>) => {
+  (error: AxiosError<ApiErrorBody>) => {
     if (!error.response) {
       toast.error('No se puede conectar con el servidor. Comprueba tu conexión.');
       return Promise.reject(error);
@@ -55,9 +69,16 @@ api.interceptors.response.use(
     const { status, data } = error.response;
 
     if (status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
-      toast.error('Sesión expirada. Por favor, inicia sesión de nuevo.');
-      window.location.replace('/login');
+      // Don't kick the user back to /login if the 401 is from a login or
+      // register attempt — they're already on an auth screen and need to
+      // see the inline error rather than being redirected mid-form.
+      const url = error.config?.url ?? '';
+      const isAuthForm = url.includes('/auth/login') || url.includes('/auth/register');
+      if (!isAuthForm) {
+        localStorage.removeItem(TOKEN_KEY);
+        toast.error('Sesión expirada. Por favor, inicia sesión de nuevo.');
+        window.location.replace('/login');
+      }
       return Promise.reject(error);
     }
 
@@ -68,7 +89,14 @@ api.interceptors.response.use(
        status >= 500  ? 'Error interno del servidor. Inténtalo más tarde.' :
                         'Ocurrió un error inesperado.');
 
-    toast.error(message);
+    // For 4xx errors on auth forms we DON'T toast — the form will render the
+    // error inline next to the relevant field. Toasts are only for
+    // server/network problems the form can't visually represent.
+    const url = error.config?.url ?? '';
+    const isAuthForm = url.includes('/auth/login') || url.includes('/auth/register');
+    if (!isAuthForm || status >= 500) {
+      toast.error(message);
+    }
     return Promise.reject(error);
   },
 );
@@ -157,7 +185,12 @@ export interface DoctorDto {
   reviewCount:     number;
   available:       boolean;
   user:            { profile: ProfileDto };
-  clinic:          { id: string; name: string };
+  /**
+   * After the `Doctor.clinicId` optional migration, an independent doctor
+   * (no clinic associated) returns `null` here. UI must guard against it
+   * when offering booking — Appointment creation requires a clinicId.
+   */
+  clinic:          { id: string; name: string } | null;
 }
 
 export interface AvailabilityDto {
@@ -226,13 +259,37 @@ export interface NotificationDto {
   createdAt: string;
 }
 
+/**
+ * Body accepted by `POST /api/v1/auth/register`. Common fields are required;
+ * role-specific fields are optional and only consulted by the backend when
+ * the matching role is selected. Mirrors the Zod schema in
+ *   svc-auth/src/app/api/v1/auth/register/route.ts
+ */
 export interface RegisterBody {
+  // Auth + Profile (every role)
   email:     string;
   password:  string;
   role:      'CLINIC' | 'DOCTOR' | 'PATIENT';
   firstName: string;
   lastName:  string;
   phone?:    string;
+  address?:  string;
+  city?:     string;
+  country?:  string;
+
+  // CLINIC role
+  clinicName?:        string;
+  clinicDescription?: string;
+  clinicPhone?:       string;
+  clinicEmail?:       string;
+  clinicWebsite?:     string;
+
+  // DOCTOR role (accepted but currently not persisted to a Doctor row;
+  // the doctor completes their professional profile after login)
+  specialty?:       string;
+  licenseNumber?:   string;
+  experience?:      number;
+  pricePerConsult?: number;
 }
 
 // ─── Domain API objects ───────────────────────────────────────────────────────

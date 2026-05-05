@@ -18,6 +18,7 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 // Patient pages
 import { PatientDashboardPage } from '@/features/patient/dashboard/pages/PatientDashboardPage';
 import { SearchDoctorsPage } from '@/features/patient/search/pages/SearchDoctorsPage';
+import { PatientDoctorDetailPage } from '@/features/patient/doctor/pages/PatientDoctorDetailPage';
 import { PatientAppointmentsPage } from '@/features/patient/appointments/pages/PatientAppointmentsPage';
 import { MedicalHistoryPage } from '@/features/patient/medical-history/pages/MedicalHistoryPage';
 import { PatientProfilePage } from '@/features/patient/profile/pages/PatientProfilePage';
@@ -28,6 +29,7 @@ import { DoctorProfilePage } from '@/features/doctor/profile/pages/DoctorProfile
 import { DoctorCalendarPage } from '@/features/doctor/calendar/pages/DoctorCalendarPage';
 import { DoctorAppointmentsPage } from '@/features/doctor/appointments/pages/DoctorAppointmentsPage';
 import { PatientHistoryPage } from '@/features/doctor/patients/pages/PatientHistoryPage';
+import { DoctorSetupPage } from '@/features/doctor/setup/pages/DoctorSetupPage';
 
 // Clinic pages
 import { ClinicDashboardPage } from '@/features/clinic/dashboard/pages/ClinicDashboardPage';
@@ -83,6 +85,11 @@ export const router = createBrowserRouter([
   { path: '/register/clinic', element: <RegisterClinicPage /> },
   { path: '/register/clinic/details', element: <RegisterClinicDetailsPage /> },
 
+  // Doctor profile setup — first-time onboarding after registration. Lives
+  // outside /doctor on purpose so it doesn't render the protected dashboard
+  // shell while the doctor is still completing their data.
+  { path: '/doctor/setup', element: <DoctorSetupPage /> },
+
   // Patient
   {
     path: '/patient',
@@ -94,6 +101,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <PatientDashboardPage /> },
       { path: 'search', element: <SearchDoctorsPage /> },
+      { path: 'doctor/:id', element: <PatientDoctorDetailPage /> },
       { path: 'appointments', element: <PatientAppointmentsPage /> },
       { path: 'history', element: <MedicalHistoryPage /> },
       { path: 'profile', element: <PatientProfilePage /> },

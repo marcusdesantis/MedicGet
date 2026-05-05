@@ -16,7 +16,10 @@ export async function POST(req: NextRequest) {
   if ('error' in parsed) return parsed.error;
 
   const result = await authService.login(parsed.data);
-  if (!result.ok) return apiError(result.code, result.message);
+  if (!result.ok) {
+    const details = result.field ? { field: result.field } : undefined;
+    return apiError(result.code, result.message, details);
+  }
 
   return apiOk(result.data, 'Login successful');
 }

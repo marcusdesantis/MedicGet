@@ -1,34 +1,57 @@
 import { useState } from "react";
 
-export const AddressAutocomplete = ({ form, setForm }: any) => {
-  const [results, setResults] = useState<any[]>([]);
+interface AddressFields {
+  address?: string;
+  lat?:     number | null;
+  lng?:     number | null;
+}
+
+interface Props<T extends AddressFields> {
+  form:    T;
+  setForm: (patch: Partial<T>) => void;
+}
+
+interface NominatimHit {
+  display_name: string;
+  lat:          string;
+  lon:          string;
+}
+
+/**
+ * Address autocomplete backed by OpenStreetMap's Nominatim. Works with any
+ * registration draft that has `address`, `lat`, `lng` fields — i.e. both
+ * the doctor and clinic flows.
+ */
+export const AddressAutocomplete = <T extends AddressFields>({ form, setForm }: Props<T>) => {
+  const [results, setResults] = useState<NominatimHit[]>([]);
 
   const search = async (value: string) => {
-    if (!value) return;
-
+    if (!value) {
+      setResults([]);
+      return;
+    }
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${value}`
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}`,
     );
-    const data = await res.json();
+    const data: NominatimHit[] = await res.json();
     setResults(data);
   };
 
-  const select = (item: any) => {
+  const select = (item: NominatimHit) => {
     setForm({
-      ...form,
       address: item.display_name,
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-    });
+      lat:     parseFloat(item.lat),
+      lng:     parseFloat(item.lon),
+    } as Partial<T>);
     setResults([]);
   };
 
   return (
     <div className="relative">
       <input
-        value={form.address}
+        value={form.address ?? ""}
         onChange={(e) => {
-          setForm({ ...form, address: e.target.value });
+          setForm({ address: e.target.value } as Partial<T>);
           search(e.target.value);
         }}
         className="w-full dark:bg-slate-900 dark:text-white border dark:border-slate-700 rounded-lg p-3"

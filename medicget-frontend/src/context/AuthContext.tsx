@@ -1,10 +1,11 @@
 /**
  * AuthContext — real JWT-backed authentication.
  *
- * - login()  → POST /auth/login, stores token in localStorage
- * - logout() → clears token + user state
- * - bootstrap → on first render, calls GET /auth/me with stored token
- *               to restore the session without re-logging in
+ * - login()    → POST /auth/login,    stores token in localStorage
+ * - register() → POST /auth/register, stores token in localStorage
+ * - logout()   → clears token + user state
+ * - bootstrap  → on first render, calls GET /auth/me with stored token
+ *                to restore the session without re-logging in
  *
  * The public interface (User shape, hook, Provider) is backward-compatible
  * with the mock version so page components need no changes.
@@ -18,7 +19,8 @@ import {
   useCallback,
   ReactNode,
 } from 'react';
-import { authApi, TOKEN_KEY, UserDto } from '@/lib/api';
+import { authApi, RegisterBody, TOKEN_KEY, UserDto } from '@/lib/api';
+import { clearRegistrationDraft } from '@/features/auth/register/state';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,11 +37,26 @@ export interface User {
   dto:      UserDto;
 }
 
+export interface AuthResult {
+  success: boolean;
+  error?:  string;
+  /**
+   * When the backend can attribute the failure to a specific form field
+   * (e.g. duplicate email → `field: "email"`), it surfaces that name here.
+   * The wizard pages use it to either render the error inline next to the
+   * matching input or — when the field belongs to a previous step — to
+   * show an alert with a "go back" button.
+   */
+  field?:  string;
+  role?:   UserRole;
+}
+
 interface AuthContextType {
   user:            User | null;
   isAuthenticated: boolean;
   loading:         boolean;
-  login:           (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
+  login:           (email: string, password: string) => Promise<AuthResult>;
+  register:        (body: RegisterBody) => Promise<AuthResult>;
   logout:          () => void;
 }
 
@@ -69,6 +86,58 @@ function dtoToUser(dto: UserDto): User {
   };
 }
 
+/**
+ * Pulls a user-friendly message AND the optional `field` hint out of an
+ * Axios error returned by our API. The backend has TWO error shapes:
+ *
+ *   1. Auth service business errors (handled by handleAuthError):
+ *        { code, message, details: { field: "email" } }
+ *
+ *   2. Zod validation errors (handled by parseBody → apiError):
+ *        { code: "VALIDATION_ERROR", message: "Validation failed",
+ *          details: { lastName: ["String must contain at least 1 character"] } }
+ *
+ * We extract the field name and the most actionable message from either
+ * shape, falling back to the generic Spanish copy on network errors.
+ */
+function extractApiError(err: unknown, fallback: string): { message: string; field?: string } {
+  const errorBody = (err as {
+    response?: {
+      data?: {
+        error?: {
+          message?: string;
+          details?: unknown;
+        };
+      };
+    };
+  })?.response?.data?.error;
+
+  const message = errorBody?.message ?? fallback;
+  const details = errorBody?.details;
+
+  // Shape #1 — { field: "email" }
+  if (details && typeof details === "object" && "field" in details) {
+    const fieldVal = (details as { field?: unknown }).field;
+    if (typeof fieldVal === "string") {
+      return { message, field: fieldVal };
+    }
+  }
+
+  // Shape #2 — Zod fieldErrors: { lastName: ["msg"], firstName: ["msg"] }
+  // Pick the first field that has a non-empty error array, and surface the
+  // first message from it so the inline UI can be specific.
+  if (details && typeof details === "object") {
+    const entries = Object.entries(details as Record<string, unknown>);
+    for (const [field, msgs] of entries) {
+      if (Array.isArray(msgs) && msgs.length > 0 && typeof msgs[0] === "string") {
+        return { message: msgs[0] as string, field };
+      }
+    }
+  }
+
+  return { message };
+}
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -91,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<AuthResult> => {
     try {
       const res = await authApi.login(email, password);
       localStorage.setItem(TOKEN_KEY, res.data.token);
@@ -99,10 +168,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(mappedUser);
       return { success: true, role: mappedUser.role };
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ?? 'Credenciales incorrectas';
-      return { success: false, error: msg };
+      const { message, field } = extractApiError(err, 'Credenciales incorrectas');
+      return { success: false, error: message, field };
+    }
+  }, []);
+
+  const register = useCallback(async (body: RegisterBody): Promise<AuthResult> => {
+    try {
+      const res = await authApi.register(body);
+      localStorage.setItem(TOKEN_KEY, res.data.token);
+      const mappedUser = dtoToUser(res.data.user);
+      setUser(mappedUser);
+      // Wipe the wizard draft so a future visit to /register starts fresh.
+      clearRegistrationDraft();
+      return { success: true, role: mappedUser.role };
+    } catch (err: unknown) {
+      const { message, field } = extractApiError(err, 'No se pudo crear la cuenta');
+      return { success: false, error: message, field };
     }
   }, []);
 
@@ -112,7 +194,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login }}>
+    <AuthContext.Provider
+      value={{ user, isAuthenticated: !!user, loading, login, register, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

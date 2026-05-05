@@ -110,6 +110,18 @@ curl http://localhost:8080/health
 curl http://localhost:8080/api/v1/auth/health
 ```
 
+
+
+```bash
+Reload nginx
+docker compose up -d nginx --force-recreate
+Solo reconstruit un servicio
+docker compose up -d --build svc-auth
+```
+
+
+
+
 ---
 
 ## Seed credentials
