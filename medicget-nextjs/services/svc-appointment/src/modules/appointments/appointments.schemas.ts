@@ -3,9 +3,14 @@ import { z } from 'zod';
 export const createSchema = z.object({
   patientId: z.string().cuid(),
   doctorId:  z.string().cuid(),
-  clinicId:  z.string().cuid(),
+  // clinicId is optional so independent doctors (no clinic association)
+  // can still receive bookings — see migration 20260506100000.
+  clinicId:  z.string().cuid().optional(),
   date:      z.string().refine((v) => !isNaN(Date.parse(v)), 'Invalid date'),
   time:      z.string().regex(/^\d{2}:\d{2}$/),
+  // Modality drives post-payment behaviour: ONLINE generates a video link,
+  // PRESENCIAL is a physical visit, CHAT enables in-app messaging.
+  modality:  z.enum(['ONLINE', 'PRESENCIAL', 'CHAT']).optional(),
   price:     z.number().positive(),
   notes:     z.string().optional(),
 });

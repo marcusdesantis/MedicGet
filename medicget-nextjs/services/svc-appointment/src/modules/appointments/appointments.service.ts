@@ -66,9 +66,32 @@ export const appointmentsService = {
     const patient = await prisma.patient.findUnique({ where: { id: body.patientId } });
     if (!patient) return { ok: false, code: 'NOT_FOUND', message: 'Patient not found' };
 
-    // Validate clinic exists
-    const clinic = await prisma.clinic.findUnique({ where: { id: body.clinicId } });
-    if (!clinic) return { ok: false, code: 'NOT_FOUND', message: 'Clinic not found' };
+    // Validate the requested modality is actually offered by this doctor.
+    // `doctor.modalities` is an enum array with at least one element after
+    // the `doctor_modalities` migration; default is ['ONLINE'].
+    const requestedModality = body.modality ?? 'ONLINE';
+    const accepted = (doctor as { modalities?: string[] }).modalities ?? ['ONLINE'];
+    if (!accepted.includes(requestedModality)) {
+      return {
+        ok: false,
+        code: 'BAD_REQUEST',
+        message: `Este médico no acepta la modalidad ${requestedModality.toLowerCase()}. Modalidades disponibles: ${accepted.map((m) => m.toLowerCase()).join(', ')}.`,
+      };
+    }
+
+    // Resolve clinic. Two paths:
+    //   1. Patient explicitly chose a clinic → validate it exists.
+    //   2. No clinic supplied → fall back to the doctor's default clinic
+    //      (if any). If the doctor is independent, clinicId stays null —
+    //      that's allowed since the migration `appointment_optional_clinic`.
+    let resolvedClinicId: string | null = null;
+    if (body.clinicId) {
+      const clinic = await prisma.clinic.findUnique({ where: { id: body.clinicId } });
+      if (!clinic) return { ok: false, code: 'NOT_FOUND', message: 'Clinic not found' };
+      resolvedClinicId = clinic.id;
+    } else if (doctor.clinicId) {
+      resolvedClinicId = doctor.clinicId;
+    }
 
     // Check for conflicting appointment
     const existing = await prisma.appointment.findFirst({
@@ -95,9 +118,10 @@ export const appointmentsService = {
       {
         patientId: body.patientId,
         doctorId: body.doctorId,
-        clinicId: body.clinicId,
+        clinicId: resolvedClinicId,
         date: new Date(body.date),
         time: body.time,
+        modality: requestedModality,
         price: body.price,
         notes: body.notes,
         status: 'PENDING',

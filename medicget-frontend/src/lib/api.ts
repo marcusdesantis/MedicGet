@@ -181,6 +181,12 @@ export interface DoctorDto {
   bio?:            string;
   consultDuration: number;
   languages:       string[];
+  /**
+   * Appointment modalities the doctor accepts. Backend enforces that at
+   * least one is selected; defaults to `['ONLINE']` for new doctors. The
+   * patient booking page filters its modality picker by this list.
+   */
+  modalities:      AppointmentModality[];
   rating:          number;
   reviewCount:     number;
   available:       boolean;
@@ -217,18 +223,27 @@ export interface PatientDto {
   user:         { profile: ProfileDto; email: string };
 }
 
+export type AppointmentModality = 'ONLINE' | 'PRESENCIAL' | 'CHAT';
+
 export interface AppointmentDto {
   id:           string;
   date:         string;
   time:         string;
   status:       string;
+  /** ONLINE → videollamada, PRESENCIAL → en consultorio, CHAT → mensajería. */
+  modality:     AppointmentModality;
   price:        number;
   notes?:       string;
   cancelReason?: string;
   createdAt:    string;
   patient:      { id: string; user: { profile: ProfileDto } };
   doctor:       { id: string; specialty: string; user: { profile: ProfileDto } };
-  clinic:       { id: string; name: string };
+  /**
+   * Null when the doctor is independent (no clinic association). The
+   * Appointment.clinicId column is optional after migration
+   * `20260506100000_appointment_optional_clinic_modality`.
+   */
+  clinic:       { id: string; name: string } | null;
   payment?:     PaymentDto | null;
   review?:      ReviewDto  | null;
 }
@@ -399,9 +414,12 @@ export interface ClinicDashboardDto {
 export interface CreateAppointmentBody {
   patientId: string;
   doctorId:  string;
-  clinicId:  string;
+  /** Optional — independent doctors don't have one. If provided, must be cuid. */
+  clinicId?: string;
   date:      string;
   time:      string;
+  /** Defaults to ONLINE on the backend if omitted. */
+  modality?: AppointmentModality;
   price:     number;
   notes?:    string;
 }

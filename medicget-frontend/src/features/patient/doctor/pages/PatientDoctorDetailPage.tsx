@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Calendar as CalendarIcon, Clock, MapPin, Star, Stethoscope,
-  CheckCircle2, AlertCircle, Loader2,
+  CheckCircle2, AlertCircle, Loader2, Video, Building2, MessageSquare,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { CardContainer } from '@/components/ui/CardContainer';
@@ -15,7 +15,7 @@ import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/context/AuthContext';
 import {
   doctorsApi, appointmentsApi,
-  type DoctorDto, type SlotDto,
+  type DoctorDto, type SlotDto, type AppointmentModality,
 } from '@/lib/api';
 
 /**
@@ -91,9 +91,27 @@ export function PatientDoctorDetailPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
   const [notes,        setNotes]      = useState('');
+  /**
+   * Modalidad de la cita. Default ONLINE pero ajustamos al primer valor
+   * aceptado por el doctor en cuanto carga el perfil — así nunca queda
+   * elegida una modalidad que el doctor no acepta.
+   */
+  const [modality, setModality] = useState<AppointmentModality>('ONLINE');
 
   // Reset slot selection when day changes.
   useEffect(() => { setBookingSlot(null); }, [selectedDay]);
+
+  // When the doctor profile loads, snap the modality to the first one they
+  // actually accept. Avoids the patient confirming a modality the doctor
+  // never opted in to (the backend would reject it anyway).
+  useEffect(() => {
+    if (doctorState.state.status !== 'ready') return;
+    const accepted = doctorState.state.data.modalities ?? ['ONLINE'];
+    if (accepted.length > 0 && !accepted.includes(modality)) {
+      setModality(accepted[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorState.state.status === 'ready' ? doctorState.state.data.id : null]);
 
   if (doctorState.state.status === 'loading') {
     return (
@@ -118,19 +136,28 @@ export function PatientDoctorDetailPage() {
   const doc = doctorState.state.data;
   const profile = doc.user?.profile;
   const hasClinic = !!doc.clinic?.id;
+  // Doctor independiente = sin clínica. Igual puede recibir reservas (la
+  // migración `appointment_optional_clinic` lo permite). Solo cambia que
+  // PRESENCIAL no tiene un consultorio formal, así que dependemos del
+  // address del Profile del doctor para mostrarlo como opción.
+  const hasPhysicalAddress = !!doc.clinic?.id || !!profile?.address;
   const patientId = user?.dto.patient?.id;
 
   const handleBook = async () => {
-    if (!bookingSlot || !patientId || !doc.clinic?.id) return;
+    if (!bookingSlot || !patientId) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
       const res = await appointmentsApi.create({
         patientId,
         doctorId:  doc.id,
-        clinicId:  doc.clinic.id,
+        // clinicId solo si existe — el backend acepta omitirlo y resuelve
+        // por su cuenta (usa la clínica del doctor o queda null si es
+        // independiente).
+        ...(doc.clinic?.id ? { clinicId: doc.clinic.id } : {}),
         date:      selectedDay,
         time:      bookingSlot.time,
+        modality,
         price:     doc.pricePerConsult,
         notes:     notes.trim() || undefined,
       });
@@ -205,13 +232,55 @@ export function PatientDoctorDetailPage() {
         {/* RIGHT — booking */}
         <div className="lg:col-span-2 space-y-6">
           {!hasClinic && (
-            <Alert variant="warning">
-              <strong>Este médico todavía no acepta reservas en línea.</strong>
+            <Alert variant="info">
+              <strong>Este médico es profesional independiente.</strong>
               <span className="block text-xs mt-1 opacity-80">
-                Tiene su perfil completado pero no se ha asociado a ningún centro médico.
+                Atiende en modalidad online por defecto. Si necesitás consulta
+                presencial, contactalo directamente al confirmar la reserva.
               </span>
             </Alert>
           )}
+
+          <SectionCard
+            title="¿Cómo querés atenderte?"
+            subtitle="Elegí la modalidad antes de seleccionar el horario"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <ModalityOption
+                value="ONLINE"
+                selected={modality}
+                onSelect={setModality}
+                icon={<Video size={18} />}
+                label="Videollamada"
+                description={doc.modalities?.includes('ONLINE') ? 'Atención remota desde tu casa' : 'No disponible para este médico'}
+                disabled={!doc.modalities?.includes('ONLINE')}
+              />
+              <ModalityOption
+                value="PRESENCIAL"
+                selected={modality}
+                onSelect={setModality}
+                icon={<Building2 size={18} />}
+                label="Presencial"
+                description={
+                  !doc.modalities?.includes('PRESENCIAL')
+                    ? 'No disponible para este médico'
+                    : hasPhysicalAddress
+                      ? (doc.clinic?.name ?? 'En el consultorio')
+                      : 'Sin consultorio configurado'
+                }
+                disabled={!doc.modalities?.includes('PRESENCIAL') || !hasPhysicalAddress}
+              />
+              <ModalityOption
+                value="CHAT"
+                selected={modality}
+                onSelect={setModality}
+                icon={<MessageSquare size={18} />}
+                label="Chat"
+                description={doc.modalities?.includes('CHAT') ? 'Mensajería en vivo' : 'No disponible para este médico'}
+                disabled={!doc.modalities?.includes('CHAT')}
+              />
+            </div>
+          </SectionCard>
 
           <SectionCard
             title="Selecciona un día"
@@ -238,7 +307,7 @@ export function PatientDoctorDetailPage() {
 
           <SectionCard
             title="Horarios disponibles"
-            subtitle={hasClinic ? 'Selecciona el horario que prefieras' : 'Sin disponibilidad — la reserva está deshabilitada'}
+            subtitle="Selecciona el horario que prefieras"
           >
             {slotsState.state.status === 'loading' && (
               <div className="flex items-center justify-center py-8 text-slate-400">
@@ -266,14 +335,11 @@ export function PatientDoctorDetailPage() {
                     return (
                       <button
                         key={s.id}
-                        disabled={!hasClinic}
                         onClick={() => setBookingSlot(s)}
                         className={`py-2.5 rounded-lg border text-sm font-medium transition ${
-                          !hasClinic
-                            ? 'opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-700'
-                            : isSelected
-                              ? 'bg-blue-600 border-blue-600 text-white'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-700 dark:text-slate-200'
+                          isSelected
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-700 dark:text-slate-200'
                         }`}
                       >
                         {s.time}
@@ -285,12 +351,13 @@ export function PatientDoctorDetailPage() {
             })()}
           </SectionCard>
 
-          {bookingSlot && hasClinic && !confirmedId && (
+          {bookingSlot && !confirmedId && (
             <SectionCard title="Confirmar reserva" subtitle="Revisa los datos antes de continuar">
               <div className="space-y-2 text-sm">
                 <Row label="Médico"        value={fullName(doc)} />
                 <Row label="Especialidad"  value={doc.specialty} />
-                <Row label="Centro"        value={doc.clinic?.name ?? '—'} />
+                <Row label="Modalidad"     value={MODALITY_LABEL[modality]} />
+                <Row label="Centro"        value={doc.clinic?.name ?? 'Profesional independiente'} />
                 <Row label="Fecha y hora"  value={`${days.find((d) => d.key === selectedDay)?.sublabel} · ${bookingSlot.time}`} />
                 <Row label="Duración"      value={`${doc.consultDuration} min`} />
                 <Row label="Precio"        value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(2)}` : 'Gratuito'} bold />
@@ -410,5 +477,53 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
         {value}
       </span>
     </div>
+  );
+}
+
+const MODALITY_LABEL: Record<AppointmentModality, string> = {
+  ONLINE:     'Videollamada',
+  PRESENCIAL: 'Presencial',
+  CHAT:       'Chat en vivo',
+};
+
+interface ModalityOptionProps {
+  value:       AppointmentModality;
+  selected:    AppointmentModality;
+  onSelect:    (m: AppointmentModality) => void;
+  icon:        React.ReactNode;
+  label:       string;
+  description: string;
+  /** When true, this modality is offered regardless of doctor setup. */
+  always?:     boolean;
+  disabled?:   boolean;
+}
+
+function ModalityOption({ value, selected, onSelect, icon, label, description, disabled }: ModalityOptionProps) {
+  const isSelected = selected === value;
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onSelect(value)}
+      disabled={disabled}
+      className={`text-left p-4 rounded-xl border-2 transition ${
+        disabled
+          ? 'opacity-40 cursor-not-allowed border-slate-200 dark:border-slate-800'
+          : isSelected
+            ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/30 shadow-sm'
+            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+        }`}>
+          {icon}
+        </span>
+        <span className={`text-sm font-semibold ${isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-200'}`}>
+          {label}
+        </span>
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 leading-tight">{description}</p>
+    </button>
   );
 }

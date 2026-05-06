@@ -10,6 +10,16 @@ export const updateDoctorSchema = z
     languages: z.array(z.string()).optional(),
     available: z.boolean().optional(),
     licenseNumber: z.string().optional(),
+    // Allowed appointment modalities — at least one must remain selected
+    // (otherwise patients can't book at all). Validated as a non-empty
+    // array of the canonical enum values.
+    modalities: z
+      .array(z.enum(['ONLINE', 'PRESENCIAL', 'CHAT']))
+      .min(1, 'Debes aceptar al menos una modalidad')
+      .optional(),
+    // Allows a clinic admin OR the doctor themselves to associate / detach
+    // a clinic. `null` means independent (unassociated). Cuid format when set.
+    clinicId: z.union([z.string().cuid(), z.null()]).optional(),
   })
   .strict();
 

@@ -35,6 +35,12 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum AppointmentModality {
+  ONLINE      // videollamada
+  PRESENCIAL  // consulta en consultorio físico
+  CHAT        // mensajería en vivo
+}
+
 enum PaymentMethod {
   CASH
   CARD
@@ -148,6 +154,11 @@ model Doctor {
   bio             String?
   consultDuration Int        @default(30)
   languages       String[]
+  // Modalities the doctor accepts. Drives which options the patient sees on
+  // the booking page — defaults to [ONLINE] so a fresh doctor can already
+  // receive video consults. They opt in to PRESENCIAL / CHAT from their
+  // profile page when they're ready.
+  modalities      AppointmentModality[] @default([ONLINE])
   rating          Float      @default(0)
   reviewCount     Int        @default(0)
   available       Boolean    @default(true)
@@ -229,24 +240,32 @@ model Patient {
 // ─── Appointment ──────────────────────────────────────────────────────────────
 
 model Appointment {
-  id           String            @id @default(cuid())
+  id           String              @id @default(cuid())
   patientId    String
   doctorId     String
-  clinicId     String
-  date         DateTime          @db.Date
+  // `clinicId` is OPTIONAL so independent doctors (without clinic
+  // association) can also receive bookings. When the doctor IS associated
+  // with a clinic, we still record it for billing/reporting.
+  clinicId     String?
+  date         DateTime            @db.Date
   time         String
-  status       AppointmentStatus @default(PENDING)
+  status       AppointmentStatus   @default(PENDING)
+  // Modality drives the post-payment flow:
+  //   • ONLINE     → generate videollamada link
+  //   • PRESENCIAL → no link, in-person consult at doctor's address
+  //   • CHAT       → enable in-app chat for that appointment
+  modality     AppointmentModality @default(ONLINE)
   price        Float
   notes        String?
   cancelReason String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
   createdBy    String?
   updatedBy    String?
 
   patient Patient @relation(fields: [patientId], references: [id])
   doctor  Doctor  @relation(fields: [doctorId], references: [id])
-  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  clinic  Clinic? @relation(fields: [clinicId], references: [id])
 
   slot    AppointmentSlot?
   review  Review?

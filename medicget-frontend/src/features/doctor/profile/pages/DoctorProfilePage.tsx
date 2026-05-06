@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare } from 'lucide-react';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
 import { Avatar }       from '@/components/ui/Avatar';
@@ -10,7 +10,7 @@ import { Alert }        from '@/components/ui/Alert';
 import { AutocompleteSelect } from '@/components/ui/AutocompleteSelect';
 import { useAuth }      from '@/context/AuthContext';
 import { useApi }       from '@/hooks/useApi';
-import { doctorsApi, usersApi, type DoctorDto } from '@/lib/api';
+import { doctorsApi, usersApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
 import { specialties as SPECIALTY_OPTIONS } from '@/features/auth/register/data/specialties';
 
 /**
@@ -52,6 +52,10 @@ export function DoctorProfilePage() {
     consultDuration: '',
     bio:             '',
     languages:       '', // comma-separated string in form, array on backend
+    // Modalities the doctor accepts. Defaults to a full set so we don't
+    // disable everyone on first hydrate; gets overwritten from API once
+    // the data loads.
+    modalities:      ['ONLINE'] as AppointmentModality[],
   });
 
   // Hydrate the form from the API once.
@@ -70,6 +74,7 @@ export function DoctorProfilePage() {
       consultDuration: String(d.consultDuration ?? 30),
       bio:             d.bio ?? '',
       languages:       fmtLanguages(d.languages),
+      modalities:      (d.modalities && d.modalities.length > 0) ? d.modalities : ['ONLINE'],
     });
   }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,7 +105,8 @@ export function DoctorProfilePage() {
           consultDuration: Number(form.consultDuration) || 30,
           bio:             form.bio.trim() || undefined,
           languages:       parseLanguages(form.languages),
-        }),
+          modalities:      form.modalities,
+        } as Partial<DoctorDto>),
       ]);
       setSuccess(true);
       refetch();
@@ -241,6 +247,44 @@ export function DoctorProfilePage() {
             </div>
           </SectionCard>
 
+          {/* Modalidades de atención */}
+          <SectionCard
+            title="Modalidades de atención"
+            subtitle="Elige cómo quieres atender a tus pacientes"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <ModalityToggle
+                value="ONLINE"
+                form={form}
+                setForm={setForm}
+                icon={<Video size={18} />}
+                label="Videollamada"
+                description="Atiende a tus pacientes desde donde estés"
+              />
+              <ModalityToggle
+                value="PRESENCIAL"
+                form={form}
+                setForm={setForm}
+                icon={<Building2 size={18} />}
+                label="Presencial"
+                description="Recibí a los pacientes en consultorio"
+              />
+              <ModalityToggle
+                value="CHAT"
+                form={form}
+                setForm={setForm}
+                icon={<MessageSquare size={18} />}
+                label="Chat en vivo"
+                description="Consulta por mensajería en tiempo real"
+              />
+            </div>
+            {form.modalities.length === 0 && (
+              <p className="text-xs text-rose-600 mt-3">
+                Debes habilitar al menos una modalidad para recibir reservas.
+              </p>
+            )}
+          </SectionCard>
+
           {error   && <Alert variant="error">{error}</Alert>}
           {success && (
             <Alert variant="success">
@@ -251,7 +295,7 @@ export function DoctorProfilePage() {
           <div className="flex justify-end">
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || form.modalities.length === 0}
               className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-6 py-2.5 rounded-xl font-semibold disabled:opacity-50"
             >
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -270,5 +314,59 @@ function Field({ icon, label }: { icon: React.ReactNode; label: string }) {
       <span className="text-slate-400 mt-0.5">{icon}</span>
       <span className="text-slate-700 dark:text-slate-300 break-all">{label}</span>
     </div>
+  );
+}
+
+/**
+ * ModalityToggle — checkbox-card hybrid for the doctor's modalities. Acts
+ * like a toggle (click to add/remove) but displays as a tinted card with
+ * icon + description so the doctor understands what each modality means.
+ */
+function ModalityToggle({
+  value, form, setForm, icon, label, description,
+}: {
+  value:       AppointmentModality;
+  form:        { modalities: AppointmentModality[] } & Record<string, unknown>;
+  setForm:     (next: { modalities: AppointmentModality[] } & Record<string, unknown>) => void;
+  icon:        React.ReactNode;
+  label:       string;
+  description: string;
+}) {
+  const isOn = form.modalities.includes(value);
+  const toggle = () => {
+    const next = isOn
+      ? form.modalities.filter((m) => m !== value)
+      : [...form.modalities, value];
+    setForm({ ...form, modalities: next });
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={`text-left p-4 rounded-xl border-2 transition ${
+        isOn
+          ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30 shadow-sm'
+          : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${
+          isOn ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+        }`}>
+          {icon}
+        </span>
+        <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+          isOn ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 dark:border-slate-600'
+        }`}>
+          {isOn && <CheckCircle2 size={12} strokeWidth={3} />}
+        </span>
+      </div>
+      <p className={`text-sm font-semibold ${isOn ? 'text-teal-700 dark:text-teal-300' : 'text-slate-800 dark:text-slate-200'}`}>
+        {label}
+      </p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+        {description}
+      </p>
+    </button>
   );
 }
