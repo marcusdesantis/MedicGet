@@ -127,12 +127,17 @@ export const appointmentsRepository = {
       }
 
       // 3. Create a PENDING payment record
+      // `expiresAt` is set to NOW + 15 minutes so the sweeper auto-cancels
+      // the appointment if the patient never pays. The frontend also
+      // surfaces a countdown derived from the same value.
+      const PAYMENT_WINDOW_MS = 15 * 60 * 1000;
       await tx.payment.create({
         data: {
           appointmentId: appointment.id,
           amount: apptData.price as number,
           method: 'PENDING',
           status: 'PENDING',
+          expiresAt: new Date(Date.now() + PAYMENT_WINDOW_MS),
         },
       });
 

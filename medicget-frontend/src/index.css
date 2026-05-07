@@ -35,3 +35,33 @@
   border-radius: 0.5rem;
   font-size: 14px;
 }
+
+/* ── Native time/date inputs in dark mode ──────────────────────────────────
+ * Browsers (Chrome especially) draw the native clock / calendar picker icon
+ * as a dark glyph. On a dark background it disappears. The CSS below flips
+ * the picker icon to white and forces the input text colour to inherit
+ * from Tailwind's `text-*` utility — without this the typed digits are
+ * almost invisible because Chrome paints them with the system colour, not
+ * the page's foreground.
+ */
+.dark input[type="time"],
+.dark input[type="date"],
+.dark input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+.dark input[type="time"]::-webkit-calendar-picker-indicator,
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  cursor: pointer;
+}
+
+/* Light-mode default: keep the icon dark grey for consistency with the
+ * rest of the form. */
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}

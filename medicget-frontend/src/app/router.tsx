@@ -31,6 +31,24 @@ import { DoctorAppointmentsPage } from '@/features/doctor/appointments/pages/Doc
 import { PatientHistoryPage } from '@/features/doctor/patients/pages/PatientHistoryPage';
 import { DoctorSetupPage } from '@/features/doctor/setup/pages/DoctorSetupPage';
 
+// Admin pages
+import { AdminDashboardPage }     from '@/features/admin/dashboard/pages/AdminDashboardPage';
+import { AdminUsersPage }         from '@/features/admin/users/pages/AdminUsersPage';
+import { AdminPlansPage }         from '@/features/admin/plans/pages/AdminPlansPage';
+import { AdminSubscriptionsPage } from '@/features/admin/subscriptions/pages/AdminSubscriptionsPage';
+import { AdminSettingsPage }      from '@/features/admin/settings/pages/AdminSettingsPage';
+
+// Shared (chat + presencial detail + payment) pages
+import {
+  PatientAppointmentChatPage, DoctorAppointmentChatPage,
+} from '@/features/shared/chat/pages/AppointmentChatPage';
+import {
+  PatientAppointmentDetailPage, DoctorAppointmentDetailPage,
+} from '@/features/shared/appointment/pages/AppointmentDetailPage';
+import { PaymentCheckoutPage } from '@/features/shared/payment/pages/PaymentCheckoutPage';
+import { PaymentReturnPage }   from '@/features/shared/payment/pages/PaymentReturnPage';
+import { SubscribePage, SubscribeReturnPage } from '@/features/shared/subscription/pages/SubscribePage';
+
 // Clinic pages
 import { ClinicDashboardPage } from '@/features/clinic/dashboard/pages/ClinicDashboardPage';
 import { ManageDoctorsPage } from '@/features/clinic/doctors/pages/ManageDoctorsPage';
@@ -44,6 +62,7 @@ import { SpecialtiesPage } from '@/features/clinic/specialties/pages/Specialties
 import {
   LayoutDashboard, Search, CalendarDays, FileText, User,
   Stethoscope, Calendar, Users, BarChart2, CreditCard, BookOpen,
+  ShieldCheck, BadgeCheck, Settings as SettingsIcon,
 } from 'lucide-react';
 import type { NavItem } from '@/components/layout/Sidebar';
 
@@ -73,6 +92,14 @@ const clinicNav: NavItem[] = [
   { label: 'Especialidades',  path: '/clinic/specialties',   icon: BookOpen },
 ];
 
+const adminNav: NavItem[] = [
+  { label: 'Panel general',  path: '/admin',               icon: LayoutDashboard },
+  { label: 'Usuarios',       path: '/admin/users',         icon: Users },
+  { label: 'Planes',         path: '/admin/plans',         icon: BadgeCheck },
+  { label: 'Suscripciones',  path: '/admin/subscriptions', icon: ShieldCheck },
+  { label: 'Configuración',  path: '/admin/settings',      icon: SettingsIcon },
+];
+
 export const router = createBrowserRouter([
   // Public
   { path: '/', element: <HomePage /> },
@@ -84,6 +111,10 @@ export const router = createBrowserRouter([
   { path: '/register/patient', element: <RegisterPatientPage /> },
   { path: '/register/clinic', element: <RegisterClinicPage /> },
   { path: '/register/clinic/details', element: <RegisterClinicDetailsPage /> },
+
+  // ── Subscription checkout (público — requiere login al hacer click) ──
+  { path: '/subscribe/:planId',  element: <SubscribePage /> },
+  { path: '/subscribe/return',   element: <SubscribeReturnPage /> },
 
   // Doctor profile setup — first-time onboarding after registration. Lives
   // outside /doctor on purpose so it doesn't render the protected dashboard
@@ -103,8 +134,25 @@ export const router = createBrowserRouter([
       { path: 'search', element: <SearchDoctorsPage /> },
       { path: 'doctor/:id', element: <PatientDoctorDetailPage /> },
       { path: 'appointments', element: <PatientAppointmentsPage /> },
+      { path: 'appointments/:id', element: <PatientAppointmentDetailPage /> },
+      { path: 'appointments/:id/chat', element: <PatientAppointmentChatPage /> },
       { path: 'history', element: <MedicalHistoryPage /> },
       { path: 'profile', element: <PatientProfilePage /> },
+    ],
+  },
+
+  // ── Payment routes (PayPhone) ─────────────────────────────────────────
+  // Checkout lives inside the patient shell so the side nav stays visible.
+  {
+    path: '/payment',
+    element: (
+      <ProtectedRoute allowedRole="patient">
+        <DashboardLayout navItems={patientNav} roleLabel="Portal Paciente" roleColor="bg-blue-600" />
+      </ProtectedRoute>
+    ),
+    children: [
+      { path: 'checkout/:id', element: <PaymentCheckoutPage /> },
+      { path: 'return',       element: <PaymentReturnPage /> },
     ],
   },
 
@@ -121,7 +169,26 @@ export const router = createBrowserRouter([
       { path: 'profile', element: <DoctorProfilePage /> },
       { path: 'calendar', element: <DoctorCalendarPage /> },
       { path: 'appointments', element: <DoctorAppointmentsPage /> },
+      { path: 'appointments/:id', element: <DoctorAppointmentDetailPage /> },
+      { path: 'appointments/:id/chat', element: <DoctorAppointmentChatPage /> },
       { path: 'patients', element: <PatientHistoryPage /> },
+    ],
+  },
+
+  // ─── Admin (superadmin) ──────────────────────────────────────────────
+  {
+    path: '/admin',
+    element: (
+      <ProtectedRoute allowedRole="admin">
+        <DashboardLayout navItems={adminNav} roleLabel="Panel Admin" roleColor="bg-rose-600" />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true,                 element: <AdminDashboardPage /> },
+      { path:  'users',              element: <AdminUsersPage /> },
+      { path:  'plans',              element: <AdminPlansPage /> },
+      { path:  'subscriptions',      element: <AdminSubscriptionsPage /> },
+      { path:  'settings',           element: <AdminSettingsPage /> },
     ],
   },
 

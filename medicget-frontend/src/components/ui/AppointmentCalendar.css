@@ -1,0 +1,298 @@
+/* =============================================================================
+ * AppointmentCalendar.css — overrides on top of react-big-calendar's defaults.
+ *
+ * The library's stock CSS looks dated (1990s grid, harsh borders, blue-only
+ * highlight). We restyle it to match the rest of the app:
+ *   • Tailwind-friendly slate palette
+ *   • Soft borders + radius
+ *   • Sticky-feeling toolbar
+ *   • Proper dark-mode support (class strategy: parent <html class="dark">)
+ *
+ * Order of specificity: react-big-calendar applies its own styles first, then
+ * we override here. Keep selectors as light as possible (no !important
+ * unless strictly needed) so consumers can still customise from above.
+ * ========================================================================== */
+
+/* ── Container + base ────────────────────────────────────────────────────── */
+.rbc-calendar {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  color: rgb(51 65 85);                     /* slate-700 */
+}
+.dark .rbc-calendar {
+  color: rgb(203 213 225);                  /* slate-300 */
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.rbc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rbc-toolbar-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(15 23 42);                     /* slate-900 */
+  text-transform: capitalize;
+  flex: 1;
+  text-align: center;
+}
+.dark .rbc-toolbar-label {
+  color: rgb(241 245 249);                  /* slate-100 */
+}
+
+.rbc-btn-group {
+  display: inline-flex;
+  background: rgb(248 250 252);             /* slate-50 */
+  border: 1px solid rgb(226 232 240);       /* slate-200 */
+  border-radius: 8px;
+  padding: 2px;
+  box-shadow: none;
+}
+.dark .rbc-btn-group {
+  background: rgb(30 41 59);                /* slate-800 */
+  border-color: rgb(51 65 85);              /* slate-700 */
+}
+.rbc-btn-group > button,
+.rbc-toolbar button {
+  border: none !important;
+  background: transparent;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(100 116 139);                  /* slate-500 */
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .15s ease;
+  box-shadow: none;
+}
+.rbc-toolbar button:hover {
+  background: rgb(255 255 255);             /* white */
+  color: rgb(15 23 42);
+  box-shadow: 0 1px 2px rgba(0,0,0,.05);
+}
+.dark .rbc-toolbar button:hover {
+  background: rgb(15 23 42);                /* slate-900 */
+  color: rgb(241 245 249);
+}
+.rbc-toolbar button.rbc-active,
+.rbc-toolbar button:active,
+.rbc-toolbar button:focus {
+  background: rgb(255 255 255) !important;
+  color: rgb(15 23 42) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05) !important;
+}
+.dark .rbc-toolbar button.rbc-active,
+.dark .rbc-toolbar button:active,
+.dark .rbc-toolbar button:focus {
+  background: rgb(15 23 42) !important;
+  color: rgb(241 245 249) !important;
+}
+
+/* ── Headers (Lun, Mar, Mié...) ─────────────────────────────────────────── */
+.rbc-header {
+  padding: 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: rgb(100 116 139);
+  border-bottom: 1px solid rgb(241 245 249);
+}
+.dark .rbc-header {
+  color: rgb(148 163 184);
+  border-bottom-color: rgb(30 41 59);
+}
+.rbc-header + .rbc-header {
+  border-left: 1px solid rgb(241 245 249);
+}
+.dark .rbc-header + .rbc-header {
+  border-left-color: rgb(30 41 59);
+}
+
+/* ── Month grid ──────────────────────────────────────────────────────────── */
+.rbc-month-view,
+.rbc-time-view {
+  border: 1px solid rgb(241 245 249);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgb(255 255 255);
+}
+.dark .rbc-month-view,
+.dark .rbc-time-view {
+  border-color: rgb(30 41 59);
+  background: rgb(15 23 42);
+}
+
+.rbc-month-row + .rbc-month-row,
+.rbc-day-bg + .rbc-day-bg,
+.rbc-time-content > * + * > * {
+  border-color: rgb(241 245 249) !important;
+}
+.dark .rbc-month-row + .rbc-month-row,
+.dark .rbc-day-bg + .rbc-day-bg,
+.dark .rbc-time-content > * + * > * {
+  border-color: rgb(30 41 59) !important;
+}
+
+.rbc-date-cell {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  color: rgb(71 85 105);
+}
+.dark .rbc-date-cell {
+  color: rgb(203 213 225);
+}
+.rbc-date-cell.rbc-now {
+  font-weight: 700;
+  color: rgb(37 99 235);                    /* blue-600 */
+}
+.rbc-date-cell.rbc-off-range {
+  color: rgb(203 213 225);
+}
+.dark .rbc-date-cell.rbc-off-range {
+  color: rgb(71 85 105);
+}
+
+.rbc-off-range-bg {
+  background: rgb(248 250 252);
+}
+.dark .rbc-off-range-bg {
+  background: rgb(2 6 23);                  /* slate-950 */
+}
+
+.rbc-today {
+  background: rgba(59 130 246 / .06) !important;   /* blue-500 @ 6% */
+}
+.dark .rbc-today {
+  background: rgba(59 130 246 / .12) !important;
+}
+
+/* Hover on day cells */
+.rbc-day-bg:hover {
+  background: rgb(248 250 252);
+  cursor: pointer;
+}
+.dark .rbc-day-bg:hover {
+  background: rgb(30 41 59);
+}
+
+/* ── Events (overridden by inline eventPropGetter, but tweak shape) ─────── */
+.rbc-event {
+  border-radius: 6px !important;
+  padding: 2px 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  border: none !important;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.rbc-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,.08);
+}
+.rbc-event.rbc-selected {
+  outline: 2px solid rgb(37 99 235);
+  outline-offset: 1px;
+}
+.rbc-event-content {
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+/* "+ N more" link */
+.rbc-show-more {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(37 99 235) !important;
+  background: transparent;
+  padding: 1px 6px;
+}
+.rbc-show-more:hover {
+  text-decoration: underline;
+}
+
+/* ── Time view (semana / día) ────────────────────────────────────────────── */
+.rbc-time-header-content {
+  border-color: rgb(241 245 249);
+}
+.dark .rbc-time-header-content {
+  border-color: rgb(30 41 59);
+}
+.rbc-time-gutter,
+.rbc-time-header-gutter {
+  font-size: 11px;
+  color: rgb(148 163 184);
+  background: rgb(248 250 252);
+}
+.dark .rbc-time-gutter,
+.dark .rbc-time-header-gutter {
+  color: rgb(100 116 139);
+  background: rgb(2 6 23);
+}
+.rbc-timeslot-group {
+  border-color: rgb(241 245 249);
+}
+.dark .rbc-timeslot-group {
+  border-color: rgb(30 41 59);
+}
+.rbc-time-slot {
+  border-color: rgb(241 245 249);
+}
+.dark .rbc-time-slot {
+  border-color: rgb(30 41 59);
+}
+.rbc-current-time-indicator {
+  background-color: rgb(244 63 94);          /* rose-500 */
+  height: 2px;
+}
+
+/* ── Agenda view ─────────────────────────────────────────────────────────── */
+.rbc-agenda-view {
+  border: 1px solid rgb(241 245 249);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgb(255 255 255);
+}
+.dark .rbc-agenda-view {
+  border-color: rgb(30 41 59);
+  background: rgb(15 23 42);
+}
+.rbc-agenda-view table.rbc-agenda-table {
+  border: none;
+}
+.rbc-agenda-view table.rbc-agenda-table thead > tr > th {
+  background: rgb(248 250 252);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: rgb(100 116 139);
+  border-bottom: 1px solid rgb(241 245 249);
+  padding: 10px 12px;
+}
+.dark .rbc-agenda-view table.rbc-agenda-table thead > tr > th {
+  background: rgb(30 41 59);
+  color: rgb(148 163 184);
+  border-bottom-color: rgb(51 65 85);
+}
+.rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  padding: 10px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid rgb(241 245 249);
+}
+.dark .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  border-bottom-color: rgb(30 41 59);
+}
+.rbc-agenda-view table.rbc-agenda-table tbody > tr:hover {
+  background: rgb(248 250 252);
+}
+.dark .rbc-agenda-view table.rbc-agenda-table tbody > tr:hover {
+  background: rgb(30 41 59);
+}

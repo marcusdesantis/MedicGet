@@ -29,6 +29,7 @@ export function ProtectedRoute({ allowedRole, children }: Props) {
       patient: '/patient',
       doctor:  '/doctor',
       clinic:  '/clinic',
+      admin:   '/admin',
     };
     return <Navigate to={redirects[user!.role]} replace />;
   }

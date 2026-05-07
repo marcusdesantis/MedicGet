@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import {
   Activity, ArrowRight, Calendar, ShieldCheck, Stethoscope, Building2, Users,
   Video, MessageSquare, CreditCard, Clock, Star, CheckCircle2, ChevronDown,
-  Heart, Sparkles, Zap, Lock, BarChart3, Globe2,
+  Heart, Sparkles, Zap, Lock, BarChart3, Globe2, Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useApi }  from '@/hooks/useApi';
+import { plansApi, type PlanDto } from '@/lib/api';
 
 /**
  * HomePage — landing page público.
@@ -338,6 +340,9 @@ export function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ─── PRICING ─────────────────────────────────────────────────────── */}
+      <PricingSection />
 
       {/* ─── FAQ ───────────────────────────────────────────────────────────── */}
       <section id="faq" className="py-24 lg:py-32">
@@ -698,6 +703,140 @@ function Testimonial({ quote, name, role, initials, accent, highlighted }: {
       </div>
     </div>
   );
+}
+
+/* ─── Pricing section ─────────────────────────────────────────────────────
+ *
+ * Pulls the active plans from the public /plans endpoint and renders them
+ * in two tabs (médicos / clínicas). Each card shows: name, monthly price,
+ * description, list of included modules, and a "Empezar" / "Suscribirme"
+ * CTA. The CTA goes to /register for FREE plans (no payment) and to
+ * /subscribe/<planId> for paid ones (kicks off PayPhone).
+ */
+function PricingSection() {
+  const [audience, setAudience] = useState<'DOCTOR' | 'CLINIC'>('DOCTOR');
+  const { state } = useApi(() => plansApi.list(audience), [audience]);
+
+  return (
+    <section id="pricing" className="py-24 lg:py-32 bg-slate-50/50 dark:bg-slate-900/30">
+      <div className="max-w-6xl mx-auto px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider">Planes</p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+            Elegí cómo querés crecer
+          </h2>
+          <p className="mt-4 text-lg text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">
+            Probalo gratis y subí a Pro o Premium cuando estés listo. Sin contratos, sin
+            sorpresas — desactivá cuando quieras.
+          </p>
+
+          {/* Audience switch */}
+          <div className="inline-flex mt-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1">
+            <button
+              onClick={() => setAudience('DOCTOR')}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${
+                audience === 'DOCTOR' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Para médicos
+            </button>
+            <button
+              onClick={() => setAudience('CLINIC')}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${
+                audience === 'CLINIC' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Para clínicas
+            </button>
+          </div>
+        </div>
+
+        {state.status === 'loading' && (
+          <div className="flex items-center justify-center py-16 text-slate-400">
+            <Loader2 className="animate-spin" size={20} />
+          </div>
+        )}
+        {state.status === 'error' && (
+          <p className="text-center text-rose-500 text-sm">No se pudieron cargar los planes.</p>
+        )}
+        {state.status === 'ready' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {state.data.map((p, idx) => (
+              <PricingCard key={p.id} plan={p} highlight={idx === 1 /* PRO en el medio */} />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PricingCard({ plan, highlight }: { plan: PlanDto; highlight: boolean }) {
+  const isFree = plan.monthlyPrice === 0;
+  return (
+    <div
+      className={`relative rounded-2xl p-8 transition shadow-sm ${
+        highlight
+          ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/20 scale-[1.02]'
+          : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {highlight && (
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-block px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-400 text-amber-900">
+          Más popular
+        </span>
+      )}
+      <h3 className={`text-lg font-semibold ${highlight ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
+        {plan.name}
+      </h3>
+      <div className="mt-3">
+        <span className={`text-4xl font-bold ${highlight ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
+          ${plan.monthlyPrice.toFixed(0)}
+        </span>
+        <span className={`text-sm ${highlight ? 'text-blue-100' : 'text-slate-500'}`}>/mes</span>
+      </div>
+      <p className={`mt-3 text-sm ${highlight ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'} min-h-[3.5em]`}>
+        {plan.description}
+      </p>
+
+      <ul className="mt-6 space-y-2">
+        {plan.modules.map((m) => (
+          <li key={m} className="flex items-center gap-2 text-sm">
+            <CheckCircle2 size={14} className={highlight ? 'text-blue-200' : 'text-emerald-500'} />
+            <span className={highlight ? 'text-white' : 'text-slate-600 dark:text-slate-300'}>
+              {prettyModuleLabel(m)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <Link
+        to={isFree ? '/register' : `/subscribe/${plan.id}`}
+        className={`mt-8 block w-full text-center px-6 py-3 rounded-xl font-bold text-sm transition ${
+          highlight
+            ? 'bg-white text-blue-700 hover:bg-blue-50'
+            : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100'
+        }`}
+      >
+        {isFree ? 'Empezar gratis' : `Suscribirme · $${plan.monthlyPrice}/mes`}
+      </Link>
+    </div>
+  );
+}
+
+function prettyModuleLabel(code: string): string {
+  const m: Record<string, string> = {
+    ONLINE:             'Videollamadas',
+    PRESENCIAL:         'Citas presenciales',
+    CHAT:               'Chat en vivo',
+    REPORTS:            'Reportes avanzados',
+    PRIORITY_SEARCH:    'Prioridad en búsqueda',
+    BRANDING:           'Branding propio',
+    PAYMENTS_DASHBOARD: 'Panel de pagos',
+    MULTI_LOCATION:     'Multi-sede',
+    PRIORITY_SUPPORT:   'Soporte prioritario',
+  };
+  return m[code] ?? code;
 }
 
 function FaqItem({ question, answer }: { question: string; answer: string }) {

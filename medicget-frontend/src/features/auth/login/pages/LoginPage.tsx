@@ -36,6 +36,7 @@ const ROLE_REDIRECTS: Record<string, string> = {
   patient: '/patient',
   doctor:  '/doctor',
   clinic:  '/clinic',
+  admin:   '/admin',
 };
 
 export const LoginPage = () => {

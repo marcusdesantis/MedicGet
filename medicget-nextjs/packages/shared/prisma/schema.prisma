@@ -18,6 +18,25 @@ enum Role {
   CLINIC
   DOCTOR
   PATIENT
+  ADMIN
+}
+
+enum PlanAudience {
+  DOCTOR
+  CLINIC
+}
+
+enum PlanCode {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING_PAYMENT
 }
 
 enum UserStatus {
@@ -92,6 +111,7 @@ model User {
   doctor        Doctor?
   patient       Patient?
   notifications Notification[]
+  subscriptions Subscription[]
 
   @@index([role])
   @@index([status])
@@ -224,7 +244,12 @@ model Patient {
   userId      String     @unique
   dateOfBirth DateTime?
   bloodType   String?
+  // Free-form clinical lists. Modeled as String[] to keep MVP simple — once
+  // we need structured prescriptions/diagnoses with dosage, ICD codes, etc.
+  // we'll graduate to dedicated `Prescription` and `Diagnosis` models.
   allergies   String[]
+  conditions  String[]
+  medications String[]
   notes       String?
   status      UserStatus @default(ACTIVE)
   createdAt   DateTime   @default(now())
@@ -258,6 +283,17 @@ model Appointment {
   price        Float
   notes        String?
   cancelReason String?
+  // Generated automatically when modality === ONLINE — a Jitsi Meet room
+  // URL the patient and doctor use to join the consult. Sent by email at
+  // booking time and rotated only if the appointment is rescheduled.
+  meetingUrl   String?
+  // ─── PRESENCIAL check-in workflow ───────────────────────────────────
+  // Both timestamps are optional and only meaningful for PRESENCIAL
+  // appointments. They drive the "I'm on my way / I've arrived" /
+  // "Patient checked-in" UX so the doctor knows when the patient is in
+  // the waiting room and the patient sees real-time confirmation.
+  patientArrivedAt  DateTime?
+  doctorCheckedInAt DateTime?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   createdBy    String?
@@ -270,6 +306,7 @@ model Appointment {
   slot    AppointmentSlot?
   review  Review?
   payment Payment?
+  messages ChatMessage[]
 
   @@index([patientId])
   @@index([doctorId])
@@ -306,8 +343,30 @@ model Payment {
   id            String        @id @default(cuid())
   appointmentId String        @unique
   amount        Float
+  // ─── Platform fee split ────────────────────────────────────────────
+  // `platformFee`  → what MedicGet retains. Calculated on confirm using
+  //                   PLATFORM_FEE_PCT env var (default 10%).
+  // `doctorAmount` → what gets credited to the doctor/clinic.
+  //                   Always equals `amount - platformFee`.
+  platformFee   Float         @default(0)
+  doctorAmount  Float         @default(0)
   method        PaymentMethod @default(PENDING)
   status        PaymentStatus @default(PENDING)
+  // PayPhone integration fields
+  // `payphonePaymentId`   → numeric id returned by PayPhone /Sale (used to
+  //                         confirm and to issue refunds)
+  // `paymentToken`        → opaque token from PayPhone /Sale, included in
+  //                         the redirect URL the patient opens
+  // `paymentUrl`          → the URL we redirect the patient to. Cached so
+  //                         they can reopen the same checkout if they
+  //                         close the tab before paying.
+  // `expiresAt`           → after this timestamp, the unpaid appointment
+  //                         is auto-cancelled and the slot freed.
+  payphonePaymentId String?
+  paymentToken      String?
+  paymentUrl        String?
+  expiresAt         DateTime?
+  // Generic transaction id (for non-PayPhone methods) and audit fields.
   transactionId String?
   paidAt        DateTime?
   refundedAt    DateTime?
@@ -319,6 +378,7 @@ model Payment {
 
   @@index([status])
   @@index([method])
+  @@index([expiresAt])
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -338,4 +398,129 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([type])
+}
+
+// ─── Chat Messages (CHAT-modality appointments) ───────────────────────────────
+//
+// One Appointment ↔ many ChatMessage. Both participants (patient + doctor)
+// can read/write messages while the appointment is in PENDING/UPCOMING/
+// ONGOING status. Once the appointment moves to COMPLETED/CANCELLED/
+// NO_SHOW the chat goes read-only — that's enforced by the service layer,
+// not the schema, so we can still surface chat history in the medical
+// record after a consult.
+//
+// `senderId` references the User.id of the participant (doctor's user or
+// patient's user). We don't store role here — it's derivable from the
+// appointment + senderId in the service if needed.
+//
+// `readAt` is set the first time the recipient opens the conversation
+// after `createdAt`. UI uses it to render Insta/FB-style "Visto" hints.
+
+// ─── Plans / Subscriptions ────────────────────────────────────────────────────
+//
+// Two-axis pricing: every plan is targeted at a specific audience (DOCTOR or
+// CLINIC) and a tier (FREE / PRO / PREMIUM). The superadmin can edit prices,
+// limits and feature flags from the panel — we don't hardcode any business
+// rules here so no code change is needed when commercial conditions change.
+//
+// `modules` is a free-form string array (e.g. ['ONLINE', 'PRESENCIAL', 'CHAT',
+// 'REPORTS', 'MULTI_DOCTOR']) consulted by feature gates throughout the app.
+// `limits` is a JSON bag (`{ maxAppointmentsPerMonth: 5, maxDoctors: 1 }`) —
+// kept as JSON so the superadmin can add new dimensions without migrating.
+
+model Plan {
+  id               String        @id @default(cuid())
+  code             PlanCode      // FREE / PRO / PREMIUM
+  audience         PlanAudience  // DOCTOR / CLINIC
+  name             String
+  description      String?
+  monthlyPrice     Float         @default(0)
+  modules          String[]      @default([])
+  limits           Json?
+  isActive         Boolean       @default(true)
+  /** Display order in pricing UI. Lower = first. */
+  sortOrder        Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  subscriptions Subscription[]
+
+  @@unique([audience, code])
+  @@index([isActive])
+}
+
+model Subscription {
+  id            String              @id @default(cuid())
+  userId        String              // The DOCTOR or CLINIC user that owns it
+  planId        String
+  status        SubscriptionStatus  @default(ACTIVE)
+  /** When the current paid period started. */
+  startsAt      DateTime            @default(now())
+  /** When the current paid period ends. After this we degrade to FREE
+      unless renewed. */
+  expiresAt     DateTime
+  /** Last PayPhone payment that funded this subscription. Null on FREE. */
+  lastPaymentId String?
+  /** Whether the user has expressed intent to auto-renew. We don't
+      auto-charge yet (PayPhone tokenisation is a later piece) but we
+      surface this in the UI as a reminder/email trigger. */
+  autoRenew     Boolean             @default(true)
+  cancelledAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+// ─── App Settings (runtime-editable config) ───────────────────────────────────
+//
+// Single-row table keyed by `key`. The superadmin edits SMTP credentials,
+// PayPhone tokens, branding, etc. from the panel and the back-end services
+// read through a 30-second cache. Env vars stay as the bootstrap default —
+// when DB has no value for a key, code falls back to `process.env`.
+
+model AppSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  /** Plain-text label used in the admin UI to group keys. */
+  category  String   @default('GENERAL')
+  /** When true, the value is rendered as a password input in the admin UI. */
+  isSecret  Boolean  @default(false)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([category])
+}
+
+model ChatMessage {
+  id            String   @id @default(cuid())
+  appointmentId String
+  senderId      String   // User.id of the author (patient or doctor)
+  content       String
+  // Optional attachment metadata. Free-form to keep MVP simple — stores
+  // a public URL to an uploaded file (image, doc, etc.). Once we have a
+  // proper object-storage flow we'll graduate to a typed sub-model.
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentMime String?
+  // Soft-delete support — sender can "unsend" within a short window.
+  deletedAt     DateTime?
+  // Set when the OTHER party first GETs the conversation after this
+  // message was created.
+  readAt        DateTime?
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@index([senderId])
+  @@index([appointmentId, createdAt])
 }

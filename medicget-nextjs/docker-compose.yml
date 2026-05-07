@@ -159,6 +159,36 @@ services:
       JWT_EXPIRES_IN: 7d
       NODE_ENV:       production
       PORT:           "4006"
+      # ─── Email (nodemailer) ────────────────────────────────────────────
+      # If SMTP_HOST is empty the email service falls back to logging to
+      # stdout — useful for local dev without setting up a real inbox.
+      # For real sending, plug in any SMTP provider:
+      #   • Gmail (with app password): smtp.gmail.com / 587
+      #   • Mailtrap (free testing):    smtp.mailtrap.io / 587
+      #   • SendGrid / Mailgun / SES:   their SMTP endpoint
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_SECURE: false
+      SMTP_USER: medicget593@gmail.com
+      SMTP_PASS: obao bhbg lght bqjf
+      SMTP_FROM: MedicGet <medicget593@gmail.com>
+      # ─── Videollamada ──────────────────────────────────────────────────
+      # Self-hosted Jitsi? Apuntá aquí. Vacío usa el servidor público gratis.
+      JITSI_BASE_URL: ${JITSI_BASE_URL:-https://meet.jit.si}
+      # ─── Pasarela de pagos (PayPhone) ──────────────────────────────────
+      # Si PAYPHONE_TOKEN está vacío, el módulo entra en modo STUB:
+      # simula prepareSale y confirmSale sin contactar al servidor real,
+      # útil para desarrollo end-to-end sin credenciales comerciales.
+      #
+      # Producción: pedile a PayPhone tu token Bearer y storeId numérico
+      # desde su panel comercial (https://www.payphone.com).
+      PAYPHONE_TOKEN:    ${PAYPHONE_TOKEN:-}
+      PAYPHONE_STORE_ID: ${PAYPHONE_STORE_ID:-}
+      PAYPHONE_BASE_URL: ${PAYPHONE_BASE_URL:-https://pay.payphonetodoesposible.com/api}
+      # Comisión de la plataforma como %. Default 10%. Se descuenta al
+      # confirmar el pago — `Payment.platformFee` y `Payment.doctorAmount`
+      # quedan persistidos para reportería.
+      PLATFORM_FEE_PCT:  ${PLATFORM_FEE_PCT:-10}
     expose:
       - "4006"
     networks:
@@ -191,6 +221,34 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── svc-admin  (4008) ─────────────────────────────────────────────────────────
+  # Hosts the superadmin endpoints, public /plans, and the /subscriptions
+  # endpoints (own subscription + checkout/confirm). Reads SMTP/PayPhone/Jitsi
+  # from AppSettings (DB) which the admin panel can edit at runtime — env
+  # vars below are bootstrap fallbacks only.
+  svc-admin:
+    build:
+      context:    .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE_NAME: svc-admin
+        PORT:         "4008"
+    container_name: medicget-svc-admin
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgresql://postgres:1998jh@postgres:5432/medicget_dev?schema=public
+      JWT_SECRET:     change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      NODE_ENV:       production
+      PORT:           "4008"
+    expose:
+      - "4008"
+    networks:
+      - medicget-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── Nginx reverse proxy  (8080 → services) ────────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
@@ -211,6 +269,7 @@ services:
       - svc-patient
       - svc-appointment
       - svc-dashboard
+      - svc-admin
 
 networks:
   medicget-net:

@@ -24,7 +24,7 @@ import { clearRegistrationDraft } from '@/features/auth/register/state';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'patient' | 'doctor' | 'clinic';
+export type UserRole = 'patient' | 'doctor' | 'clinic' | 'admin';
 
 export interface User {
   id:       string;
@@ -66,6 +66,7 @@ const ROLE_MAP: Record<string, UserRole> = {
   CLINIC:  'clinic',
   DOCTOR:  'doctor',
   PATIENT: 'patient',
+  ADMIN:   'admin',
 };
 
 function dtoToUser(dto: UserDto): User {

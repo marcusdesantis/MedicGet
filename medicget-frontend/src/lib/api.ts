@@ -138,7 +138,7 @@ export interface PaginatedData<T> {
 export interface UserDto {
   id:        string;
   email:     string;
-  role:      'CLINIC' | 'DOCTOR' | 'PATIENT';
+  role:      'CLINIC' | 'DOCTOR' | 'PATIENT' | 'ADMIN';
   status:    string;
   createdAt: string;
   updatedAt: string;
@@ -219,6 +219,10 @@ export interface PatientDto {
   dateOfBirth?: string;
   bloodType?:   string;
   allergies:    string[];
+  /** Active or chronic conditions — patient self-reports, doctor reviews. */
+  conditions:   string[];
+  /** Active medications. Free-form strings until we model dosage formally. */
+  medications:  string[];
   notes?:       string;
   user:         { profile: ProfileDto; email: string };
 }
@@ -244,17 +248,90 @@ export interface AppointmentDto {
    * `20260506100000_appointment_optional_clinic_modality`.
    */
   clinic:       { id: string; name: string } | null;
+  /**
+   * Auto-generated Jitsi Meet URL. Populated only when modality is ONLINE.
+   * Sent to the patient by email at booking time and reused on both sides
+   * to join the consult.
+   */
+  meetingUrl?:  string | null;
+  /** PRESENCIAL only — set when the patient taps "He llegado". */
+  patientArrivedAt?:  string | null;
+  /** PRESENCIAL only — set when the doctor taps "Recibí al paciente". */
+  doctorCheckedInAt?: string | null;
   payment?:     PaymentDto | null;
   review?:      ReviewDto  | null;
+}
+
+// ─── Chat (CHAT-modality appointments) ────────────────────────────────────────
+
+/** A single message in the appointment chat thread. */
+export interface ChatMessageDto {
+  id:             string;
+  appointmentId:  string;
+  senderId:       string;
+  content:        string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentMime?: string | null;
+  /** Set the moment the recipient first re-opens the thread after this msg. */
+  readAt?:        string | null;
+  /** Soft-delete marker — UI hides content when set ("Mensaje eliminado"). */
+  deletedAt?:     string | null;
+  createdAt:      string;
+}
+
+/** "Peer" descriptor — the other participant from the caller's perspective. */
+export interface ChatPeerDto {
+  userId:    string;
+  firstName: string;
+  lastName:  string;
+  avatarUrl: string | null;
+  role:      'DOCTOR' | 'PATIENT';
+  /** Doctor specialty when peer.role === 'DOCTOR', otherwise null. */
+  specialty: string | null;
+}
+
+/** Bundle returned by GET /appointments/:id/messages. */
+export interface ChatThreadDto {
+  appointment: {
+    id:       string;
+    date:     string;
+    time:     string;
+    status:   string;
+    modality: AppointmentModality;
+  };
+  peer:     ChatPeerDto;
+  myUserId: string;
+  /**
+   * Whether the input is enabled for the caller. Driven by the
+   * appointment status — false once it's COMPLETED / CANCELLED / NO_SHOW.
+   */
+  canSend:  boolean;
+  messages: ChatMessageDto[];
 }
 
 export interface PaymentDto {
   id:            string;
   amount:        number;
+  /** Platform retention. Set to 0 until the payment is approved. */
+  platformFee:   number;
+  /** What the doctor/clinic actually receives (= amount - platformFee). */
+  doctorAmount:  number;
   method:        string;
   status:        string;
   transactionId?: string;
+  /**
+   * URL to PayPhone's checkout. The frontend redirects the user here.
+   * Cached for 15 minutes so the patient can re-open the same session
+   * after closing the tab.
+   */
+  paymentUrl?:   string | null;
+  payphonePaymentId?: string | null;
+  /** ISO timestamp after which the unpaid Appointment is auto-cancelled. */
+  expiresAt?:    string | null;
   paidAt?:       string;
+  refundedAt?:   string;
+  notes?:        string;
 }
 
 export interface ReviewDto {
@@ -373,6 +450,52 @@ export const appointmentsApi = {
   updatePayment: (id: string, body: Partial<PaymentDto>)    => apiPatch<PaymentDto>(`/appointments/${id}/payment`, body),
   createReview:  (id: string, body: { rating: number; comment?: string; isPublic?: boolean }) =>
     apiPost<ReviewDto>(`/appointments/${id}/review`, body),
+  /**
+   * PRESENCIAL check-in events. Patient taps `arrived`, doctor taps
+   * `patient_received` (which also flips the cita to ONGOING) or
+   * `no_show`. `undo` reverts the caller's own timestamp.
+   */
+  checkin:       (id: string, event: 'arrived' | 'patient_received' | 'no_show' | 'undo') =>
+    apiPost<AppointmentDto>(`/appointments/${id}/checkin`, { event }),
+};
+
+/**
+ * Chat endpoints for CHAT-modality appointments. Both the patient and
+ * the assigned doctor can read/write while the appointment is active.
+ *
+ *   list(id)                 → fetch the entire thread + peer descriptor
+ *   list(id, sinceIso)       → poll for messages newer than `since` only
+ *   send(id, body)           → persist a new message
+ *   remove(id, messageId)    → soft-delete a message (sender only)
+ */
+export const chatApi = {
+  list:   (id: string, since?: string) =>
+    apiGet<ChatThreadDto>(`/appointments/${id}/messages`, since ? { since } : undefined),
+  send:   (id: string, body: { content: string; attachmentUrl?: string; attachmentName?: string; attachmentMime?: string }) =>
+    apiPost<ChatMessageDto>(`/appointments/${id}/messages`, body),
+  remove: (id: string, messageId: string) =>
+    apiDelete<ChatMessageDto>(`/appointments/${id}/messages/${messageId}`),
+};
+
+/**
+ * Payment endpoints driving the PayPhone integration.
+ *
+ *   checkout(id, body) → POSTs the responseUrl/cancellationUrl back to
+ *                        the API and receives the PayPhone redirect URL.
+ *                        The frontend then `window.location` redirects
+ *                        the user there.
+ *   confirm(id, body)  → invoked from /payment/return after PayPhone
+ *                        sends the user back. Confirms with PayPhone and
+ *                        flips the local Payment + Appointment state.
+ *   refund(id)         → patient (>24h) or clinic-initiated refund.
+ */
+export const paymentApi = {
+  checkout: (id: string, body: { responseUrl: string; cancellationUrl?: string }) =>
+    apiPost<{ redirectUrl: string; expiresAt: string }>(`/appointments/${id}/payment/checkout`, body),
+  confirm:  (id: string, body: { payphonePaymentId: string; fakeOk?: boolean }) =>
+    apiPost<{ status: 'PAID' | 'FAILED' | 'PENDING' }>(`/appointments/${id}/payment/confirm`, body),
+  refund:   (id: string) =>
+    apiPost<{ refunded: boolean; reason: string }>(`/appointments/${id}/payment/refund`, {}),
 };
 
 /** svc-dashboard :4007 → /api/v1/dashboard/ */
@@ -429,3 +552,94 @@ export interface UpdateAppointmentBody {
   notes?:        string;
   cancelReason?: string;
 }
+
+// ─── Plans / Subscriptions / Admin ────────────────────────────────────────────
+
+export type PlanCode     = 'FREE' | 'PRO' | 'PREMIUM';
+export type PlanAudience = 'DOCTOR' | 'CLINIC';
+
+export interface PlanDto {
+  id:           string;
+  code:         PlanCode;
+  audience:     PlanAudience;
+  name:         string;
+  description:  string | null;
+  monthlyPrice: number;
+  modules:      string[];
+  limits:       Record<string, unknown> | null;
+  isActive:     boolean;
+  sortOrder:    number;
+}
+
+export interface SubscriptionDto {
+  id:            string;
+  userId:        string;
+  planId:        string;
+  status:        'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_PAYMENT';
+  startsAt:      string;
+  expiresAt:     string;
+  lastPaymentId: string | null;
+  autoRenew:     boolean;
+  cancelledAt:   string | null;
+  plan?:         PlanDto;
+  user?:         UserDto;
+}
+
+export interface AppSettingDto {
+  id:        string;
+  key:       string;
+  value:     string | null;
+  category:  string;
+  isSecret:  boolean;
+  updatedAt: string;
+}
+
+export interface AdminStatsDto {
+  users:         { total: number; patients: number; doctors: number; clinics: number };
+  appointments:  { total: number };
+  revenue:       { gross: number; platformFees: number; paidCount: number };
+  subscriptions: { active: number };
+}
+
+export const plansApi = {
+  /** Public — used by the landing page. Optional `audience` filter. */
+  list: (audience?: PlanAudience) =>
+    apiGet<PlanDto[]>('/plans', audience ? { audience } : undefined),
+};
+
+export const subscriptionsApi = {
+  /** Returns the caller's current active subscription + the FREE fallback plan. */
+  me: () => apiGet<{ subscription: SubscriptionDto | null; freePlan: PlanDto | null }>('/subscriptions/me'),
+  checkout: (body: { planId: string; responseUrl: string; cancellationUrl?: string }) =>
+    apiPost<{ subscriptionId: string; redirectUrl: string; payphonePaymentId?: string }>('/subscriptions/checkout', body),
+  confirm: (body: { subscriptionId: string; payphonePaymentId: string; fakeOk?: boolean }) =>
+    apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>('/subscriptions/confirm', body),
+};
+
+/** Public branding settings — used to paint the landing page header. */
+export const publicSettingsApi = {
+  get: () => apiGet<{ brandName: string; brandLogo: string | null }>('/app-settings/public'),
+};
+
+/** Superadmin-only API. All endpoints require `role === ADMIN`. */
+export const adminApi = {
+  stats:        () => apiGet<AdminStatsDto>('/admin/stats'),
+  users:        (params?: Record<string, unknown>) => apiGet<PaginatedData<UserDto>>('/admin/users', params),
+  setUserStatus:(id: string, status: 'ACTIVE' | 'INACTIVE' | 'DELETED') =>
+    apiPatch<UserDto>(`/admin/users/${id}`, { status }),
+  deleteUser:   (id: string) => apiDelete<UserDto>(`/admin/users/${id}`),
+
+  listPlans:    () => apiGet<PlanDto[]>('/admin/plans'),
+  createPlan:   (body: Partial<PlanDto>) => apiPost<PlanDto>('/admin/plans', body),
+  updatePlan:   (id: string, body: Partial<PlanDto>) => apiPatch<PlanDto>(`/admin/plans/${id}`, body),
+  deletePlan:   (id: string) => apiDelete<PlanDto>(`/admin/plans/${id}`),
+
+  subscriptions: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<SubscriptionDto>>('/admin/subscriptions', params),
+  extendSubscription: (id: string, days: number) =>
+    apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/extend`, { days }),
+
+  settings:      () => apiGet<AppSettingDto[]>('/admin/settings'),
+  saveSettings:  (values: Record<string, string | null>) =>
+    apiPatch<AppSettingDto[]>('/admin/settings', { values }),
+};

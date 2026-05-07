@@ -154,6 +154,10 @@ export const authService = {
 
   async login(input: LoginInput): Promise<ServiceResult<{ token: string; user: object }>> {
     try {
+      // Lazy seed the superadmin on first login attempt. Idempotent —
+      // does nothing once the row exists.
+      await ensureSuperadminSeeded();
+
       const user = await authRepository.findByEmail(input.email);
       if (!user) {
         return {
@@ -193,3 +197,44 @@ export const authService = {
     }
   },
 };
+
+/* ─────────────── Superadmin seed ─────────────── */
+//
+// admin@gmail.com / 12345678 — created on first login attempt against
+// any service. We do this in code rather than in a SQL migration so we
+// can use bcrypt (a hardcoded hash would couple us to a specific
+// bcrypt version + cost). Idempotent thanks to User.email being unique.
+
+let superadminBootstrapped = false;
+let superadminInflight: Promise<void> | null = null;
+
+async function ensureSuperadminSeeded(): Promise<void> {
+  if (superadminBootstrapped) return;
+  if (superadminInflight) return superadminInflight;
+
+  superadminInflight = (async () => {
+    try {
+      const { prisma } = await import('@medicget/shared/prisma');
+      const existing = await prisma.user.findUnique({ where: { email: 'admin@gmail.com' } });
+      if (!existing) {
+        const hash = await bcrypt.hash('12345678', 10);
+        await prisma.user.create({
+          data: {
+            email:        'admin@gmail.com',
+            passwordHash: hash,
+            role:         'ADMIN',
+            status:       'ACTIVE',
+            profile: { create: { firstName: 'Super', lastName: 'Admin' } },
+          },
+        });
+        // eslint-disable-next-line no-console
+        console.log('[svc-auth] Superadmin seeded: admin@gmail.com');
+      }
+      superadminBootstrapped = true;
+    } finally {
+      superadminInflight = null;
+    }
+  })();
+
+  return superadminInflight;
+}

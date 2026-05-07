@@ -80,8 +80,21 @@ export const appointmentsService = {
   },
 };
 
-function canAccess(user: AuthUser, appt: { patient: { userId: string }; doctor: { userId: string }; clinic: { userId: string } }) {
-  if (user.role === 'CLINIC')   return appt.clinic.userId  === user.id;
+/**
+ * Access check for appointment-scoped operations. The `clinic` relation is
+ * now nullable (independent doctors don't have a clinic), so a CLINIC user
+ * trying to access an appointment without a clinic is denied — that's the
+ * correct semantic since they can only see citas de su propia clínica.
+ */
+function canAccess(
+  user: AuthUser,
+  appt: {
+    patient: { userId: string };
+    doctor:  { userId: string };
+    clinic:  { userId: string } | null;
+  },
+) {
+  if (user.role === 'CLINIC')   return appt.clinic?.userId === user.id;
   if (user.role === 'DOCTOR')   return appt.doctor.userId  === user.id;
   if (user.role === 'PATIENT')  return appt.patient.userId === user.id;
   return false;

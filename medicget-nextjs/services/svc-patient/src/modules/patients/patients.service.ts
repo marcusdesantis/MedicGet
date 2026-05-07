@@ -89,9 +89,11 @@ export const patientsService = {
 
     const updateData: Record<string, unknown> = {};
     if (input.dateOfBirth !== undefined) updateData.dateOfBirth = new Date(input.dateOfBirth);
-    if (input.bloodType !== undefined) updateData.bloodType = input.bloodType;
-    if (input.allergies !== undefined) updateData.allergies = input.allergies;
-    if (input.notes !== undefined) updateData.notes = input.notes;
+    if (input.bloodType   !== undefined) updateData.bloodType   = input.bloodType;
+    if (input.allergies   !== undefined) updateData.allergies   = input.allergies;
+    if (input.conditions  !== undefined) updateData.conditions  = input.conditions;
+    if (input.medications !== undefined) updateData.medications = input.medications;
+    if (input.notes       !== undefined) updateData.notes       = input.notes;
 
     const updated = await patientsRepository.update(id, updateData);
     return { ok: true, data: updated };

@@ -199,14 +199,14 @@ export function DoctorCalendarPage() {
                     type="time"
                     value={d.startTime}
                     onChange={(e) => updateDay(key, { startTime: e.target.value })}
-                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="time-input rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                   <span className="text-sm text-slate-400">a</span>
                   <input
                     type="time"
                     value={d.endTime}
                     onChange={(e) => updateDay(key, { endTime: e.target.value })}
-                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="time-input rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                   {invalid && (
                     <span className="flex items-center gap-1 text-xs text-rose-600">

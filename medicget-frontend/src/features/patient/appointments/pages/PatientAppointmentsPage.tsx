@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Calendar, Clock, Loader2, X } from 'lucide-react';
+import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard } from 'lucide-react';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { Tabs }          from '@/components/ui/Tabs';
 import { Avatar }        from '@/components/ui/Avatar';
@@ -8,6 +8,7 @@ import { StatusBadge }   from '@/components/ui/StatusBadge';
 import { SectionCard }   from '@/components/ui/SectionCard';
 import { EmptyState }    from '@/components/ui/EmptyState';
 import { Alert }         from '@/components/ui/Alert';
+import { AppointmentCalendar } from '@/components/ui/AppointmentCalendar';
 import { useApi }        from '@/hooks/useApi';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { appointmentsApi, type AppointmentDto, type PaginatedData } from '@/lib/api';
@@ -37,6 +38,7 @@ function doctorInitials(a: AppointmentDto): string {
 
 export function PatientAppointmentsPage() {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]>('Próximas');
+  const [viewMode, setViewMode]   = useState<'list' | 'calendar'>('list');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -84,7 +86,10 @@ export function PatientAppointmentsPage() {
         }
       />
 
-      <Tabs tabs={[...TABS]} active={activeTab} onChange={(v) => setActiveTab(v as typeof TABS[number])} />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <Tabs tabs={[...TABS]} active={activeTab} onChange={(v) => setActiveTab(v as typeof TABS[number])} />
+        <ViewToggle value={viewMode} onChange={setViewMode} />
+      </div>
 
       {actionError && <Alert variant="error">{actionError}</Alert>}
 
@@ -102,7 +107,19 @@ export function PatientAppointmentsPage() {
         </Alert>
       )}
 
-      {state.status === 'ready' && (
+      {state.status === 'ready' && viewMode === 'calendar' && (
+        // Calendar view always shows ALL appointments regardless of the
+        // active tab — the user filters visually via the colours.
+        // Click on an event opens a detail drawer with action buttons.
+        <AppointmentCalendar
+          appointments={state.data.data}
+          role="patient"
+          onCancel={(appt) => handleCancel(appt.id)}
+          actingId={cancellingId}
+        />
+      )}
+
+      {state.status === 'ready' && viewMode === 'list' && (
         <SectionCard noPadding>
           {visible.length === 0 ? (
             <EmptyState
@@ -121,6 +138,19 @@ export function PatientAppointmentsPage() {
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {visible.map((a) => {
                 const cancellable = a.status === 'PENDING' || a.status === 'UPCOMING';
+                const showJoinBtn =
+                  a.modality === 'ONLINE' &&
+                  a.meetingUrl &&
+                  a.status !== 'CANCELLED' &&
+                  a.status !== 'COMPLETED' &&
+                  a.status !== 'NO_SHOW';
+                /* Payment is required for any PENDING appointment. The
+                 * "Pagar" button takes priority over chat/presencial
+                 * actions because if you don't pay nothing else will
+                 * unlock. */
+                const needsPayment =
+                  a.status === 'PENDING' &&
+                  (!a.payment || a.payment.status === 'PENDING');
                 return (
                   <div key={a.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                     <Avatar initials={doctorInitials(a)} size="lg" shape="rounded" variant="blue" />
@@ -144,6 +174,57 @@ export function PatientAppointmentsPage() {
                         ${a.price.toFixed(2)}
                       </p>
                     </div>
+                    {needsPayment && (
+                      <Link
+                        to={`/payment/checkout/${a.id}`}
+                        className="ml-2 inline-flex items-center gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm"
+                        title="Pagar reserva"
+                      >
+                        <CreditCard size={14} />
+                        <span>Pagar ${a.price.toFixed(2)}</span>
+                      </Link>
+                    )}
+                    {showJoinBtn && !needsPayment && (
+                      <a
+                        href={a.meetingUrl!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-2 inline-flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm"
+                        title="Unirse a la videollamada"
+                      >
+                        <Video size={14} />
+                        <span className="hidden md:inline">Unirme</span>
+                      </a>
+                    )}
+                    {a.modality === 'CHAT' &&
+                     a.status !== 'CANCELLED' && a.status !== 'COMPLETED' && a.status !== 'NO_SHOW' && (
+                      <Link
+                        to={`/patient/appointments/${a.id}/chat`}
+                        className="ml-2 inline-flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm"
+                        title="Abrir chat en vivo"
+                      >
+                        <MessageSquare size={14} />
+                        <span className="hidden md:inline">Chat</span>
+                      </Link>
+                    )}
+                    {a.modality === 'PRESENCIAL' &&
+                     a.status !== 'CANCELLED' && a.status !== 'COMPLETED' && a.status !== 'NO_SHOW' && (
+                      <Link
+                        to={`/patient/appointments/${a.id}`}
+                        className="ml-2 inline-flex items-center gap-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm"
+                        title="Ver detalles de la cita presencial"
+                      >
+                        <MapPin size={14} />
+                        <span className="hidden md:inline">Asistir</span>
+                      </Link>
+                    )}
+                    <Link
+                      to={`/patient/appointments/${a.id}`}
+                      className="ml-2 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1.5 rounded-lg transition"
+                      title="Ver detalles"
+                    >
+                      <Eye size={14} />
+                    </Link>
                     {cancellable && (
                       <button
                         onClick={() => handleCancel(a.id)}
@@ -161,6 +242,40 @@ export function PatientAppointmentsPage() {
           )}
         </SectionCard>
       )}
+    </div>
+  );
+}
+
+/**
+ * Tiny segmented control to switch between list and calendar view. Reused
+ * in the doctor's appointments page below.
+ */
+function ViewToggle({ value, onChange }: {
+  value:    'list' | 'calendar';
+  onChange: (v: 'list' | 'calendar') => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5">
+      <button
+        onClick={() => onChange('list')}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition ${
+          value === 'list'
+            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+        }`}
+      >
+        <List size={13} /> Lista
+      </button>
+      <button
+        onClick={() => onChange('calendar')}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition ${
+          value === 'calendar'
+            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+        }`}
+      >
+        <CalendarDays size={13} /> Calendario
+      </button>
     </div>
   );
 }

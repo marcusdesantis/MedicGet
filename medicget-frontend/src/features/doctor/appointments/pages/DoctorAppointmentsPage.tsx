@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Calendar, Clock, Loader2, Check, X, CheckCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Calendar, Clock, Loader2, Check, X, CheckCircle, List, CalendarDays, Video, MessageSquare, MapPin, Eye } from 'lucide-react';
 import { PageHeader }     from '@/components/ui/PageHeader';
 import { Tabs }           from '@/components/ui/Tabs';
 import { SearchInput }    from '@/components/ui/SearchInput';
@@ -8,6 +9,7 @@ import { Avatar }         from '@/components/ui/Avatar';
 import { StatusBadge }    from '@/components/ui/StatusBadge';
 import { EmptyState }     from '@/components/ui/EmptyState';
 import { Alert }          from '@/components/ui/Alert';
+import { AppointmentCalendar } from '@/components/ui/AppointmentCalendar';
 import { useApi }         from '@/hooks/useApi';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { appointmentsApi, type AppointmentDto, type PaginatedData } from '@/lib/api';
@@ -39,6 +41,7 @@ function patientInitials(a: AppointmentDto): string {
 export function DoctorAppointmentsPage() {
   const [tab,    setTab]    = useState<typeof TABS[number]>('Todas');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode]   = useState<'list' | 'calendar'>('list');
   const [actingId,    setActingId]    = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -88,7 +91,10 @@ export function DoctorAppointmentsPage() {
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <Tabs tabs={[...TABS]} active={tab} onChange={(v) => setTab(v as typeof TABS[number])} />
-        <SearchInput value={search} onChange={setSearch} placeholder="Buscar paciente..." className="w-48" />
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <SearchInput value={search} onChange={setSearch} placeholder="Buscar paciente..." className="flex-1 sm:w-48" />
+          <ViewToggleDoctor value={viewMode} onChange={setViewMode} />
+        </div>
       </div>
 
       {actionError && <Alert variant="error">{actionError}</Alert>}
@@ -107,7 +113,20 @@ export function DoctorAppointmentsPage() {
         </Alert>
       )}
 
-      {state.status === 'ready' && (
+      {state.status === 'ready' && viewMode === 'calendar' && (
+        // Calendar always shows ALL appointments — colour-coded by status.
+        // Click on an event opens a detail drawer with role-specific actions.
+        <AppointmentCalendar
+          appointments={state.data.data}
+          role="doctor"
+          actingId={actingId}
+          onConfirm={(a)  => updateStatus(a.id, 'UPCOMING')}
+          onCancel={(a)   => updateStatus(a.id, 'CANCELLED')}
+          onComplete={(a) => updateStatus(a.id, 'COMPLETED')}
+        />
+      )}
+
+      {state.status === 'ready' && viewMode === 'list' && (
         <SectionCard noPadding>
           {visible.length === 0 ? (
             <EmptyState
@@ -135,6 +154,48 @@ export function DoctorAppointmentsPage() {
                     </div>
 
                     <div className="flex items-center gap-1 flex-shrink-0">
+                      {a.modality === 'ONLINE' && a.meetingUrl &&
+                       a.status !== 'CANCELLED' && a.status !== 'COMPLETED' && a.status !== 'NO_SHOW' && (
+                        <a
+                          href={a.meetingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm mr-1"
+                          title="Unirse a la videollamada"
+                        >
+                          <Video size={14} />
+                          <span className="hidden md:inline">Unirme</span>
+                        </a>
+                      )}
+                      {a.modality === 'CHAT' &&
+                       a.status !== 'CANCELLED' && a.status !== 'COMPLETED' && a.status !== 'NO_SHOW' && (
+                        <Link
+                          to={`/doctor/appointments/${a.id}/chat`}
+                          className="inline-flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm mr-1"
+                          title="Abrir chat en vivo"
+                        >
+                          <MessageSquare size={14} />
+                          <span className="hidden md:inline">Chat</span>
+                        </Link>
+                      )}
+                      {a.modality === 'PRESENCIAL' &&
+                       a.status !== 'CANCELLED' && a.status !== 'COMPLETED' && a.status !== 'NO_SHOW' && (
+                        <Link
+                          to={`/doctor/appointments/${a.id}`}
+                          className="inline-flex items-center gap-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm mr-1"
+                          title="Gestionar cita presencial"
+                        >
+                          <MapPin size={14} />
+                          <span className="hidden md:inline">Atender</span>
+                        </Link>
+                      )}
+                      <Link
+                        to={`/doctor/appointments/${a.id}`}
+                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1.5 rounded-lg transition mr-1"
+                        title="Ver detalles"
+                      >
+                        <Eye size={14} />
+                      </Link>
                       {a.status === 'PENDING' && (
                         <>
                           <button
@@ -176,6 +237,39 @@ export function DoctorAppointmentsPage() {
           )}
         </SectionCard>
       )}
+    </div>
+  );
+}
+
+/** Same shape as the patient version — a small segmented control. */
+function ViewToggleDoctor({ value, onChange }: {
+  value:    'list' | 'calendar';
+  onChange: (v: 'list' | 'calendar') => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 flex-shrink-0">
+      <button
+        onClick={() => onChange('list')}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition ${
+          value === 'list'
+            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+        }`}
+        title="Vista lista"
+      >
+        <List size={13} />
+      </button>
+      <button
+        onClick={() => onChange('calendar')}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition ${
+          value === 'calendar'
+            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+        }`}
+        title="Vista calendario"
+      >
+        <CalendarDays size={13} />
+      </button>
     </div>
   );
 }

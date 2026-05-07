@@ -12,7 +12,9 @@
     "./errors": "./src/errors.ts",
     "./env": "./src/env.ts",
     "./paginate": "./src/paginate.ts",
-    "./validate": "./src/validate.ts"
+    "./validate": "./src/validate.ts",
+    "./email": "./src/email.ts",
+    "./meeting": "./src/meeting.ts"
   },
   "scripts": {
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
@@ -29,12 +31,14 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.16",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.9.0",
+    "@types/nodemailer": "^6.4.17",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"

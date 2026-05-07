@@ -27,6 +27,25 @@ function dayKey(d: Date): string {
 }
 
 /**
+ * Returns true if `dayKey + slotTime` already happened in the patient's
+ * local timezone (which we assume matches the doctor's, since today the
+ * platform serves a single country — Ecuador, UTC-5).
+ *
+ * Note on TZ handling: dates in the DB are stored as Postgres DATE (no
+ * timezone) and times as strings "HH:MM". We interpret them in the
+ * BROWSER'S local timezone via `new Date('YYYY-MM-DDTHH:MM:00')`. If the
+ * platform later expands across timezones we'll need to store the doctor's
+ * IANA timezone on the Doctor row and convert here.
+ *
+ * `bufferMin` lets callers add a small head-start (e.g. 15min) so the
+ * patient has time to pay/confirm without the slot expiring mid-flow.
+ */
+function isSlotPast(dayKey: string, slotTime: string, bufferMin = 0): boolean {
+  const slot = new Date(`${dayKey}T${slotTime}:00`);
+  return slot.getTime() <= Date.now() + bufferMin * 60_000;
+}
+
+/**
  * Builds the upcoming-7-days strip used as the day picker. Today first, then
  * the next 6 days. Each entry has a visible label ("Lun 06") and the
  * machine-friendly key the API expects.
@@ -318,35 +337,57 @@ export function PatientDoctorDetailPage() {
               <p className="text-sm text-rose-600">{slotsState.state.error.message}</p>
             )}
             {slotsState.state.status === 'ready' && (() => {
-              const free = slotsState.state.data.filter((s) => !s.isBooked);
+              // Filter rules:
+              //   • Hide booked slots
+              //   • Hide slots already in the past (only relevant when the
+              //     selected day is today). 15-min buffer so the patient has
+              //     time to confirm/pay without the slot expiring.
+              const allSlots = slotsState.state.data.filter((s) => !s.isBooked);
+              const free     = allSlots.filter((s) => !isSlotPast(selectedDay, s.time, 15));
+
+              const isToday      = selectedDay === days[0].key;
+              const allWentBy    = isToday && allSlots.length > 0 && free.length === 0;
+              const passedCount  = allSlots.length - free.length;
+
               if (free.length === 0) {
                 return (
                   <EmptyState
-                    title="Sin horarios para este día"
-                    description="Probá con otro día de la semana o contactá al consultorio."
+                    title={allWentBy ? 'Hoy ya no hay horarios disponibles' : 'Sin horarios para este día'}
+                    description={
+                      allWentBy
+                        ? 'Todos los espacios de hoy ya pasaron. Probá con otro día.'
+                        : 'Probá con otro día de la semana o contactá al consultorio.'
+                    }
                     icon={CalendarIcon}
                   />
                 );
               }
               return (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                  {free.map((s) => {
-                    const isSelected = bookingSlot?.id === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => setBookingSlot(s)}
-                        className={`py-2.5 rounded-lg border text-sm font-medium transition ${
-                          isSelected
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-700 dark:text-slate-200'
-                        }`}
-                      >
-                        {s.time}
-                      </button>
-                    );
-                  })}
-                </div>
+                <>
+                  {isToday && passedCount > 0 && (
+                    <p className="text-xs text-slate-400 mb-3">
+                      Se ocultaron {passedCount} horario{passedCount === 1 ? '' : 's'} que ya pasaron hoy.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                    {free.map((s) => {
+                      const isSelected = bookingSlot?.id === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setBookingSlot(s)}
+                          className={`py-2.5 rounded-lg border text-sm font-medium transition ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-700 dark:text-slate-200'
+                          }`}
+                        >
+                          {s.time}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
               );
             })()}
           </SectionCard>
@@ -408,7 +449,7 @@ export function PatientDoctorDetailPage() {
           {confirmedId && (
             <SectionCard
               title="¡Reserva creada!"
-              subtitle="Tu cita está pendiente de pago"
+              subtitle="Tenés 15 minutos para completar el pago"
             >
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="text-emerald-500 mt-0.5" size={22} />
@@ -419,21 +460,21 @@ export function PatientDoctorDetailPage() {
                   </p>
                   <p className="mt-2 text-xs text-slate-500">
                     Estado: <span className="font-semibold text-amber-600">PENDIENTE DE PAGO</span>.
-                    Te avisaremos por correo cuando esté confirmada.
+                    Si no pagás en 15 minutos, el horario se libera automáticamente.
                   </p>
 
                   <div className="mt-4 flex flex-col sm:flex-row gap-3">
                     <Link
-                      to="/patient/appointments"
-                      className="inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+                      to={`/payment/checkout/${confirmedId}`}
+                      className="inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-lg shadow-sm"
                     >
-                      Ver mis citas
+                      Pagar ahora · ${doc.pricePerConsult.toFixed(2)}
                     </Link>
                     <Link
-                      to="/patient"
-                      className="inline-flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 px-4 py-2"
+                      to="/patient/appointments"
+                      className="inline-flex items-center justify-center gap-1.5 text-sm text-slate-600 hover:text-slate-800 px-4 py-2"
                     >
-                      Volver al panel
+                      Pagar más tarde
                     </Link>
                   </div>
                 </div>
