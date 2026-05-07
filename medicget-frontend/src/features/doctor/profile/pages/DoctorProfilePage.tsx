@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff } from 'lucide-react';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
-import { Avatar }       from '@/components/ui/Avatar';
-import { Input }        from '@/components/ui/Input';
+import { Avatar }         from '@/components/ui/Avatar';
+import { AvatarUploader } from '@/components/ui/AvatarUploader';
+import { Input }          from '@/components/ui/Input';
 import { FormField }    from '@/components/ui/FormField';
 import { Button }       from '@/components/ui/Button';
 import { Alert }        from '@/components/ui/Alert';
-import { AutocompleteSelect } from '@/components/ui/AutocompleteSelect';
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { SpecialtyCombobox } from '@/components/ui/SpecialtyCombobox';
 import { useAuth }      from '@/context/AuthContext';
 import { useApi }       from '@/hooks/useApi';
 import { doctorsApi, usersApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
-import { specialties as SPECIALTY_OPTIONS } from '@/features/auth/register/data/specialties';
 
 /**
  * Doctor profile — edits BOTH the User.Profile (firstName, lastName, phone)
@@ -44,6 +45,7 @@ export function DoctorProfilePage() {
     firstName: '',
     lastName:  '',
     phone:     '',
+    avatarUrl: '',
     // Doctor fields
     specialty:       '',
     licenseNumber:   '',
@@ -56,6 +58,14 @@ export function DoctorProfilePage() {
     // disable everyone on first hydrate; gets overwritten from API once
     // the data loads.
     modalities:      ['ONLINE'] as AppointmentModality[],
+    /**
+     * Visibilidad en el directorio público. Cuando es false, el médico
+     * NO aparece en la lista pública /medicos ni puede recibir reservas.
+     * El toggle queda separado del save general — cambia y persiste en
+     * el momento, así el médico se "ausenta" sin tener que llenar todo
+     * el formulario.
+     */
+    available:       true,
   });
 
   // Hydrate the form from the API once.
@@ -67,6 +77,7 @@ export function DoctorProfilePage() {
       firstName:       profile?.firstName ?? '',
       lastName:        profile?.lastName  ?? '',
       phone:           profile?.phone     ?? '',
+      avatarUrl:       profile?.avatarUrl ?? '',
       specialty:       d.specialty,
       licenseNumber:   d.licenseNumber ?? '',
       experience:      String(d.experience ?? 0),
@@ -75,12 +86,38 @@ export function DoctorProfilePage() {
       bio:             d.bio ?? '',
       languages:       fmtLanguages(d.languages),
       modalities:      (d.modalities && d.modalities.length > 0) ? d.modalities : ['ONLINE'],
+      available:       d.available ?? true,
     });
   }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [saving,           setSaving]           = useState(false);
+  const [togglingAvailable, setTogglingAvailable] = useState(false);
+  const [error,            setError]            = useState<string | null>(null);
+  const [success,          setSuccess]          = useState(false);
+
+  /**
+   * Toggle de "disponibilidad" — guarda al instante sin pasar por
+   * el botón Guardar general. Útil para cuando el médico necesita
+   * "ausentarse" rápido (vacaciones, congresos, enfermedad) sin
+   * tener que tocar el resto del formulario.
+   */
+  const toggleAvailable = async () => {
+    if (!doctorId || togglingAvailable) return;
+    const next = !form.available;
+    setTogglingAvailable(true);
+    try {
+      await doctorsApi.update(doctorId, { available: next } as Partial<DoctorDto>);
+      setForm((f) => ({ ...f, available: next }));
+      refetch();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? 'No se pudo cambiar la visibilidad';
+      setError(msg);
+    } finally {
+      setTogglingAvailable(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!user || !doctorId) return;
@@ -95,6 +132,7 @@ export function DoctorProfilePage() {
           firstName: form.firstName.trim(),
           lastName:  form.lastName.trim(),
           phone:     form.phone.trim() || undefined,
+          avatarUrl: form.avatarUrl   || undefined,
         }),
         // Doctor row
         doctorsApi.update(doctorId, {
@@ -157,7 +195,14 @@ export function DoctorProfilePage() {
         {/* LEFT — preview */}
         <SectionCard className="lg:col-span-1 self-start">
           <div className="flex flex-col items-center text-center">
-            <Avatar initials={initials} size="lg" shape="rounded" variant="blue" />
+            <AvatarUploader
+              value={form.avatarUrl || null}
+              initials={initials}
+              variant="blue"
+              shape="rounded"
+              size="xl"
+              onChange={(url) => setForm({ ...form, avatarUrl: url ?? '' })}
+            />
             <h3 className="mt-3 font-semibold text-slate-800 dark:text-white">
               Dr. {form.firstName} {form.lastName}
             </h3>
@@ -165,6 +210,14 @@ export function DoctorProfilePage() {
             {state.data.rating > 0 && (
               <p className="text-xs text-amber-500 mt-1">★ {state.data.rating.toFixed(1)} ({state.data.reviewCount} reseñas)</p>
             )}
+            <span className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+              form.available
+                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+            }`}>
+              {form.available ? <Eye size={10} /> : <EyeOff size={10} />}
+              {form.available ? 'Visible' : 'Pausado'}
+            </span>
           </div>
 
           <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 space-y-2 text-sm text-slate-500">
@@ -202,8 +255,7 @@ export function DoctorProfilePage() {
           <SectionCard title="Información profesional">
             <div className="space-y-4">
               <FormField label="Especialidad *">
-                <AutocompleteSelect
-                  options={SPECIALTY_OPTIONS}
+                <SpecialtyCombobox
                   value={form.specialty}
                   onChange={(v) => setForm({ ...form, specialty: v })}
                 />
@@ -244,6 +296,42 @@ export function DoctorProfilePage() {
                   className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
                 />
               </FormField>
+            </div>
+          </SectionCard>
+
+          {/* Visibilidad pública */}
+          <SectionCard
+            title="Visibilidad en el directorio"
+            subtitle="Controla si los pacientes pueden encontrarte y reservarte"
+          >
+            <div className="flex items-start gap-4">
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                form.available
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+              }`}>
+                {form.available ? <Eye size={18} /> : <EyeOff size={18} />}
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-slate-800 dark:text-white">
+                  {form.available ? 'Visible y aceptando pacientes' : 'No visible · pausado'}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {form.available
+                    ? 'Apareces en /medicos y los pacientes pueden reservar contigo. Tus citas existentes no se ven afectadas.'
+                    : 'No apareces en el directorio público y no podés recibir nuevas reservas. Tus citas ya confirmadas siguen activas.'}
+                </p>
+              </div>
+              {togglingAvailable ? (
+                <Loader2 className="animate-spin text-slate-400 mt-1" size={18} />
+              ) : (
+                <ToggleSwitch
+                  checked={form.available}
+                  onChange={toggleAvailable}
+                  onLabel="Visible"
+                  offLabel="Pausado"
+                />
+              )}
             </div>
           </SectionCard>
 

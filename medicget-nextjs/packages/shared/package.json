@@ -14,7 +14,10 @@
     "./paginate": "./src/paginate.ts",
     "./validate": "./src/validate.ts",
     "./email": "./src/email.ts",
-    "./meeting": "./src/meeting.ts"
+    "./meeting": "./src/meeting.ts",
+    "./payphone": "./src/payphone.ts",
+    "./settings": "./src/settings.ts",
+    "./subscription": "./src/subscription.ts"
   },
   "scripts": {
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",

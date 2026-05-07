@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useApi }  from '@/hooks/useApi';
-import { plansApi, type PlanDto } from '@/lib/api';
+import { plansApi, doctorsApi, type PlanDto, type DoctorDto } from '@/lib/api';
+import { Avatar }  from '@/components/ui/Avatar';
 
 /**
  * HomePage — landing page público.
@@ -55,9 +56,9 @@ export function HomePage() {
           </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm text-slate-600 dark:text-slate-400">
-            <a href="#audiencias" className="hover:text-slate-900 dark:hover:text-white transition">Para quién</a>
+            <Link to="/medicos"   className="hover:text-slate-900 dark:hover:text-white transition">Especialistas</Link>
             <a href="#como"       className="hover:text-slate-900 dark:hover:text-white transition">Cómo funciona</a>
-            <a href="#features"   className="hover:text-slate-900 dark:hover:text-white transition">Características</a>
+            <a href="#pricing"    className="hover:text-slate-900 dark:hover:text-white transition">Planes</a>
             <a href="#faq"        className="hover:text-slate-900 dark:hover:text-white transition">FAQ</a>
           </div>
 
@@ -340,6 +341,9 @@ export function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ─── ESPECIALISTAS ─────────────────────────────────────────────── */}
+      <FeaturedDoctorsSection />
 
       {/* ─── PRICING ─────────────────────────────────────────────────────── */}
       <PricingSection />
@@ -701,6 +705,148 @@ function Testimonial({ quote, name, role, initials, accent, highlighted }: {
           <p className="text-xs text-slate-500 dark:text-slate-400">{role}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─── Featured Doctors section ────────────────────────────────────────────
+ *
+ * Trust + variety + funnel. Pulls the top-rated 6 doctors from the public
+ * /doctors endpoint and shows them in an asymmetric grid with the highest
+ * rated featured larger. Anonymous visitor clicking on a card lands on the
+ * public /medicos/:id page, NOT directly on a booking form.
+ */
+function FeaturedDoctorsSection() {
+  const { state } = useApi(
+    () => doctorsApi.list({ available: 'true', pageSize: 6 }),
+    [],
+  );
+
+  const doctors: DoctorDto[] = state.status === 'ready' ? state.data.data : [];
+  // Highest rated first; fall back to reviewCount as tiebreaker.
+  const sorted = [...doctors].sort((a, b) => (b.rating - a.rating) || (b.reviewCount - a.reviewCount));
+
+  return (
+    <section id="especialistas" className="py-24 lg:py-32">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-12">
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider">Especialistas</p>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+              Médicos verificados, <br className="hidden sm:inline" />listos para atenderte.
+            </h2>
+            <p className="mt-4 text-lg text-slate-500 dark:text-slate-400">
+              Desde cardiólogos a pediatras: explorá perfiles, leé reseñas y reservá en
+              cualquiera de las modalidades que ofrecemos.
+            </p>
+          </div>
+          <Link
+            to="/medicos"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700 transition flex-shrink-0"
+          >
+            Ver todos los especialistas <ArrowRight size={14} />
+          </Link>
+        </div>
+
+        {state.status === 'loading' && <DoctorsSkeleton />}
+        {state.status === 'error' && (
+          <p className="text-center text-rose-500 text-sm">No se pudieron cargar los especialistas.</p>
+        )}
+        {state.status === 'ready' && sorted.length === 0 && (
+          <div className="text-center py-12 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <p className="text-slate-500">
+              Estamos sumando especialistas. <Link to="/register" className="text-blue-600 hover:underline">¿Sos médico?</Link>
+            </p>
+          </div>
+        )}
+        {state.status === 'ready' && sorted.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {sorted.slice(0, 6).map((d) => (
+              <DoctorCard key={d.id} doctor={d} />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DoctorCard({ doctor }: { doctor: DoctorDto }) {
+  const profile  = doctor.user.profile;
+  const initials = ((profile?.firstName?.[0] ?? '') + (profile?.lastName?.[0] ?? '')).toUpperCase() || 'DR';
+  const fullName = `Dr. ${profile?.firstName ?? ''} ${profile?.lastName ?? ''}`.trim();
+
+  return (
+    <Link
+      to={`/medicos/${doctor.id}`}
+      className="group relative block rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200"
+    >
+      <div className="flex items-start gap-4">
+        <Avatar
+          initials={initials}
+          imageUrl={profile?.avatarUrl ?? null}
+          size="lg"
+          shape="rounded"
+          variant="auto"
+          alt={fullName}
+        />
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-slate-800 dark:text-white truncate">{fullName}</h3>
+          <p className="text-sm text-blue-600 dark:text-blue-400 font-medium truncate">{doctor.specialty}</p>
+          {doctor.reviewCount > 0 ? (
+            <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
+              <Star size={11} className="text-amber-400 fill-amber-400" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{doctor.rating.toFixed(1)}</span>
+              <span>· {doctor.reviewCount} {doctor.reviewCount === 1 ? 'reseña' : 'reseñas'}</span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 mt-1">Aún sin reseñas</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-1.5 flex-wrap">
+        {doctor.modalities.map((m) => (
+          <span
+            key={m}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+          >
+            {m === 'ONLINE'     && <><Video size={9} /> Online</>}
+            {m === 'PRESENCIAL' && <><Building2 size={9} /> Presencial</>}
+            {m === 'CHAT'       && <><MessageSquare size={9} /> Chat</>}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-slate-400">Desde</p>
+          <p className="text-lg font-bold text-slate-800 dark:text-white">${doctor.pricePerConsult.toFixed(2)}</p>
+        </div>
+        <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+          Ver perfil <ArrowRight size={11} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function DoctorsSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 animate-pulse">
+          <div className="flex items-start gap-4">
+            <div className="h-12 w-12 rounded-2xl bg-slate-200 dark:bg-slate-800" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-3/4 bg-slate-200 dark:bg-slate-800 rounded" />
+              <div className="h-3 w-1/2 bg-slate-200 dark:bg-slate-800 rounded" />
+            </div>
+          </div>
+          <div className="mt-4 h-2 w-1/3 bg-slate-200 dark:bg-slate-800 rounded" />
+          <div className="mt-6 h-6 w-1/4 bg-slate-200 dark:bg-slate-800 rounded" />
+        </div>
+      ))}
     </div>
   );
 }

@@ -10,10 +10,14 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const pagination = parsePagination(sp);
     const filters: Record<string, string | undefined> = {
-      search: sp.get('search') ?? undefined,
+      search:    sp.get('search')    ?? undefined,
       specialty: sp.get('specialty') ?? undefined,
       available: sp.get('available') ?? undefined,
-      clinicId: sp.get('clinicId') ?? undefined,
+      clinicId:  sp.get('clinicId')  ?? undefined,
+      // Public directory filters
+      modality:  sp.get('modality')  ?? undefined,
+      priceMin:  sp.get('priceMin')  ?? undefined,
+      priceMax:  sp.get('priceMax')  ?? undefined,
     };
 
     const result = await doctorsService.list(filters, pagination);

@@ -2,6 +2,7 @@ import { Calendar, Users, Star, TrendingUp, Clock, ArrowRight } from 'lucide-rea
 import { Link } from 'react-router-dom';
 import { StatCard }    from '@/components/ui/StatCard';
 import { PageHeader }  from '@/components/ui/PageHeader';
+import { PlanBadge }   from '@/components/ui/PlanBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar }      from '@/components/ui/Avatar';
 import { BarChart }    from '@/components/ui/BarChart';
@@ -40,14 +41,17 @@ export function DoctorDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Buenos días, ${user?.name ?? 'Doctor'} 👨‍⚕️`}
-        subtitle={
-          todayCount > 0
-            ? `Tienes ${todayCount} ${todayCount === 1 ? 'cita' : 'citas'} programada${todayCount === 1 ? '' : 's'} para hoy`
-            : 'No tienes citas para hoy'
-        }
-      />
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <PageHeader
+          title={`Buenos días, ${user?.name ?? 'Doctor'} 👨‍⚕️`}
+          subtitle={
+            todayCount > 0
+              ? `Tienes ${todayCount} ${todayCount === 1 ? 'cita' : 'citas'} programada${todayCount === 1 ? '' : 's'} para hoy`
+              : 'No tienes citas para hoy'
+          }
+        />
+        <PlanBadge managePath="/doctor/plan" />
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

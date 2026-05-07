@@ -63,7 +63,16 @@ export const LoginPage = () => {
         setError(result.error ?? 'Error al iniciar sesión');
         return;
       }
-      navigate(ROLE_REDIRECTS[result.role ?? 'patient'] ?? '/patient');
+      // Honor `?next=...` if it's a same-origin path so flows like
+      // "Reservar en /medicos/:id" land back on the doctor profile after
+      // login. Falls back to the role's default dashboard otherwise.
+      const params = new URLSearchParams(window.location.search);
+      const next   = params.get('next');
+      if (next && next.startsWith('/')) {
+        navigate(next);
+      } else {
+        navigate(ROLE_REDIRECTS[result.role ?? 'patient'] ?? '/patient');
+      }
     } finally {
       setSubmitting(false);
     }

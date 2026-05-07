@@ -19,6 +19,18 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { getSetting, getSettingBool, getSettingNumber } from './settings';
 
+/**
+ * Master switch del módulo de email. Si `SMTP_ENABLED=false` en
+ * AppSettings, el sistema no envía nada — útil para "modo silencio"
+ * (ej: ambientes de prueba) sin tener que borrar las credenciales.
+ *
+ * Default: true (enviar). Para apagar el envío sin tocar credenciales,
+ * el superadmin pone el toggle en off desde /admin/settings.
+ */
+async function isEmailEnabled(): Promise<boolean> {
+  return getSettingBool('SMTP_ENABLED', true);
+}
+
 interface EmailPayload {
   to:       string;
   subject:  string;
@@ -57,6 +69,13 @@ async function getTransporter(): Promise<Transporter | null> {
  * the failure or surface it.
  */
 export async function sendEmail(payload: EmailPayload): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Master switch — si está apagado en AppSettings, no enviamos nada.
+  if (!(await isEmailEnabled())) {
+    // eslint-disable-next-line no-console
+    console.log('[email][disabled] SMTP_ENABLED=false. Skipped:', payload.to, '·', payload.subject);
+    return { ok: true };
+  }
+
   const t = await getTransporter();
   if (!t) {
     // eslint-disable-next-line no-console

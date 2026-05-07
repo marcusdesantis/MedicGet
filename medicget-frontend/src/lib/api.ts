@@ -413,6 +413,17 @@ export const clinicsApi = {
   update:     (id: string, body: Partial<ClinicDto>) => apiPatch<ClinicDto>(`/clinics/${id}`, body),
   delete:     (id: string)                       => apiDelete<ClinicDto>(`/clinics/${id}`),
   getDoctors: (id: string, params?: Record<string, unknown>) => apiGet<PaginatedData<DoctorDto>>(`/clinics/${id}/doctors`, params),
+  /**
+   * Crea un médico nuevo asociado a la clínica con credenciales
+   * temporales. Devuelve { doctor, tempPassword } — el admin debe
+   * compartir tempPassword con el médico (también se le manda por email).
+   */
+  createDoctor: (clinicId: string, body: {
+    email: string; firstName: string; lastName: string;
+    phone?: string; specialty: string; licenseNumber?: string;
+    experience?: number; pricePerConsult?: number; bio?: string;
+    consultDuration?: number; languages?: string[];
+  }) => apiPost<{ doctor: DoctorDto; tempPassword: string }>(`/clinics/${clinicId}/doctors`, body),
 };
 
 /** svc-doctor :4004 → /api/v1/doctors/ */
@@ -614,6 +625,8 @@ export const subscriptionsApi = {
     apiPost<{ subscriptionId: string; redirectUrl: string; payphonePaymentId?: string }>('/subscriptions/checkout', body),
   confirm: (body: { subscriptionId: string; payphonePaymentId: string; fakeOk?: boolean }) =>
     apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>('/subscriptions/confirm', body),
+  /** Cancela el plan paga y vuelve a FREE inmediatamente. */
+  cancel: () => apiPost<{ ok: true }>('/subscriptions/cancel', {}),
 };
 
 /** Public branding settings — used to paint the landing page header. */
@@ -642,4 +655,10 @@ export const adminApi = {
   settings:      () => apiGet<AppSettingDto[]>('/admin/settings'),
   saveSettings:  (values: Record<string, string | null>) =>
     apiPatch<AppSettingDto[]>('/admin/settings', { values }),
+  /** Crea cualquier tipo de usuario manualmente. Devuelve la temp password. */
+  createUser: (body: {
+    email: string; firstName: string; lastName: string; phone?: string;
+    role: 'PATIENT' | 'DOCTOR' | 'CLINIC' | 'ADMIN';
+    clinicName?: string; specialty?: string;
+  }) => apiPost<{ user: UserDto; tempPassword: string }>('/admin/users/create', body),
 };

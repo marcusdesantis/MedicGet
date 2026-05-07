@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { User as UserIcon, Mail, Phone, MapPin, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
-import { Avatar }       from '@/components/ui/Avatar';
+import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { Input }        from '@/components/ui/Input';
 import { FormField }    from '@/components/ui/FormField';
 import { Button }       from '@/components/ui/Button';
@@ -28,6 +28,7 @@ export function PatientProfilePage() {
     address:   profile?.address   ?? '',
     city:      profile?.city      ?? '',
     country:   profile?.country   ?? '',
+    avatarUrl: profile?.avatarUrl ?? '',
   });
 
   // Re-seed when the auth context finishes loading (the initial render
@@ -41,6 +42,7 @@ export function PatientProfilePage() {
         address:   profile.address   ?? '',
         city:      profile.city      ?? '',
         country:   profile.country   ?? '',
+        avatarUrl: profile.avatarUrl ?? '',
       });
     }
   }, [profile]);
@@ -68,6 +70,7 @@ export function PatientProfilePage() {
         address:   form.address.trim() || undefined,
         city:      form.city.trim() || undefined,
         country:   form.country.trim() || undefined,
+        avatarUrl: form.avatarUrl || undefined,
       });
       setSuccess(true);
     } catch (err: unknown) {
@@ -96,7 +99,14 @@ export function PatientProfilePage() {
         {/* LEFT — avatar + read-only info */}
         <SectionCard className="lg:col-span-1 self-start">
           <div className="flex flex-col items-center text-center">
-            <Avatar initials={initials} size="lg" shape="rounded" variant="blue" />
+            <AvatarUploader
+              value={form.avatarUrl || null}
+              initials={initials}
+              variant="blue"
+              shape="circle"
+              size="xl"
+              onChange={(url) => setForm({ ...form, avatarUrl: url ?? '' })}
+            />
             <h3 className="mt-3 font-semibold text-slate-800 dark:text-white">
               {form.firstName || 'Sin nombre'} {form.lastName}
             </h3>

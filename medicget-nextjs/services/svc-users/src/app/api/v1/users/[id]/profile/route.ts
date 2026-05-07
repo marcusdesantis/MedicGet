@@ -15,6 +15,13 @@ const updateProfileSchema = z
     address:   z.string().optional(),
     city:      z.string().optional(),
     country:   z.string().optional(),
+    /**
+     * Foto de perfil. Por ahora un dataURL (`data:image/jpeg;base64,...`)
+     * generado client-side por <AvatarUploader>. Cap de 1 MB cubre 400×400
+     * JPEG @ 80% sin problema. Si en el futuro migramos a S3, esto pasa
+     * a ser una URL https.
+     */
+    avatarUrl: z.string().max(1_500_000).optional(),
   })
   .strict();
 

@@ -59,7 +59,11 @@ export function PatientAppointmentsPage() {
     setCancellingId(id);
     setActionError(null);
     try {
-      await appointmentsApi.cancel(id);
+      // Pacientes cancelan vía PATCH con status: CANCELLED.
+      // El DELETE es exclusivo de CLINIC (por eso tiraba FORBIDDEN antes).
+      // El backend internamente libera el slot y dispara el reembolso
+      // automático si la cita estaba pagada y faltan más de 24h.
+      await appointmentsApi.update(id, { status: 'CANCELLED' });
       refetch();
     } catch (err: unknown) {
       const msg =
@@ -153,7 +157,13 @@ export function PatientAppointmentsPage() {
                   (!a.payment || a.payment.status === 'PENDING');
                 return (
                   <div key={a.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                    <Avatar initials={doctorInitials(a)} size="lg" shape="rounded" variant="blue" />
+                    <Avatar
+                      initials={doctorInitials(a)}
+                      imageUrl={a.doctor?.user?.profile?.avatarUrl ?? null}
+                      size="lg"
+                      shape="rounded"
+                      variant="blue"
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-slate-800 dark:text-white">{doctorName(a)}</p>

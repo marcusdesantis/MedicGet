@@ -10,6 +10,8 @@ export interface UpdateProfileData {
   address?: string;
   city?: string;
   country?: string;
+  /** Foto de perfil — dataURL generado por AvatarUploader client-side. */
+  avatarUrl?: string;
 }
 
 const userWithProfile = {

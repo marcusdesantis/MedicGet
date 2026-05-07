@@ -140,7 +140,12 @@ export function DoctorAppointmentsPage() {
                 const isActing = actingId === a.id;
                 return (
                   <div key={a.id} className="flex flex-col sm:flex-row sm:items-center gap-4 px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                    <Avatar initials={patientInitials(a)} size="md" variant="indigo" />
+                    <Avatar
+                      initials={patientInitials(a)}
+                      imageUrl={a.patient?.user?.profile?.avatarUrl ?? null}
+                      size="md"
+                      variant="indigo"
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-slate-800 dark:text-white">{patientName(a)}</p>

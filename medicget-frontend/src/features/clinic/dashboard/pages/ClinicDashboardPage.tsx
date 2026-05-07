@@ -2,6 +2,7 @@ import { Users, Calendar, DollarSign, TrendingUp, UserCheck, ArrowRight } from '
 import { Link } from 'react-router-dom';
 import { StatCard }    from '@/components/ui/StatCard';
 import { PageHeader }  from '@/components/ui/PageHeader';
+import { PlanBadge }   from '@/components/ui/PlanBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar }      from '@/components/ui/Avatar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -64,18 +65,21 @@ export function ClinicDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Panel de control — ${user?.name ?? 'Clínica'}`}
-        subtitle="Resumen de actividad de la clínica"
-        action={
-          <Link
-            to="/clinic/reports"
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition shadow-sm"
-          >
-            Ver informes <ArrowRight size={15} />
-          </Link>
-        }
-      />
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <PageHeader
+          title={`Panel de control — ${user?.name ?? 'Clínica'}`}
+          subtitle="Resumen de actividad de la clínica"
+          action={
+            <Link
+              to="/clinic/reports"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition shadow-sm"
+            >
+              Ver informes <ArrowRight size={15} />
+            </Link>
+          }
+        />
+        <PlanBadge managePath="/clinic/plan" />
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

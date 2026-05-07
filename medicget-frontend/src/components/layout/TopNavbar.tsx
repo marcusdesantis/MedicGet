@@ -1,7 +1,8 @@
-import { Menu, Bell, Search, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, Bell, LogOut, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { GlobalSearchBox } from './GlobalSearchBox';
 
 interface TopNavbarProps {
   onMobileMenuOpen: () => void;
@@ -40,13 +41,8 @@ export function TopNavbar({ onMobileMenuOpen, pageTitle }: TopNavbarProps) {
       {/* Right: search + theme + notifications + avatar */}
       <div className="flex items-center gap-2">
 
-        {/* Search (desktop) */}
-        <div className="hidden md:flex items-center gap-2 bg-slate-100 dark:bg-slate-800
-                        rounded-xl px-3 py-2 text-sm text-slate-400 w-48 cursor-pointer
-                        hover:bg-slate-200 dark:hover:bg-slate-700 transition">
-          <Search size={15} />
-          <span>Buscar...</span>
-        </div>
+        {/* Search (desktop) — typeahead global con dropdown de resultados */}
+        <GlobalSearchBox />
 
         <ThemeToggle />
 
@@ -65,8 +61,16 @@ export function TopNavbar({ onMobileMenuOpen, pageTitle }: TopNavbarProps) {
                        hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600
-                            flex items-center justify-center text-white text-xs font-bold">
-              {initials}
+                            flex items-center justify-center text-white text-xs font-bold relative overflow-hidden">
+              <span>{initials}</span>
+              {user?.dto?.profile?.avatarUrl && (
+                <img
+                  src={user.dto.profile.avatarUrl}
+                  alt={user?.name ?? 'Avatar'}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+              )}
             </div>
             <span className="hidden md:block text-sm font-medium text-slate-700 dark:text-slate-200 max-w-[120px] truncate">
               {user?.name}

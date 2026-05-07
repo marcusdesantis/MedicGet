@@ -5,6 +5,7 @@
 
 import { prisma }                 from '@medicget/shared/prisma';
 import { invalidateSettingsCache } from '@medicget/shared/settings';
+import { Prisma }                 from '@prisma/client';
 
 export const adminService = {
   /**
@@ -99,11 +100,43 @@ export const adminService = {
   },
 
   async createPlan(input: PlanInput) {
-    return prisma.plan.create({ data: input });
+    // Normalise optional fields so Prisma.PlanCreateInput is happy regardless
+    // of how the Zod schema inferred the parsed object. Prisma's JSON columns
+    // require `Prisma.InputJsonValue`; we cast `limits` because Zod gives us
+    // a generic Record.
+    return prisma.plan.create({
+      data: {
+        code:         input.code,
+        audience:     input.audience,
+        name:         input.name,
+        description:  input.description ?? null,
+        monthlyPrice: input.monthlyPrice,
+        modules:      input.modules ?? [],
+        limits:       (input.limits ?? undefined) as Prisma.InputJsonValue | undefined,
+        isActive:     input.isActive ?? true,
+        sortOrder:    input.sortOrder ?? 0,
+      },
+    });
   },
 
   async updatePlan(id: string, input: Partial<PlanInput>) {
-    return prisma.plan.update({ where: { id }, data: input });
+    // Same JSON dance as createPlan — strip the field if undefined so we
+    // don't blow away `limits` on a partial update that only touches
+    // other columns.
+    const data: Prisma.PlanUpdateInput = {
+      ...(input.name         !== undefined && { name:         input.name }),
+      ...(input.description  !== undefined && { description:  input.description }),
+      ...(input.monthlyPrice !== undefined && { monthlyPrice: input.monthlyPrice }),
+      ...(input.modules      !== undefined && { modules:      input.modules }),
+      ...(input.isActive     !== undefined && { isActive:     input.isActive }),
+      ...(input.sortOrder    !== undefined && { sortOrder:    input.sortOrder }),
+      ...(input.limits       !== undefined && {
+        limits: input.limits === null
+          ? Prisma.JsonNull
+          : (input.limits as Prisma.InputJsonValue),
+      }),
+    };
+    return prisma.plan.update({ where: { id }, data });
   },
 
   async deletePlan(id: string) {
@@ -174,9 +207,15 @@ export interface PlanInput {
   code:         'FREE' | 'PRO' | 'PREMIUM';
   audience:     'DOCTOR' | 'CLINIC';
   name:         string;
-  description?: string;
+  /** Nullable so PATCH bodies can clear the description (Zod accepts null). */
+  description?: string | null;
   monthlyPrice: number;
-  modules:      string[];
+  /**
+   * Zod's `.default([])` infers `string[] | undefined` on the parsed object,
+   * not `string[]`, so we accept undefined here and coerce to `[]` inside
+   * `createPlan`/`updatePlan`.
+   */
+  modules?:     string[];
   limits?:      Record<string, unknown> | null;
   isActive?:    boolean;
   sortOrder?:   number;

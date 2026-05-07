@@ -40,10 +40,23 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
   if (!result.ok) return apiError('BAD_GATEWAY', result.error);
 
   if (result.status === 'Approved') {
-    const updated = await prisma.subscription.update({
-      where: { id: sub.id },
-      data:  { status: 'ACTIVE' },
-    });
+    // Activamos la nueva Y cancelamos cualquier OTRA suscripción activa
+    // del mismo usuario en una transacción. Esto es lo que convierte el
+    // "checkout" en un "cambio de plan" sin endpoints adicionales.
+    const [, updated] = await prisma.$transaction([
+      prisma.subscription.updateMany({
+        where: {
+          userId: user.id,
+          id:     { not: sub.id },
+          status: 'ACTIVE',
+        },
+        data: { status: 'CANCELLED', cancelledAt: new Date() },
+      }),
+      prisma.subscription.update({
+        where: { id: sub.id },
+        data:  { status: 'ACTIVE' },
+      }),
+    ]);
     return apiOk({ status: 'ACTIVE', subscription: updated });
   }
   if (result.status === 'Rejected' || result.status === 'Cancelled') {

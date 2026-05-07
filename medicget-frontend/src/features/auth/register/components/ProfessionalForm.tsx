@@ -1,8 +1,7 @@
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
-import { specialties } from "../data/specialties";
 import { AddressAutocomplete } from "./AddressAutocomplete";
-import { AutocompleteSelect } from "@/components/ui/AutocompleteSelect";
+import { SpecialtyCombobox } from "@/components/ui/SpecialtyCombobox";
 import PhoneInput from "react-phone-input-2";
 import { Checkbox } from "@/components/ui/Checkbox";
 import type { DoctorDraft } from "../state";
@@ -51,14 +50,18 @@ export const ProfessionalForm = ({ form, setForm, errors }: Props) => {
             </div>
 
             <FormField label="Especialidad *">
-                <AutocompleteSelect
-                    options={specialties}
+                <SpecialtyCombobox
                     value={form.specialty}
                     onChange={(value) => setForm({ specialty: value })}
+                    invalid={!!errors.specialty && form.specialty !== ""}
+                    required
                 />
                 {errors.specialty && form.specialty !== "" && (
                     <p className="text-xs text-rose-600 mt-1">{errors.specialty}</p>
                 )}
+                <p className="text-[11px] text-slate-400 mt-1">
+                    Si tu especialidad no aparece, escríbela y se guardará tal cual.
+                </p>
             </FormField>
 
             <FormField label="Ubicación de tu consulta">

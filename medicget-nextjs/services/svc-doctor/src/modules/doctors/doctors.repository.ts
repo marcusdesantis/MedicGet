@@ -3,10 +3,15 @@ import type { PaginationParams } from '@medicget/shared/paginate';
 import { toSkipTake } from '@medicget/shared/paginate';
 
 export interface DoctorFilters {
-  search?: string;
+  search?:    string;
   specialty?: string;
   available?: boolean;
-  clinicId?: string;
+  clinicId?:  string;
+  /** ONLINE / PRESENCIAL / CHAT — matches if doctor's modalities array contains it. */
+  modality?:  string;
+  /** Price range filters used by the public directory. */
+  priceMin?:  number;
+  priceMax?:  number;
 }
 
 export const doctorsRepository = {
@@ -23,6 +28,15 @@ export const doctorsRepository = {
     }
     if (filters.clinicId) {
       where.clinicId = filters.clinicId;
+    }
+    if (filters.modality) {
+      where.modalities = { has: filters.modality };
+    }
+    if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+      const range: Record<string, number> = {};
+      if (filters.priceMin !== undefined) range.gte = filters.priceMin;
+      if (filters.priceMax !== undefined) range.lte = filters.priceMax;
+      where.pricePerConsult = range;
     }
     if (filters.search) {
       where.OR = [

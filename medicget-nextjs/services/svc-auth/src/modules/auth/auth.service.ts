@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
-import { signToken }      from '@medicget/shared/auth';
+import { signToken }              from '@medicget/shared/auth';
+import { ensureFreeSubscription } from '@medicget/shared/subscription';
 import { authRepository } from './auth.repository';
 
 /**
@@ -144,6 +145,12 @@ export const authService = {
 
       const passwordHash = await bcrypt.hash(input.password, 10);
       const user = await authRepository.create({ ...input, passwordHash });
+
+      // Auto-asignar plan FREE a médicos y clínicas. Pacientes y admins no
+      // tienen suscripción. Best-effort — si falla seguimos con el alta.
+      if (input.role === 'DOCTOR' || input.role === 'CLINIC') {
+        await ensureFreeSubscription(user.id, input.role).catch(() => {/* swallow */});
+      }
 
       const token = signToken({ sub: user.id, email: user.email, role: user.role });
       return { ok: true, data: { token, user: sanitizeUser(user)! } };

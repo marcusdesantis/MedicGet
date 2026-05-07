@@ -30,6 +30,8 @@ import { DoctorCalendarPage } from '@/features/doctor/calendar/pages/DoctorCalen
 import { DoctorAppointmentsPage } from '@/features/doctor/appointments/pages/DoctorAppointmentsPage';
 import { PatientHistoryPage } from '@/features/doctor/patients/pages/PatientHistoryPage';
 import { DoctorSetupPage } from '@/features/doctor/setup/pages/DoctorSetupPage';
+import { DoctorPaymentsPage } from '@/features/doctor/payments/pages/DoctorPaymentsPage';
+import { DoctorReportsPage }  from '@/features/doctor/reports/pages/DoctorReportsPage';
 
 // Admin pages
 import { AdminDashboardPage }     from '@/features/admin/dashboard/pages/AdminDashboardPage';
@@ -49,9 +51,17 @@ import { PaymentCheckoutPage } from '@/features/shared/payment/pages/PaymentChec
 import { PaymentReturnPage }   from '@/features/shared/payment/pages/PaymentReturnPage';
 import { SubscribePage, SubscribeReturnPage } from '@/features/shared/subscription/pages/SubscribePage';
 
+// Public directory + detail
+import { PublicDoctorsDirectoryPage } from '@/features/public/doctors/pages/PublicDoctorsDirectoryPage';
+import { PublicDoctorDetailPage }     from '@/features/public/doctors/pages/PublicDoctorDetailPage';
+
+// Plan management (shared by doctor + clinic)
+import { ManagePlanPage } from '@/features/shared/plan/pages/ManagePlanPage';
+
 // Clinic pages
 import { ClinicDashboardPage } from '@/features/clinic/dashboard/pages/ClinicDashboardPage';
 import { ManageDoctorsPage } from '@/features/clinic/doctors/pages/ManageDoctorsPage';
+import { ClinicProfilePage } from '@/features/clinic/profile/pages/ClinicProfilePage';
 import { ClinicAppointmentsPage } from '@/features/clinic/appointments/pages/ClinicAppointmentsPage';
 import { ClinicPatientsPage } from '@/features/clinic/patients/pages/ClinicPatientsPage';
 import { PaymentsPage } from '@/features/clinic/payments/pages/PaymentsPage';
@@ -62,7 +72,7 @@ import { SpecialtiesPage } from '@/features/clinic/specialties/pages/Specialties
 import {
   LayoutDashboard, Search, CalendarDays, FileText, User,
   Stethoscope, Calendar, Users, BarChart2, CreditCard, BookOpen,
-  ShieldCheck, BadgeCheck, Settings as SettingsIcon,
+  ShieldCheck, BadgeCheck, Settings as SettingsIcon, Sparkles, Building2,
 } from 'lucide-react';
 import type { NavItem } from '@/components/layout/Sidebar';
 
@@ -80,16 +90,21 @@ const doctorNav: NavItem[] = [
   { label: 'Calendario',      path: '/doctor/calendar',      icon: Calendar },
   { label: 'Citas',           path: '/doctor/appointments',  icon: CalendarDays },
   { label: 'Pacientes',       path: '/doctor/patients',      icon: Users },
+  { label: 'Pagos',           path: '/doctor/payments',      icon: CreditCard },
+  { label: 'Reportes',        path: '/doctor/reports',       icon: BarChart2 },
+  { label: 'Mi plan',         path: '/doctor/plan',          icon: Sparkles },
 ];
 
 const clinicNav: NavItem[] = [
   { label: 'Dashboard',       path: '/clinic',               icon: LayoutDashboard },
+  { label: 'Mi perfil',       path: '/clinic/profile',       icon: Building2 },
   { label: 'Médicos',         path: '/clinic/doctors',       icon: Stethoscope },
   { label: 'Citas',           path: '/clinic/appointments',  icon: CalendarDays },
   { label: 'Pacientes',       path: '/clinic/patients',      icon: Users },
   { label: 'Pagos',           path: '/clinic/payments',      icon: CreditCard },
   { label: 'Informes',        path: '/clinic/reports',       icon: BarChart2 },
   { label: 'Especialidades',  path: '/clinic/specialties',   icon: BookOpen },
+  { label: 'Mi plan',         path: '/clinic/plan',          icon: Sparkles },
 ];
 
 const adminNav: NavItem[] = [
@@ -115,6 +130,10 @@ export const router = createBrowserRouter([
   // ── Subscription checkout (público — requiere login al hacer click) ──
   { path: '/subscribe/:planId',  element: <SubscribePage /> },
   { path: '/subscribe/return',   element: <SubscribeReturnPage /> },
+
+  // ── Public directory ──
+  { path: '/medicos',      element: <PublicDoctorsDirectoryPage /> },
+  { path: '/medicos/:id',  element: <PublicDoctorDetailPage /> },
 
   // Doctor profile setup — first-time onboarding after registration. Lives
   // outside /doctor on purpose so it doesn't render the protected dashboard
@@ -172,6 +191,9 @@ export const router = createBrowserRouter([
       { path: 'appointments/:id', element: <DoctorAppointmentDetailPage /> },
       { path: 'appointments/:id/chat', element: <DoctorAppointmentChatPage /> },
       { path: 'patients', element: <PatientHistoryPage /> },
+      { path: 'payments', element: <DoctorPaymentsPage /> },
+      { path: 'reports',  element: <DoctorReportsPage /> },
+      { path: 'plan',     element: <ManagePlanPage /> },
     ],
   },
 
@@ -202,12 +224,14 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <ClinicDashboardPage /> },
+      { path: 'profile', element: <ClinicProfilePage /> },
       { path: 'doctors', element: <ManageDoctorsPage /> },
       { path: 'appointments', element: <ClinicAppointmentsPage /> },
       { path: 'patients', element: <ClinicPatientsPage /> },
       { path: 'payments', element: <PaymentsPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'specialties', element: <SpecialtiesPage /> },
+      { path: 'plan',     element: <ManagePlanPage /> },
     ],
   },
 

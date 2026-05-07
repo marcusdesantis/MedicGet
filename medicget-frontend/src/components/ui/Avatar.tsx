@@ -9,10 +9,18 @@ type AvatarVariant = 'blue' | 'teal' | 'indigo' | 'purple' | 'emerald' | 'auto';
 
 interface AvatarProps {
   initials: string;
+  /**
+   * Si se pasa, se renderiza la imagen como `<img>` (puede ser data URL o
+   * https URL). Si la carga falla o el valor está vacío, fallback a las
+   * iniciales sobre el gradiente — sin que el componente parpadee.
+   */
+  imageUrl?: string | null;
   size?:    AvatarSize;
   shape?:   AvatarShape;
   variant?: AvatarVariant;
   className?: string;
+  /** Texto alternativo para accesibilidad cuando hay imagen. */
+  alt?: string;
 }
 
 const SIZE_CLASSES: Record<AvatarSize, { container: string; text: string }> = {
@@ -48,14 +56,42 @@ function resolveVariant(initials: string, variant: AvatarVariant): string {
 
 export function Avatar({
   initials,
+  imageUrl,
   size    = 'md',
   shape   = 'circle',
   variant = 'auto',
   className = '',
+  alt,
 }: AvatarProps) {
   const { container, text } = SIZE_CLASSES[size];
   const shapeClass   = SHAPE_CLASSES[shape];
   const gradientClass = resolveVariant(initials, variant);
+
+  // Cuando hay imagen, renderizamos un wrapper que contiene el `<img>` y
+  // las iniciales como fallback debajo. Si la imagen falla en cargar,
+  // simplemente la ocultamos con un onError y queda visible la inicial
+  // sin tener que mantener estado en React.
+  if (imageUrl) {
+    return (
+      <div
+        className={`
+          relative overflow-hidden flex-shrink-0 flex items-center justify-center
+          font-bold text-white
+          ${container} ${shapeClass} ${gradientClass} ${className}
+        `}
+      >
+        <span className={`absolute inset-0 flex items-center justify-center ${text}`}>
+          {initials.slice(0, 2).toUpperCase()}
+        </span>
+        <img
+          src={imageUrl}
+          alt={alt ?? initials}
+          className="relative w-full h-full object-cover"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -65,7 +101,7 @@ export function Avatar({
         ${container} ${shapeClass} ${gradientClass} ${className}
       `}
     >
-      {initials.slice(0, 2).toUpperCase()}
+      <span className={text}>{initials.slice(0, 2).toUpperCase()}</span>
     </div>
   );
 }

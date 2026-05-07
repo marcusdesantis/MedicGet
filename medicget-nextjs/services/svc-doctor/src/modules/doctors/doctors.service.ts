@@ -34,6 +34,19 @@ function generateTimeSlots(startTime: string, endTime: string, durationMinutes: 
   return slots;
 }
 
+/**
+ * Strip email + passwordHash from the embedded User before sending to
+ * any consumer. The directory is browseable anonymously from the
+ * landing page; never leak personal contact data.
+ */
+function sanitize<T extends { user?: { email?: unknown; passwordHash?: unknown } }>(d: T): T {
+  if (d?.user) {
+    const { email: _e, passwordHash: _p, ...safeUser } = d.user as Record<string, unknown>;
+    return { ...d, user: safeUser } as T;
+  }
+  return d;
+}
+
 export const doctorsService = {
   async list(
     rawFilters: Record<string, string | undefined>,
@@ -49,8 +62,13 @@ export const doctorsService = {
       filters.available = rawFilters.available === 'true';
     }
 
+    // Optional public filters
+    if (rawFilters.modality)  filters.modality   = rawFilters.modality;
+    if (rawFilters.priceMin)  filters.priceMin   = Number(rawFilters.priceMin);
+    if (rawFilters.priceMax)  filters.priceMax   = Number(rawFilters.priceMax);
+
     const { data, total } = await doctorsRepository.findMany(filters, pagination);
-    return { ok: true, data: paginate(data, total, pagination) };
+    return { ok: true, data: paginate(data.map(sanitize), total, pagination) };
   },
 
   async getById(id: string): Promise<ServiceResult<unknown>> {
@@ -58,7 +76,7 @@ export const doctorsService = {
     if (!doctor) {
       return { ok: false, code: 'NOT_FOUND', message: 'Doctor not found' };
     }
-    return { ok: true, data: doctor };
+    return { ok: true, data: sanitize(doctor) };
   },
 
   async update(
@@ -77,21 +95,20 @@ export const doctorsService = {
         return { ok: false, code: 'FORBIDDEN', message: 'You can only update your own profile' };
       }
     } else if (user.role === 'CLINIC') {
-      if (doctor.clinicId) {
-        const { prisma } = await import('@medicget/shared/prisma');
-        const clinic = await prisma.clinic.findFirst({ where: { userId: user.id } });
-        if (!clinic || doctor.clinicId !== clinic.id) {
-          return {
-            ok: false,
-            code: 'FORBIDDEN',
-            message: 'You can only update doctors in your clinic',
-          };
-        }
-      } else {
+      const { prisma } = await import('@medicget/shared/prisma');
+      const clinic = await prisma.clinic.findFirst({ where: { userId: user.id } });
+      if (!clinic) {
+        return { ok: false, code: 'FORBIDDEN', message: 'No se encontró tu perfil de clínica.' };
+      }
+      // Reglas de autorización para una clínica que actualiza un médico:
+      //   • Independiente (sin clinicId) → la clínica puede ASOCIARLO
+      //   • Ya en MI clínica              → puede editar / despedir
+      //   • En OTRA clínica               → bloqueado (no se roban médicos)
+      if (doctor.clinicId && doctor.clinicId !== clinic.id) {
         return {
           ok: false,
           code: 'FORBIDDEN',
-          message: 'Doctor does not belong to your clinic',
+          message: 'Este médico está asociado a otra clínica. Pídele que se desvincule primero.',
         };
       }
     } else {

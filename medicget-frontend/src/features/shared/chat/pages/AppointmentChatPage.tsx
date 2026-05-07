@@ -229,8 +229,10 @@ export function AppointmentChatPage({ backTo }: AppointmentChatPageProps) {
         </button>
         <Avatar
           initials={initials(peer.firstName, peer.lastName)}
+          imageUrl={peer.avatarUrl ?? null}
           size="md"
           variant={peer.role === 'DOCTOR' ? 'blue' : 'indigo'}
+          alt={peerDisplayName}
         />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-slate-800 dark:text-white truncate">{peerDisplayName}</p>

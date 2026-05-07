@@ -438,7 +438,7 @@ model Plan {
   modules          String[]      @default([])
   limits           Json?
   isActive         Boolean       @default(true)
-  /** Display order in pricing UI. Lower = first. */
+  /// Display order in pricing UI. Lower = first.
   sortOrder        Int           @default(0)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -454,16 +454,16 @@ model Subscription {
   userId        String              // The DOCTOR or CLINIC user that owns it
   planId        String
   status        SubscriptionStatus  @default(ACTIVE)
-  /** When the current paid period started. */
+  /// When the current paid period started.
   startsAt      DateTime            @default(now())
-  /** When the current paid period ends. After this we degrade to FREE
-      unless renewed. */
+  /// When the current paid period ends. After this we degrade to FREE
+  /// unless renewed.
   expiresAt     DateTime
-  /** Last PayPhone payment that funded this subscription. Null on FREE. */
+  /// Last PayPhone payment that funded this subscription. Null on FREE.
   lastPaymentId String?
-  /** Whether the user has expressed intent to auto-renew. We don't
-      auto-charge yet (PayPhone tokenisation is a later piece) but we
-      surface this in the UI as a reminder/email trigger. */
+  /// Whether the user has expressed intent to auto-renew. We don't
+  /// auto-charge yet (PayPhone tokenisation is a later piece) but we
+  /// surface this in the UI as a reminder/email trigger.
   autoRenew     Boolean             @default(true)
   cancelledAt   DateTime?
   createdAt     DateTime            @default(now())
@@ -489,9 +489,9 @@ model AppSettings {
   id        String   @id @default(cuid())
   key       String   @unique
   value     String?
-  /** Plain-text label used in the admin UI to group keys. */
-  category  String   @default('GENERAL')
-  /** When true, the value is rendered as a password input in the admin UI. */
+  /// Plain-text label used in the admin UI to group keys.
+  category  String   @default("GENERAL")
+  /// When true, the value is rendered as a password input in the admin UI.
   isSecret  Boolean  @default(false)
   updatedBy String?
   updatedAt DateTime @updatedAt
