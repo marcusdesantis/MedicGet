@@ -6,9 +6,9 @@ build/
 .expo-shared/
 coverage/
 
-.env
-.env.local
-.env.*.local
+# .env
+# .env.local
+# .env.*.local
 
 *.log
 npm-debug.log*
