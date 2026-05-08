@@ -117,6 +117,8 @@ Reload nginx
 docker compose up -d nginx --force-recreate
 Solo reconstruit un servicio
 docker compose up -d --build svc-auth
+prisma deploy para migraciones
+npm run prisma:deploy
 ```
 
 
