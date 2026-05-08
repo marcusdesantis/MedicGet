@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { User as UserIcon, Mail, Phone, MapPin, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
@@ -7,6 +7,8 @@ import { Input }        from '@/components/ui/Input';
 import { FormField }    from '@/components/ui/FormField';
 import { Button }       from '@/components/ui/Button';
 import { Alert }        from '@/components/ui/Alert';
+import { CountryProvinceSelect } from '@/components/ui/CountryProvinceSelect';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { useAuth }      from '@/context/AuthContext';
 import { usersApi }     from '@/lib/api';
 
@@ -16,6 +18,10 @@ import { usersApi }     from '@/lib/api';
  * Reads from `useAuth().user.dto.profile` to seed the form, and PATCHes via
  * `usersApi.updateProfile(userId, fields)`. Email/role are read-only because
  * changing them implies an account-level operation we don't support yet.
+ *
+ * País y provincia se eligen mediante el selector compartido
+ * `CountryProvinceSelect` para mantener simetría con el flujo de registro
+ * y los filtros del directorio público.
  */
 export function PatientProfilePage() {
   const { user } = useAuth();
@@ -28,6 +34,7 @@ export function PatientProfilePage() {
     address:   profile?.address   ?? '',
     city:      profile?.city      ?? '',
     country:   profile?.country   ?? '',
+    province:  profile?.province  ?? '',
     avatarUrl: profile?.avatarUrl ?? '',
   });
 
@@ -42,6 +49,7 @@ export function PatientProfilePage() {
         address:   profile.address   ?? '',
         city:      profile.city      ?? '',
         country:   profile.country   ?? '',
+        province:  profile.province  ?? '',
         avatarUrl: profile.avatarUrl ?? '',
       });
     }
@@ -70,6 +78,7 @@ export function PatientProfilePage() {
         address:   form.address.trim() || undefined,
         city:      form.city.trim() || undefined,
         country:   form.country.trim() || undefined,
+        province:  form.province.trim() || undefined,
         avatarUrl: form.avatarUrl || undefined,
       });
       setSuccess(true);
@@ -144,10 +153,9 @@ export function PatientProfilePage() {
             </FormField>
 
             <FormField label="Teléfono">
-              <Input
+              <PhoneField
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="+593 99 999 9999"
+                onChange={(phone) => setForm({ ...form, phone })}
               />
             </FormField>
 
@@ -159,20 +167,25 @@ export function PatientProfilePage() {
               />
             </FormField>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Ciudad">
-                <Input
-                  value={form.city}
-                  onChange={(e) => setForm({ ...form, city: e.target.value })}
-                />
-              </FormField>
-              <FormField label="País">
-                <Input
-                  value={form.country}
-                  onChange={(e) => setForm({ ...form, country: e.target.value })}
-                />
-              </FormField>
-            </div>
+            {/* País + provincia con selector. Reemplaza los antiguos inputs
+                de texto libre para mantener simetría con el resto de la app. */}
+            <CountryProvinceSelect
+              country={form.country}
+              province={form.province}
+              onChange={(loc) => setForm({
+                ...form,
+                country:  loc.country  ?? '',
+                province: loc.province ?? '',
+              })}
+              size="sm"
+            />
+
+            <FormField label="Ciudad">
+              <Input
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+              />
+            </FormField>
 
             {error && <Alert variant="error">{error}</Alert>}
             {success && (

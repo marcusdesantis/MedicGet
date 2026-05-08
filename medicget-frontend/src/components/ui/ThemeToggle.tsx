@@ -7,16 +7,15 @@ export const ThemeToggle = () => {
   return (
     <button
       onClick={toggleTheme}
-      className="flex items-center justify-center w-10 h-10 rounded-lg border border-slate-200 
-                 bg-white text-slate-700
-                 hover:bg-slate-100
-                 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800
+      className="flex items-center justify-center w-9 h-9 rounded-full
+                 text-slate-500 dark:text-slate-400
+                 hover:bg-slate-100 dark:hover:bg-slate-800
                  transition"
     >
       {theme === "dark" ? (
-        <Sun size={18} />
+        <Sun size={16} />
       ) : (
-        <Moon size={18} />
+        <Moon size={16} />
       )}
     </button>
   );

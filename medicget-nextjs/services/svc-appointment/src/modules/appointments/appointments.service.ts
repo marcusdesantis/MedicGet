@@ -4,6 +4,8 @@ import { paginate } from '@medicget/shared/paginate';
 import type { AuthUser } from '@medicget/shared/auth';
 import { generateMeetingUrl } from '@medicget/shared/meeting';
 import { sendEmail }          from '@medicget/shared/email';
+import { getAllowedModalities } from '@medicget/shared/subscription';
+import { createNotification } from '@medicget/shared/notifications';
 import { paymentService }     from '../payment/payment.service';
 import type {
   CreateAppointmentInput,
@@ -20,9 +22,14 @@ export const appointmentsService = {
     rawFilters: Record<string, string>,
     pagination: PaginationParams,
   ): Promise<ServiceResult<ReturnType<typeof paginate>>> {
-    // Poor-man's cron: every list() call sweeps expired payments first.
-    // Bounded to 100 rows per call so it never adds noticeable latency.
+    // Poor-man's cron: every list() call sweeps expired payments + dispara
+    // recordatorios 24h. Bounded a 100 rows por call. Si la app está
+    // viva (alguien navega), corren cada pocos segundos. Si nadie usa
+    // la app por horas, los recordatorios se atrasan hasta que alguien
+    // entra — es trade-off aceptable para MVP. Para producción seria
+    // ponemos un cron real con node-cron o un worker dedicado.
     void paymentService.sweepExpired().catch(() => {/* swallow */});
+    void sweepReminders().catch(() => {/* swallow */});
 
     const filters: AppointmentFilters = {};
 
@@ -88,16 +95,24 @@ export const appointmentsService = {
       };
     }
 
-    // Validate the requested modality is actually offered by this doctor.
-    // `doctor.modalities` is an enum array with at least one element after
-    // the `doctor_modalities` migration; default is ['ONLINE'].
+    // Validate the requested modality is actually offered by this doctor
+    // AND allowed by his current plan. Esto cubre el caso de:
+    //   • un médico que tenía PRESENCIAL/CHAT en `doctor.modalities` y
+    //     después fue downgradeado a FREE (su plan ya no las incluye)
+    //   • un médico que cambió su plan recientemente — la suscripción es
+    //     la fuente de verdad, las modalidades del Doctor son sólo
+    //     "qué quería ofrecer".
     const requestedModality = body.modality ?? 'ONLINE';
-    const accepted = (doctor as { modalities?: string[] }).modalities ?? ['ONLINE'];
-    if (!accepted.includes(requestedModality)) {
+    const stored   = (doctor as { modalities?: string[] }).modalities ?? ['ONLINE'];
+    const allowedByPlan = await getAllowedModalities(doctor.userId);
+    const effective = stored.filter((m) => allowedByPlan.includes(m as 'ONLINE' | 'PRESENCIAL' | 'CHAT'));
+    if (!effective.includes(requestedModality)) {
       return {
         ok: false,
         code: 'BAD_REQUEST',
-        message: `Este médico no acepta la modalidad ${requestedModality.toLowerCase()}. Modalidades disponibles: ${accepted.map((m) => m.toLowerCase()).join(', ')}.`,
+        message: effective.length === 0
+          ? 'Este médico todavía no tiene ninguna modalidad disponible. Pedile que active al menos una desde su perfil.'
+          : `Este médico no acepta la modalidad ${requestedModality.toLowerCase()}. Modalidades disponibles: ${effective.map((m) => m.toLowerCase()).join(', ')}.`,
       };
     }
 
@@ -247,6 +262,8 @@ export const appointmentsService = {
     if (body.status === 'CANCELLED') {
       await appointmentsRepository.unbookSlot(id);
       void paymentService.refund(id, user).catch(() => {/* logged in service */});
+      // Notificar a la otra parte de la cancelación.
+      void notifyCancellation(id, user.id).catch(() => {/* swallow */});
     }
 
     const updated = await appointmentsRepository.update(id, {
@@ -521,4 +538,156 @@ async function notifyAppointmentCreated(appointmentId: string, meetingUrl: strin
     // eslint-disable-next-line no-console
     console.error('[notifyAppointmentCreated] failed:', err);
   }
+}
+
+/**
+ * Sweeper de recordatorios. Busca citas que:
+ *   • Están en las próximas 22-26 horas (ventana de 4h centrada en 24h)
+ *   • Tienen status PENDING / UPCOMING / ONGOING
+ *   • Todavía no recibieron una notificación de tipo APPOINTMENT_REMINDER
+ *
+ * Para cada una, crea una notificación in-app + dispara push + manda
+ * email al paciente y al médico.
+ *
+ * Cómo evita duplicados: antes de mandar, busca si existe una
+ * Notification de tipo APPOINTMENT_REMINDER con metadata.appointmentId
+ * matcheando. Si sí, skip. Postgres maneja el read concurrente sin
+ * problema, y dos requests racing sobre la misma cita en el mismo
+ * segundo es muy improbable (la ventana es de 4h).
+ */
+async function sweepReminders(): Promise<number> {
+  const { prisma } = await import('@medicget/shared/prisma');
+  const now = new Date();
+  const winStart = new Date(now.getTime() + 22 * 60 * 60 * 1000);
+  const winEnd   = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+
+  // Citas con DATE en los próximos 2 días (filtro grueso a nivel DB)
+  const candidates = await prisma.appointment.findMany({
+    where: {
+      status: { in: ['PENDING', 'UPCOMING', 'ONGOING'] },
+      date:   {
+        gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+        lte: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+      },
+    },
+    include: {
+      patient: { include: { user: { include: { profile: true } } } },
+      doctor:  { include: { user: { include: { profile: true } } } },
+      clinic:  true,
+    },
+    take: 200,
+  });
+
+  let sent = 0;
+  for (const a of candidates) {
+    // Construir el datetime real (date + "HH:MM" en UTC-5 Ecuador)
+    const dateOnly = new Date(a.date).toISOString().slice(0, 10);
+    const apptInstant = new Date(`${dateOnly}T${a.time}:00-05:00`);
+    if (apptInstant < winStart || apptInstant > winEnd) continue;
+
+    // ¿Ya hay notificación de recordatorio para esta cita?
+    const existing = await prisma.notification.findFirst({
+      where: {
+        type: 'APPOINTMENT_REMINDER',
+        metadata: { path: ['appointmentId'], equals: a.id },
+      },
+    });
+    if (existing) continue;
+
+    const dateStr = apptInstant.toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long' });
+    const docName = `Dr. ${a.doctor.user.profile?.firstName ?? ''} ${a.doctor.user.profile?.lastName ?? ''}`.trim();
+    const patientName = a.patient.user.profile?.firstName ?? 'paciente';
+
+    // Notificación al paciente
+    await createNotification({
+      userId:  a.patient.userId,
+      type:    'APPOINTMENT_REMINDER',
+      title:   'Recordatorio de cita',
+      message: `Tu cita con ${docName} es mañana ${dateStr} a las ${a.time}.`,
+      metadata: { appointmentId: a.id },
+      pushUrl: `/patient/appointments/${a.id}`,
+    });
+    // Notificación al médico
+    await createNotification({
+      userId:  a.doctor.userId,
+      type:    'APPOINTMENT_REMINDER',
+      title:   'Cita mañana',
+      message: `Tenés cita con ${patientName} mañana ${dateStr} a las ${a.time}.`,
+      metadata: { appointmentId: a.id },
+      pushUrl: `/doctor/appointments/${a.id}`,
+    });
+
+    // Email al paciente — el médico recibe sólo la in-app/push
+    if (a.patient.user.email) {
+      const modalityCopy =
+        a.modality === 'ONLINE'     ? 'Videollamada' :
+        a.modality === 'PRESENCIAL' ? 'Presencial' :
+                                       'Chat en vivo';
+      const meetingBlock = a.meetingUrl
+        ? `<p style="margin:16px 0"><a href="${a.meetingUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Unirme a la videollamada</a></p>`
+        : '';
+      void sendEmail({
+        to:      a.patient.user.email,
+        subject: `Recordatorio: tu cita mañana con ${docName}`,
+        html: `
+          <!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px">
+            <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #e2e8f0">
+              <h1 style="font-size:20px;color:#0f172a;margin:0 0 8px">Hola ${patientName} 👋</h1>
+              <p style="font-size:15px;color:#475569;margin:0 0 16px">
+                Te recordamos que mañana tenés una cita con <strong>${docName}</strong>.
+              </p>
+              <div style="background:#dbeafe;border-radius:12px;padding:16px;margin:16px 0">
+                <p style="margin:0;font-size:14px;color:#0f172a"><strong>📅</strong> ${dateStr}</p>
+                <p style="margin:4px 0;font-size:14px;color:#0f172a"><strong>🕐</strong> ${a.time}</p>
+                <p style="margin:0;font-size:14px;color:#0f172a"><strong>📍</strong> ${modalityCopy}${a.clinic ? ` · ${a.clinic.name}` : ''}</p>
+              </div>
+              ${meetingBlock}
+              <p style="font-size:12px;color:#64748b;margin:24px 0 0">
+                Si necesitás cancelar, hacelo lo antes posible para que otro paciente pueda aprovechar el horario.
+              </p>
+            </div>
+          </body></html>`,
+        text: `Recordatorio: tu cita con ${docName} es mañana ${dateStr} a las ${a.time} (${modalityCopy}).${a.meetingUrl ? `\n\nLink: ${a.meetingUrl}` : ''}`,
+      }).catch(() => {/* swallow */});
+    }
+
+    sent++;
+  }
+  return sent;
+}
+
+/**
+ * Crea una notificación in-app para la "otra parte" cuando una cita se
+ * cancela. Si quien cancela es el paciente → notifica al médico, y
+ * viceversa. Best-effort.
+ */
+async function notifyCancellation(appointmentId: string, cancellerUserId: string): Promise<void> {
+  const { prisma } = await import('@medicget/shared/prisma');
+  const a = await prisma.appointment.findUnique({
+    where:   { id: appointmentId },
+    include: {
+      patient: { include: { user: { include: { profile: true } } } },
+      doctor:  { include: { user: { include: { profile: true } } } },
+    },
+  });
+  if (!a) return;
+
+  const patientUserId = a.patient.userId;
+  const doctorUserId  = a.doctor.userId;
+  const cancelledByPatient = cancellerUserId === patientUserId;
+  const targetUserId       = cancelledByPatient ? doctorUserId : patientUserId;
+
+  const dateStr = new Date(a.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+  const otherName = cancelledByPatient
+    ? (a.patient.user.profile?.firstName ?? 'El paciente')
+    : `Dr. ${a.doctor.user.profile?.firstName ?? ''}`.trim();
+
+  await createNotification({
+    userId:   targetUserId,
+    type:     'APPOINTMENT_CANCELLED',
+    title:    'Cita cancelada',
+    message:  `${otherName} canceló la cita del ${dateStr} a las ${a.time}.`,
+    metadata: { appointmentId },
+    pushUrl:  cancelledByPatient ? `/doctor/appointments` : `/patient/appointments`,
+  });
 }

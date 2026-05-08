@@ -19,6 +19,9 @@ export interface RegisterInput {
   address?:  string;
   city?:     string;
   country?:  string;
+  province?: string;
+  latitude?: number;
+  longitude?: number;
 
   // Clinic role
   clinicName?:        string;

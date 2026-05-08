@@ -32,11 +32,15 @@ export function SectionCard({
   const hasHeader = title || action;
 
   return (
+    // No `overflow-hidden` aquí — rompe popovers/dropdowns absolutamente
+    // posicionados que viven dentro de la card (p. ej. el listado del
+    // PhoneInput). Los bordes redondeados se conservan sin él porque
+    // ningún hijo tiene un fondo de un color distinto que se desborde.
     <div
       className={`
         bg-white dark:bg-slate-900
         rounded-2xl border border-slate-200 dark:border-slate-700
-        shadow-sm overflow-hidden
+        shadow-sm
         ${className}
       `}
     >

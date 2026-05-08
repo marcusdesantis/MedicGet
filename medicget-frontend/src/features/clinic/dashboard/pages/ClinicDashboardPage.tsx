@@ -7,6 +7,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar }      from '@/components/ui/Avatar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { BarChart }    from '@/components/ui/BarChart';
+import { MiniTrendCard } from '@/components/ui/MiniTrendCard';
 import { DataTable }   from '@/components/ui/DataTable';
 import { EmptyState }  from '@/components/ui/EmptyState';
 import { DashboardLoading, DashboardError } from '@/components/ui/DashboardState';
@@ -173,6 +174,18 @@ export function ClinicDashboardPage() {
           )}
         </SectionCard>
       </div>
+
+      {/* Mini trend de ingresos — atajo a /clinic/reports */}
+      {revenueChart.length > 0 && (
+        <MiniTrendCard
+          title="Tendencia de ingresos"
+          subtitle="Mensual — abrí Informes para descargar CSV y filtrar por rango"
+          reportsLink="/clinic/reports"
+          data={revenueChart}
+          color="#10b981"
+          formatValue={(v) => `$${v.toFixed(0)}`}
+        />
+      )}
 
       {/* Recent appointments table */}
       <SectionCard

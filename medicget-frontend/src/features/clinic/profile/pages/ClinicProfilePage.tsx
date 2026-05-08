@@ -13,6 +13,8 @@ import { Save, Loader2, CheckCircle2, Building2, Mail, Phone, Globe, MapPin } fr
 import { PageHeader }      from '@/components/ui/PageHeader';
 import { SectionCard }     from '@/components/ui/SectionCard';
 import { AvatarUploader }  from '@/components/ui/AvatarUploader';
+import { LocationPicker, type LocationValue } from '@/components/ui/LocationPicker';
+import { PhoneField }      from '@/components/ui/PhoneField';
 import { Input }           from '@/components/ui/Input';
 import { FormField }       from '@/components/ui/FormField';
 import { Button }          from '@/components/ui/Button';
@@ -30,6 +32,8 @@ export function ClinicProfilePage() {
     () => clinicsApi.getById(clinicId!),
     [clinicId],
   );
+
+  const [location, setLocation] = useState<LocationValue>({});
 
   const [form, setForm] = useState({
     // Clinic fields
@@ -63,6 +67,14 @@ export function ClinicProfilePage() {
       country:     c.country     ?? '',
       logoUrl:     c.logoUrl     ?? '',
     }));
+    setLocation({
+      country:   c.country   ?? undefined,
+      province:  c.province  ?? undefined,
+      city:      c.city      ?? undefined,
+      address:   c.address   ?? undefined,
+      latitude:  c.latitude  ?? undefined,
+      longitude: c.longitude ?? undefined,
+    });
   }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -93,9 +105,15 @@ export function ClinicProfilePage() {
           phone:       form.phone.trim() || undefined,
           email:       form.email.trim() || undefined,
           website:     form.website.trim() || undefined,
-          address:     form.address.trim() || undefined,
-          city:        form.city.trim() || undefined,
-          country:     form.country.trim() || undefined,
+          // Ubicación — viene del LocationPicker. País + provincia +
+          // ciudad + dirección + lat/lng. Para clínicas se considera
+          // obligatorio (validación frontend, no schema).
+          address:     location.address  ?? undefined,
+          city:        location.city     ?? undefined,
+          province:    location.province ?? undefined,
+          country:     location.country  ?? undefined,
+          latitude:    location.latitude,
+          longitude:   location.longitude,
           logoUrl:     form.logoUrl       || undefined,
         }),
         usersApi.updateProfile(user.id, {
@@ -176,7 +194,10 @@ export function ClinicProfilePage() {
               </FormField>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Teléfono de contacto">
-                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  <PhoneField
+                    value={form.phone}
+                    onChange={(phone) => setForm({ ...form, phone })}
+                  />
                 </FormField>
                 <FormField label="Email público">
                   <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
@@ -188,18 +209,11 @@ export function ClinicProfilePage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Dirección">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Dirección">
-                <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-              </FormField>
-              <FormField label="Ciudad">
-                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-              </FormField>
-              <FormField label="País">
-                <Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
-              </FormField>
-            </div>
+          <SectionCard
+            title="Ubicación"
+            subtitle="Marcá en el mapa la dirección exacta — los pacientes la usan para llegar y aparece en los filtros del directorio."
+          >
+            <LocationPicker value={location} onChange={setLocation} required />
           </SectionCard>
 
           <SectionCard title="Representante legal" subtitle="Datos privados — no se muestran a los pacientes">
@@ -211,7 +225,10 @@ export function ClinicProfilePage() {
                 <Input value={form.ownerLastName} onChange={(e) => setForm({ ...form, ownerLastName: e.target.value })} />
               </FormField>
               <FormField label="Teléfono personal">
-                <Input value={form.ownerPhone} onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })} />
+                <PhoneField
+                  value={form.ownerPhone}
+                  onChange={(ownerPhone) => setForm({ ...form, ownerPhone })}
+                />
               </FormField>
             </div>
           </SectionCard>

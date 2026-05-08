@@ -20,11 +20,16 @@ export interface UpdateClinicData {
   name?: string;
   address?: string;
   city?: string;
+  province?: string;
   country?: string;
+  latitude?: number;
+  longitude?: number;
   description?: string;
   phone?: string;
   email?: string;
   website?: string;
+  /** Logo de la clínica — dataURL generado por AvatarUploader. */
+  logoUrl?: string;
 }
 
 export async function findMany(

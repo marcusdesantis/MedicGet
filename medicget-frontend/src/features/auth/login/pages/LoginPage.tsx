@@ -10,28 +10,6 @@ import { Divider } from '../../register/components/Divider';
 import { SocialButton } from '../../register/components/SocialButton';
 import { useAuth } from '@/context/AuthContext';
 
-// Demo credentials now map to real API email/password pairs
-const ROLE_HINTS = [
-  {
-    label:    'Paciente',
-    email:    'paciente@medicget.com',
-    password: 'paciente',
-    color:    'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300',
-  },
-  {
-    label:    'Médico',
-    email:    'medico@medicget.com',
-    password: 'medico',
-    color:    'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300',
-  },
-  {
-    label:    'Clínica',
-    email:    'clinica@medicget.com',
-    password: 'clinica',
-    color:    'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300',
-  },
-];
-
 const ROLE_REDIRECTS: Record<string, string> = {
   patient: '/patient',
   doctor:  '/doctor',
@@ -78,9 +56,6 @@ export const LoginPage = () => {
     }
   };
 
-  const quickFill = (email: string, password: string) =>
-    setForm({ email, password });
-
   return (
     <AuthLayout>
       <AuthCard>
@@ -93,22 +68,6 @@ export const LoginPage = () => {
           </div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-white">Bienvenido a MedicGet</h1>
           <p className="text-sm text-slate-400 mt-1">Accede a tu cuenta</p>
-        </div>
-
-        {/* Demo quick-fill */}
-        <div className="mb-5">
-          <p className="text-xs text-slate-400 text-center mb-2">Acceso rápido (demo)</p>
-          <div className="flex gap-2">
-            {ROLE_HINTS.map((r) => (
-              <button
-                key={r.email}
-                onClick={() => quickFill(r.email, r.password)}
-                className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition hover:opacity-80 ${r.color}`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Google */}
@@ -126,7 +85,7 @@ export const LoginPage = () => {
           <FormField>
             <Input
               type="email"
-              placeholder="Email (paciente@medicget.com)"
+              placeholder="tu@correo.com"
               value={form.email}
               onChange={(e) => handle('email', e.target.value)}
               className="h-12 rounded-full"

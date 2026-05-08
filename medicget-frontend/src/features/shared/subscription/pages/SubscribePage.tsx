@@ -66,6 +66,11 @@ export function SubscribePage() {
       const responseUrl = `${window.location.origin}/subscribe/return`;
       const cancellationUrl = `${responseUrl}?cancel=1`;
       const res = await subscriptionsApi.checkout({ planId: plan.id, responseUrl, cancellationUrl });
+      // Guardamos el subscriptionId local en sessionStorage para que el
+      // return handler confirme exactamente esa suscripción. Si no, /me
+      // podría devolvernos la suscripción ACTIVE vieja (FREE) y nunca
+      // confirmaríamos la nueva PENDING_PAYMENT.
+      sessionStorage.setItem('medicget_pending_sub', res.data.subscriptionId);
       window.location.assign(res.data.redirectUrl);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })
@@ -161,26 +166,36 @@ export function SubscribeReturnPage() {
       setReason('No se identificó la transacción.');
       return;
     }
-    // We don't have the local subscriptionId in the URL — PayPhone only
-    // returns its own id + clientTransactionId. The clientTransactionId
-    // is `sub-<userId>-<timestamp>` which the backend uses to find the
-    // most recent PENDING subscription for the user; for simplicity we
-    // ask /subscriptions/me on the frontend and confirm whichever is
-    // PENDING.
+    // El subscriptionId local fue guardado por SubscribePage en
+    // sessionStorage justo antes de redirigir a PayPhone — eso nos da
+    // la suscripción PENDING_PAYMENT exacta a confirmar, sin depender
+    // de heurísticas sobre /me (que para usuarios con FREE preexistente
+    // devuelve la FREE en vez de la nueva pendiente).
+    const stashedSubId = sessionStorage.getItem('medicget_pending_sub');
+
     (async () => {
       try {
-        const me = await subscriptionsApi.me();
-        const sub = me.data.subscription;
-        if (!sub || sub.status !== 'PENDING_PAYMENT') {
-          // Maybe already confirmed in another tab — treat as success
-          setPhase('ok');
-          return;
+        let subscriptionId = stashedSubId;
+
+        // Fallback: si por alguna razón no quedó stasheada (otra pestaña,
+        // sessionStorage limpiado), buscamos por /me la pendiente.
+        if (!subscriptionId) {
+          const me = await subscriptionsApi.me();
+          const sub = me.data.subscription;
+          if (!sub || sub.status !== 'PENDING_PAYMENT') {
+            // Probablemente ya se confirmó en otra pestaña — tratamos como éxito.
+            setPhase('ok');
+            return;
+          }
+          subscriptionId = sub.id;
         }
+
         const conf = await subscriptionsApi.confirm({
-          subscriptionId:    sub.id,
+          subscriptionId,
           payphonePaymentId: id,
           fakeOk,
         });
+        sessionStorage.removeItem('medicget_pending_sub');
         if (conf.data.status === 'ACTIVE') setPhase('ok');
         else                                { setPhase('fail'); setReason('PayPhone rechazó el cobro.'); }
       } catch (err: unknown) {

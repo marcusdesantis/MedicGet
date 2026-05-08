@@ -68,6 +68,48 @@ const CANONICAL_MODULES: Record<string, Record<string, string[]>> = {
   },
 };
 
+/**
+ * Modalidades válidas en el dominio. Filtramos las strings del array
+ * `Plan.modules` por estos valores antes de cruzarlos con
+ * `Doctor.modalities` (porque modules incluye también REPORTS,
+ * BRANDING, etc. que no son modalidades).
+ */
+const VALID_MODALITIES = ['ONLINE', 'PRESENCIAL', 'CHAT'] as const;
+export type Modality = typeof VALID_MODALITIES[number];
+
+/**
+ * Devuelve la lista de modalidades que el plan ACTIVO del usuario le
+ * permite ofrecer. Fallback: ['ONLINE'] si no tiene suscripción.
+ *
+ * Esta es la fuente de verdad para gating de funcionalidades por plan.
+ * La columna `Doctor.modalities` registra las que EL MÉDICO eligió
+ * tener visibles, pero la intersección con esta función es lo que
+ * efectivamente puede usar.
+ */
+export async function getAllowedModalities(userId: string): Promise<Modality[]> {
+  const sub = await prisma.subscription.findFirst({
+    where:   { userId, status: 'ACTIVE' },
+    include: { plan: true },
+    orderBy: { expiresAt: 'desc' },
+  });
+  const modules = sub?.plan.modules ?? ['ONLINE'];
+  return VALID_MODALITIES.filter((m) => modules.includes(m));
+}
+
+/**
+ * Versión no-async que cruza `doctor.modalities` con un array de
+ * modules ya cargados. Útil cuando ya tenés el plan cargado y querés
+ * sanitizar inline sin otra query.
+ */
+export function intersectModalities(
+  doctorModalities: string[],
+  planModules:      string[],
+): Modality[] {
+  return VALID_MODALITIES.filter(
+    (m) => doctorModalities.includes(m) && planModules.includes(m),
+  );
+}
+
 let plansBootstrapped = false;
 
 export async function bootstrapPlanFeatures(): Promise<void> {

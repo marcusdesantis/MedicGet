@@ -141,18 +141,42 @@ export const appointmentsRepository = {
         },
       });
 
-      // 4. Create a notification for the doctor
-      const doctor = await tx.doctor.findUnique({
-        where: { id: apptData.doctorId },
-        select: { userId: true },
-      });
+      // 4. Notificaciones in-app para AMBAS partes
+      const [doctor, patient] = await Promise.all([
+        tx.doctor.findUnique({
+          where: { id: apptData.doctorId },
+          select: { userId: true, user: { select: { profile: { select: { firstName: true } } } } },
+        }),
+        tx.patient.findUnique({
+          where: { id: apptData.patientId },
+          select: { userId: true, user: { select: { profile: { select: { firstName: true } } } } },
+        }),
+      ]);
+
+      const dateStr = new Date(apptData.date as string).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+      const time    = apptData.time as string;
+
       if (doctor) {
+        const patientName = patient?.user?.profile?.firstName ?? 'Un paciente';
         await tx.notification.create({
           data: {
-            userId: doctor.userId,
-            type: 'APPOINTMENT_CONFIRMED',
-            title: 'New Appointment',
-            message: `You have a new appointment scheduled for ${apptData.date} at ${apptData.time}.`,
+            userId:  doctor.userId,
+            type:    'APPOINTMENT_CONFIRMED',
+            title:   'Nueva cita',
+            message: `${patientName} reservó una cita para el ${dateStr} a las ${time}.`,
+            metadata: { appointmentId: appointment.id },
+          },
+        });
+      }
+      if (patient) {
+        const docFirst = doctor?.user?.profile?.firstName ?? '';
+        await tx.notification.create({
+          data: {
+            userId:  patient.userId,
+            type:    'APPOINTMENT_CONFIRMED',
+            title:   'Cita reservada',
+            message: `Tu cita con Dr. ${docFirst} está reservada para el ${dateStr} a las ${time}. Pendiente de pago.`,
+            metadata: { appointmentId: appointment.id },
           },
         });
       }

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle, Pill, Heart, FileText, Plus, X, Loader2, CheckCircle2,
-  Save, Edit3, Calendar as CalendarIcon,
+  Save, Edit3, Calendar as CalendarIcon, Droplet, Cake,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
 import { CardContainer } from '@/components/ui/CardContainer';
@@ -92,13 +93,11 @@ export function MedicalHistoryPage() {
       />
 
       {/* ── Demographics card ─────────────────────────────────────────────── */}
-      <CardContainer>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <Demographic label="Edad"            value={calcAge(patient.dateOfBirth) ? `${calcAge(patient.dateOfBirth)} años` : '—'} />
-          <Demographic label="Tipo de sangre"  value={patient.bloodType ?? '—'} />
-          <Demographic label="Consultas"       value={String(apptsState.state.status === 'ready' ? apptsState.state.data.meta.total : 0)} />
-        </div>
-      </CardContainer>
+      <DemographicsCard
+        patient={patient}
+        consultsCount={apptsState.state.status === 'ready' ? apptsState.state.data.meta.total : 0}
+        onSaved={patientState.refetch}
+      />
 
       {/* ── Editable clinical lists ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -170,12 +169,179 @@ export function MedicalHistoryPage() {
 
 /* ─── Subcomponents ────────────────────────────────────────────────────── */
 
-function Demographic({ label, value }: { label: string; value: string }) {
+function Demographic({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="min-w-0">
-      <p className="text-xs uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="text-lg font-bold text-slate-800 dark:text-white">{value}</p>
+    <div className="min-w-0 flex items-center gap-3">
+      {icon && (
+        <div className="h-9 w-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 flex-shrink-0">
+          {icon}
+        </div>
+      )}
+      <div>
+        <p className="text-xs uppercase tracking-wider text-slate-400">{label}</p>
+        <p className="text-lg font-bold text-slate-800 dark:text-white">{value}</p>
+      </div>
     </div>
+  );
+}
+
+const BLOOD_TYPES = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] as const;
+
+/**
+ * DemographicsCard — muestra fecha de nacimiento + tipo de sangre y permite
+ * editarlos al instante. Formato date-only para `dateOfBirth`; el servidor
+ * acepta tanto YYYY-MM-DD como ISO completo.
+ *
+ * Cuando no hay datos cargados aún, muestra inputs vacíos en modo edit
+ * para que el paciente complete su perfil sin tener que clickear "editar"
+ * primero.
+ */
+function DemographicsCard({
+  patient, consultsCount, onSaved,
+}: {
+  patient:       PatientDto;
+  consultsCount: number;
+  onSaved:       () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [dob,     setDob]     = useState<string>('');
+  const [blood,   setBlood]   = useState<string>('');
+  const [saving,  setSaving]  = useState(false);
+
+  const hasData = !!patient.dateOfBirth || !!patient.bloodType;
+
+  // Hidratar inputs cuando entra en modo edición o cuando llegan datos
+  // nuevos del backend.
+  useEffect(() => {
+    setDob(patient.dateOfBirth ? patient.dateOfBirth.slice(0, 10) : '');
+    setBlood(patient.bloodType ?? '');
+  }, [patient.dateOfBirth, patient.bloodType]);
+
+  const ageYears = calcAge(patient.dateOfBirth);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await patientsApi.update(patient.id, {
+        dateOfBirth: dob || undefined,
+        bloodType:   blood || undefined,
+      } as Partial<PatientDto>);
+      toast.success('Datos clínicos guardados');
+      setEditing(false);
+      onSaved();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'No se pudo guardar';
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setDob(patient.dateOfBirth ? patient.dateOfBirth.slice(0, 10) : '');
+    setBlood(patient.bloodType ?? '');
+    setEditing(false);
+  };
+
+  return (
+    <CardContainer>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Datos clínicos básicos</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {hasData
+              ? 'Esta información ayuda al médico a tener contexto antes de tu consulta.'
+              : 'Completá tu fecha de nacimiento y tipo de sangre — el médico los va a poder ver al atenderte.'}
+          </p>
+        </div>
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline flex-shrink-0"
+          >
+            <Edit3 size={11} /> {hasData ? 'Editar' : 'Completar'}
+          </button>
+        ) : (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-2 py-1 rounded disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+              Guardar
+            </button>
+            <button
+              onClick={cancel}
+              disabled={saving}
+              className="text-xs font-medium px-2 py-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Fecha de nacimiento / Edad */}
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 flex items-center gap-1.5">
+            <Cake size={11} /> Fecha de nacimiento
+          </p>
+          {editing ? (
+            <input
+              type="date"
+              value={dob}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setDob(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          ) : (
+            <div>
+              <p className="text-base font-bold text-slate-800 dark:text-white">
+                {patient.dateOfBirth
+                  ? new Date(patient.dateOfBirth).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })
+                  : '—'}
+              </p>
+              {ageYears !== null && (
+                <p className="text-xs text-slate-400">{ageYears} años</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Tipo de sangre */}
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 flex items-center gap-1.5">
+            <Droplet size={11} /> Tipo de sangre
+          </p>
+          {editing ? (
+            <select
+              value={blood}
+              onChange={(e) => setBlood(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">No especificado</option>
+              {BLOOD_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-base font-bold text-slate-800 dark:text-white">{patient.bloodType ?? '—'}</p>
+          )}
+        </div>
+
+        {/* Consultas — read-only siempre */}
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 flex items-center gap-1.5">
+            <FileText size={11} /> Consultas
+          </p>
+          <p className="text-base font-bold text-slate-800 dark:text-white">{consultsCount}</p>
+          <p className="text-xs text-slate-400">{consultsCount === 1 ? 'completada' : 'completadas'}</p>
+        </div>
+      </div>
+    </CardContainer>
   );
 }
 

@@ -89,7 +89,7 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: true } | {
   }
 
   try {
-    const from = await getSetting('SMTP_FROM', DEFAULT_FROM);
+    const from = await composeFromHeader();
     await t.sendMail({
       from,
       to:   payload.to,
@@ -104,4 +104,38 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: true } | {
     console.error('[email] send failed:', msg);
     return { ok: false, error: msg };
   }
+}
+
+/**
+ * Arma el header `From` correctamente sin importar cómo el admin haya
+ * llenado el campo "Nombre del remitente" (`SMTP_FROM`). Los casos:
+ *
+ *   1. SMTP_FROM = "MedicGet <noreply@x.com>"   → tal cual.
+ *   2. SMTP_FROM = "MedicGet"                    → "MedicGet <SMTP_USER>".
+ *   3. SMTP_FROM = "noreply@x.com"               → "<noreply@x.com>".
+ *   4. SMTP_FROM vacío + SMTP_USER presente      → "<SMTP_USER>".
+ *   5. Todo vacío                                → DEFAULT_FROM (stub).
+ *
+ * El error clásico era el caso 2: nodemailer rechazaba el envío porque el
+ * header `From` no contenía email. Componiendo con `SMTP_USER` resolvemos.
+ */
+async function composeFromHeader(): Promise<string> {
+  const raw  = (await getSetting('SMTP_FROM', '')) ?? '';
+  const user = (await getSetting('SMTP_USER', '')) ?? '';
+  const trimmed = raw.trim();
+
+  // 1. Header "Nombre <email>" ya válido — devolverlo tal cual.
+  if (/<[^>]+@[^>]+>/.test(trimmed)) return trimmed;
+
+  // 3. SMTP_FROM es directamente un email — usarlo solo.
+  if (trimmed.includes('@')) return trimmed;
+
+  // 2. SMTP_FROM es un nombre y tenemos SMTP_USER → componemos.
+  if (trimmed && user) return `${trimmed} <${user}>`;
+
+  // 4. Sin SMTP_FROM pero hay user.
+  if (user) return user;
+
+  // 5. Fallback al stub.
+  return DEFAULT_FROM;
 }

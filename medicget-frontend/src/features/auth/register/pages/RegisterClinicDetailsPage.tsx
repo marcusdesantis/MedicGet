@@ -5,6 +5,7 @@ import { ClinicDetailsForm } from "../components/ClinicDetailsForm";
 import { Button } from "@/components/ui/Button";
 import { AuthCard } from "@/components/ui/AuthCard";
 import { Alert } from "@/components/ui/Alert";
+import { LocationPicker, type LocationValue } from "@/components/ui/LocationPicker";
 import { useAuth } from "@/context/AuthContext";
 import { useRegistrationDraft } from "../state";
 import {
@@ -26,9 +27,12 @@ const PAGE_FIELDS = new Set([
 /**
  * Clinic flow — step 2 of 2 (final submit).
  *
- * Combines step-1 clinic info + step-2 contact details into a single
- * `register` payload. The contact email is on THIS page, so a duplicate-
- * email conflict from the backend is rendered inline next to the input.
+ * Combina la información de la clínica del paso 1 con los datos del
+ * representante (paso 2) y la ubicación física (LocationPicker, OBLIGATORIA)
+ * en un único `register` payload.
+ *
+ * El email de contacto vive en este formulario, así que un conflicto de
+ * duplicado se renderiza inline al lado del input.
  */
 export const RegisterClinicDetailsPage = () => {
     const navigate = useNavigate();
@@ -36,8 +40,30 @@ export const RegisterClinicDetailsPage = () => {
     const [draft, setDraft] = useRegistrationDraft("clinic");
     const [submitting, setSubmitting]   = useState(false);
     const [submitError, setSubmitError] = useState<{ message: string; field?: string } | null>(null);
+    const [showLocErrors, setShowLocErrors] = useState(false);
 
-    // Step 2 client-side errors.
+    // Mapeo entre el draft (sessionStorage) y el shape que entiende LocationPicker.
+    const location: LocationValue = {
+        country:   draft.country      || undefined,
+        province:  draft.province     || undefined,
+        city:      draft.cityLocation || undefined,
+        address:   draft.address      || undefined,
+        latitude:  draft.lat          ?? undefined,
+        longitude: draft.lng          ?? undefined,
+    };
+
+    const handleLocationChange = (next: LocationValue) => {
+        setDraft({
+            country:      next.country  ?? "",
+            province:     next.province ?? "",
+            cityLocation: next.city     ?? "",
+            address:      next.address  ?? "",
+            lat:          next.latitude  ?? null,
+            lng:          next.longitude ?? null,
+        });
+    };
+
+    // Step 2 client-side errors (datos personales).
     const clientErrors = useMemo(() => ({
         name:                 validateRequired(draft.name,     "El nombre"),
         lastname:             validateRequired(draft.lastname, "El apellido"),
@@ -50,6 +76,15 @@ export const RegisterClinicDetailsPage = () => {
         acceptTerms:          draft.acceptTerms          ? null : "Debes aceptar los términos",
         confirmAuthorization: draft.confirmAuthorization ? null : "Debes confirmar la autorización",
     }), [draft]);
+
+    // Validación de la ubicación — para clínicas TODO es obligatorio.
+    const locationErrors = useMemo(() => ({
+        country:  validateRequired(draft.country,  "El país"),
+        province: validateRequired(draft.province, "La provincia"),
+        marker:   draft.lat != null && draft.lng != null
+            ? null
+            : "Tocá el mapa para marcar la ubicación exacta",
+    }), [draft.country, draft.province, draft.lat, draft.lng]);
 
     /** Server errors override client validation for the same field so the
      *  user sees the most actionable message (e.g. duplicate-email beats
@@ -68,10 +103,20 @@ export const RegisterClinicDetailsPage = () => {
         draft.specialists.trim().length > 0 &&
         draft.city.trim().length        > 0;
 
-    const canSubmit = isClean(clientErrors) && stepOneValid && !submitting;
+    const personalValid = isClean(clientErrors);
+    const locationValid = isClean(locationErrors);
+    const canSubmit = personalValid && stepOneValid && !submitting;
+
+    const firstLocationError = locationErrors.country
+        ?? locationErrors.province
+        ?? locationErrors.marker;
 
     const handleSubmit = async () => {
         if (!canSubmit) return;
+        if (!locationValid) {
+            setShowLocErrors(true);
+            return;
+        }
         setSubmitting(true);
         setSubmitError(null);
 
@@ -83,7 +128,13 @@ export const RegisterClinicDetailsPage = () => {
             lastName:    draft.lastname.trim(),
             phone:       draft.phone || undefined,
             clinicName:  draft.clinicName.trim(),
-            city:        draft.city.trim() || undefined,
+            // Ubicación física de la clínica (obligatoria)
+            address:     draft.address      || undefined,
+            city:        draft.cityLocation || draft.city.trim() || undefined,
+            country:     draft.country      || undefined,
+            province:    draft.province     || undefined,
+            latitude:    draft.lat ?? undefined,
+            longitude:   draft.lng ?? undefined,
         });
 
         setSubmitting(false);
@@ -139,7 +190,7 @@ export const RegisterClinicDetailsPage = () => {
                     </div>
                 )}
 
-                {/* FORM */}
+                {/* FORM — datos del representante */}
                 <ClinicDetailsForm
                     form={draft}
                     setForm={(patch) => {
@@ -151,6 +202,26 @@ export const RegisterClinicDetailsPage = () => {
                     }}
                     errors={errors}
                 />
+
+                {/* UBICACIÓN — obligatoria para clínicas */}
+                <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                    <h2 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
+                        Ubicación de la clínica *
+                    </h2>
+                    <p className="text-xs text-slate-500 mb-4">
+                        Seleccioná país, provincia y marcá el punto exacto en el mapa — los pacientes la usan para llegar y aparece en los filtros del directorio.
+                    </p>
+                    <LocationPicker
+                        value={location}
+                        onChange={handleLocationChange}
+                        required
+                    />
+                    {showLocErrors && firstLocationError && (
+                        <div className="mt-3">
+                            <Alert variant="error">{firstLocationError}</Alert>
+                        </div>
+                    )}
+                </div>
 
                 {/* LEGAL INFO */}
                 <div className="mt-8 text-xs text-slate-500 space-y-2">

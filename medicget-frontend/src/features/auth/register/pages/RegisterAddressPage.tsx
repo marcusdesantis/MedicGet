@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MapPin, ChevronLeft } from "lucide-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
-import { AddressForm } from "../components/AddressForm";
 import { ProfilePreviewCard } from "../components/ProfilePreviewCard";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { FormField } from "@/components/ui/FormField";
+import { Input } from "@/components/ui/Input";
+import { LocationPicker, type LocationValue } from "@/components/ui/LocationPicker";
 import { useAuth } from "@/context/AuthContext";
 import { useRegistrationDraft } from "../state";
 import {
@@ -19,10 +21,15 @@ import {
 /**
  * Doctor flow — step 2 of 2 (final submit).
  *
- * Step 1 collects email/password/etc.; step 2 only captures optional address.
- * That means a server-side conflict on `email` can't be edited from THIS
- * page — we need to send the user back to step 1. The alert below renders
- * with a "Volver al paso 1" CTA whenever the failed field belongs to step 1.
+ * Step 1 collects email/password/etc.; step 2 captures the consult location.
+ * El médico debe seleccionar país + provincia + marcar el punto en el mapa
+ * (obligatorio); ese dato alimenta el filtro "cerca de mí" del directorio
+ * público y el detalle del perfil.
+ *
+ * Un conflicto del backend sobre `email` no puede editarse desde ESTA
+ * página — necesitamos mandar al usuario al paso 1. La alerta inferior se
+ * renderiza con un CTA "Volver al paso 1" cuando el campo fallido pertenece
+ * al paso 1.
  */
 
 /** Map server-side field name → user-friendly Spanish label. Used inside
@@ -42,8 +49,31 @@ export const RegisterAddressPage = () => {
     const [draft, setDraft] = useRegistrationDraft("doctor");
     const [submitting, setSubmitting]   = useState(false);
     const [submitError, setSubmitError] = useState<{ message: string; field?: string } | null>(null);
+    const [showLocErrors, setShowLocErrors] = useState(false);
 
-    // Re-validate step 1 in case the user skipped it.
+    // Mapeo entre el draft (que vive en sessionStorage como strings + nullables)
+    // y el shape `LocationValue` que entiende el LocationPicker.
+    const location: LocationValue = {
+        country:   draft.country  || undefined,
+        province:  draft.province || undefined,
+        city:      draft.city     || undefined,
+        address:   draft.address  || undefined,
+        latitude:  draft.lat      ?? undefined,
+        longitude: draft.lng      ?? undefined,
+    };
+
+    const handleLocationChange = (next: LocationValue) => {
+        setDraft({
+            country:  next.country  ?? "",
+            province: next.province ?? "",
+            city:     next.city     ?? "",
+            address:  next.address  ?? "",
+            lat:      next.latitude  ?? null,
+            lng:      next.longitude ?? null,
+        });
+    };
+
+    // Re-valida step 1 por si el usuario lo saltó.
     const stepOneErrors = useMemo(() => ({
         name:      validateRequired(draft.name,      "El nombre"),
         lastname:  validateRequired(draft.lastname,  "El apellido"),
@@ -54,11 +84,25 @@ export const RegisterAddressPage = () => {
         terms:     draft.terms ? null : "Debes aceptar los términos y condiciones",
     }), [draft]);
 
+    // Validación de step 2 — country/province/lat/lng son OBLIGATORIOS.
+    const locationErrors = useMemo(() => ({
+        country:  validateRequired(draft.country,  "El país"),
+        province: validateRequired(draft.province, "La provincia"),
+        marker:   draft.lat != null && draft.lng != null
+            ? null
+            : "Tocá el mapa para marcar la ubicación exacta",
+    }), [draft.country, draft.province, draft.lat, draft.lng]);
+
     const stepOneValid = isClean(stepOneErrors);
+    const locationValid = isClean(locationErrors);
 
     const handleSubmit = async () => {
         if (!stepOneValid) {
             navigate("/register/professional");
+            return;
+        }
+        if (!locationValid) {
+            setShowLocErrors(true);
             return;
         }
         setSubmitting(true);
@@ -73,6 +117,10 @@ export const RegisterAddressPage = () => {
             phone:     draft.phone || undefined,
             address:   draft.address || undefined,
             city:      draft.city || undefined,
+            country:   draft.country || undefined,
+            province:  draft.province || undefined,
+            latitude:  draft.lat  ?? undefined,
+            longitude: draft.lng  ?? undefined,
             specialty: draft.specialty || undefined,
         });
 
@@ -104,10 +152,12 @@ export const RegisterAddressPage = () => {
         : null;
 
     const goBackToStepOne = () => {
-        // Preserve the failed-field hint so step 1 can highlight that field
-        // in red the moment the user lands there.
         navigate("/register/professional", { state: { focusField: submitError?.field } });
     };
+
+    const firstLocationError = locationErrors.country
+        ?? locationErrors.province
+        ?? locationErrors.marker;
 
     return (
         <AuthLayout>
@@ -136,7 +186,7 @@ export const RegisterAddressPage = () => {
                             ¿Dónde está tu consulta?
                         </h1>
                         <p className="text-slate-500 mt-2 text-lg">
-                            Ayuda a tus pacientes a encontrarte fácilmente en el mapa.
+                            Seleccioná país, provincia y marcá el punto exacto en el mapa para que tus pacientes te encuentren.
                         </p>
                     </div>
 
@@ -178,8 +228,35 @@ export const RegisterAddressPage = () => {
                     )}
 
                     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                        <div className="p-6">
-                            <AddressForm form={draft} setForm={setDraft} />
+                        <div className="p-6 space-y-5">
+                            <Alert>
+                                Tocá el mapa para marcar la ubicación exacta de tu consulta — los pacientes la usan para llegar.
+                            </Alert>
+
+                            <FormField label="Nombre de tu consulta">
+                                <Input
+                                    placeholder="Ej: Clínica Dental Central"
+                                    value={draft.consultName}
+                                    onChange={(e) => setDraft({ consultName: e.target.value })}
+                                />
+                            </FormField>
+
+                            <LocationPicker
+                                value={location}
+                                onChange={handleLocationChange}
+                                required
+                            />
+
+                            <FormField label="Código postal">
+                                <Input
+                                    value={draft.zip}
+                                    onChange={(e) => setDraft({ zip: e.target.value })}
+                                />
+                            </FormField>
+
+                            {showLocErrors && firstLocationError && (
+                                <Alert variant="error">{firstLocationError}</Alert>
+                            )}
                         </div>
 
                         <div className="bg-slate-50 dark:bg-slate-800/50 p-6 flex flex-col sm:flex-row items-center gap-4">
@@ -189,14 +266,6 @@ export const RegisterAddressPage = () => {
                                 className="bg-[#1A82FE] hover:bg-[#156cd4] text-white px-8 py-2 rounded-xl text-lg font-bold w-full sm:w-auto shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {submitting ? "Creando cuenta..." : "Finalizar registro"}
-                            </Button>
-
-                            <Button
-                                onClick={handleSubmit}
-                                disabled={submitting || !stepOneValid}
-                                className="text-slate-400 hover:text-slate-600 font-medium text-sm transition-colors py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Omitir por ahora
                             </Button>
                         </div>
                     </div>

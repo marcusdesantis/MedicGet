@@ -6,6 +6,7 @@ import { PlanBadge }   from '@/components/ui/PlanBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar }      from '@/components/ui/Avatar';
 import { BarChart }    from '@/components/ui/BarChart';
+import { MiniTrendCard } from '@/components/ui/MiniTrendCard';
 import { EmptyState }  from '@/components/ui/EmptyState';
 import { DashboardLoading, DashboardError } from '@/components/ui/DashboardState';
 import { useApi } from '@/hooks/useApi';
@@ -136,6 +137,18 @@ export function DoctorDashboardPage() {
           </div>
         </SectionCard>
       </div>
+
+      {/* Mini trend de citas esta semana — atajo a /doctor/reports */}
+      {weeklyChart.length > 0 && (
+        <MiniTrendCard
+          title="Tendencia de citas"
+          subtitle="Distribución semanal — abrí Reportes para ver más"
+          reportsLink="/doctor/reports"
+          data={weeklyChart}
+          color="#0d9488"
+          formatValue={(v) => String(Math.round(v))}
+        />
+      )}
 
       {/* Recent reviews */}
       {recentReviews.length > 0 && (

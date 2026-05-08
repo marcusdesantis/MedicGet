@@ -62,7 +62,7 @@ export const RegisterClinicPage = () => {
               <span className="inline-block px-3 py-1 mb-4 text-xs font-semibold tracking-wider text-green-700 uppercase bg-green-100 rounded-full">
                 Vista Previa en Vivo
               </span>
-              <ClinicPreviewCard form={{ name: draft.clinicName, specialists: draft.specialists, city: draft.city, software: draft.software }} />
+              <ClinicPreviewCard form={{ name: draft.clinicName, specialists: draft.specialists, city: draft.city }} />
               <p className="mt-6 text-center text-sm text-slate-500 italic">
                 "Completa los datos para ver cómo lucirá tu perfil público"
               </p>
@@ -74,3 +74,4 @@ export const RegisterClinicPage = () => {
     </AuthLayout>
   );
 };
+

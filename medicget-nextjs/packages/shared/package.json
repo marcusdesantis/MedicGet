@@ -17,7 +17,9 @@
     "./meeting": "./src/meeting.ts",
     "./payphone": "./src/payphone.ts",
     "./settings": "./src/settings.ts",
-    "./subscription": "./src/subscription.ts"
+    "./subscription": "./src/subscription.ts",
+    "./webpush": "./src/webpush.ts",
+    "./notifications": "./src/notifications.ts"
   },
   "scripts": {
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
@@ -35,6 +37,7 @@
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.16",
+    "web-push": "^3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -42,6 +45,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.9.0",
     "@types/nodemailer": "^6.4.17",
+    "@types/web-push": "^3.6.4",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"

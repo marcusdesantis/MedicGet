@@ -16,6 +16,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '@medicget/shared/prisma';
 import { bootstrapPlanFeatures } from '@medicget/shared/subscription';
+import { ensureVapidKeys }       from '@medicget/shared/webpush';
 
 const ADMIN_EMAIL    = 'admin@gmail.com';
 const ADMIN_PASSWORD = '12345678';
@@ -106,6 +107,9 @@ export async function ensureAdminBootstrapped(): Promise<void> {
       // Sembrar credenciales SMTP de Abisoft + branding default si AppSettings
       // todavía está vacío (primera vez que arranca el sistema).
       await bootstrapDefaultSettings().catch(() => {/* swallow */});
+      // Generar claves VAPID para Web Push (idempotente — sólo crea
+      // si no existen).
+      await ensureVapidKeys().catch(() => {/* swallow */});
       bootstrapped = true;
     } finally {
       inflight = null;

@@ -1,30 +1,52 @@
 /**
  * /doctor/reports — reportes para el médico.
  *
- *  - KPIs trimestrales (citas, ingresos, valoración media, no-shows)
- *  - Gráfico de citas por mes (últimos 6 meses)
- *  - Distribución por modalidad (online/presencial/chat)
- *  - Top pacientes recurrentes
+ *  - Filtro de rango de fechas (30/90 días, este año, todo el historial).
+ *  - KPIs (citas, completadas, no-shows, ingresos).
+ *  - Línea de tendencia de citas + línea de ingresos.
+ *  - Distribución por modalidad y top pacientes.
+ *  - Botones de descarga CSV (citas, pagos, pacientes recurrentes).
  *
- * Bloqueado para planes que no incluyen REPORTS — upsell que lleva a
- * /doctor/plan.
+ * Bloqueado para planes que no incluyen REPORTS — upsell a /doctor/plan.
  */
-import { useMemo } from 'react';
-import { Loader2, Lock, Calendar, Star, TrendingUp, AlertCircle, BarChart3 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Loader2, Lock, Calendar, Star, TrendingUp, AlertCircle, Download,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { SectionCard }   from '@/components/ui/SectionCard';
 import { CardContainer } from '@/components/ui/CardContainer';
 import { Alert }         from '@/components/ui/Alert';
+import { TrendLineChart } from '@/components/ui/TrendLineChart';
 import { useApi }        from '@/hooks/useApi';
 import {
   appointmentsApi, subscriptionsApi,
   type AppointmentDto, type PaginatedData,
 } from '@/lib/api';
+import { downloadCsv, dateStampedName } from '@/lib/csv';
 
 const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+type RangeKey = '30d' | '90d' | 'ytd' | 'all';
+const RANGE_LABELS: Record<RangeKey, string> = {
+  '30d': 'Últimos 30 días',
+  '90d': 'Últimos 90 días',
+  'ytd': 'Este año',
+  'all': 'Todo el historial',
+};
+
+function rangeStart(range: RangeKey): Date | null {
+  const now = new Date();
+  if (range === '30d') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (range === '90d') return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  if (range === 'ytd') return new Date(now.getFullYear(), 0, 1);
+  return null;
+}
+
 export function DoctorReportsPage() {
+  const [range, setRange] = useState<RangeKey>('90d');
+
   const meSub = useApi(() => subscriptionsApi.me(), []);
   const appts = useApi<PaginatedData<AppointmentDto>>(
     () => appointmentsApi.list({ pageSize: 500 }),
@@ -39,47 +61,63 @@ export function DoctorReportsPage() {
   const data = useMemo(() => {
     if (appts.state.status !== 'ready') return null;
     const all = appts.state.data.data;
-    const completed = all.filter((a) => a.status === 'COMPLETED');
-    const noShows   = all.filter((a) => a.status === 'NO_SHOW');
-    const cancelled = all.filter((a) => a.status === 'CANCELLED');
 
-    const grossRevenue = all
+    // Aplicar filtro de rango.
+    const start = rangeStart(range);
+    const filtered = start ? all.filter((a) => new Date(a.date) >= start) : all;
+
+    const completed = filtered.filter((a) => a.status === 'COMPLETED');
+    const noShows   = filtered.filter((a) => a.status === 'NO_SHOW');
+    const cancelled = filtered.filter((a) => a.status === 'CANCELLED');
+
+    const grossRevenue = filtered
       .filter((a) => a.payment?.status === 'PAID')
       .reduce((s, a) => s + (a.payment?.doctorAmount ?? 0), 0);
 
-    // Conteo por mes (últimos 6)
-    const monthly = new Array(6).fill(0).map((_, i) => {
+    // Tendencia de citas e ingresos por mes (últimos N según rango).
+    const monthsCount = range === '30d' ? 1 : range === '90d' ? 3 : range === 'ytd' ? new Date().getMonth() + 1 : 12;
+    const monthly = new Array(Math.max(monthsCount, 6)).fill(0).map((_, i) => {
+      const limit = Math.max(monthsCount, 6);
       const d = new Date();
-      d.setMonth(d.getMonth() - (5 - i));
+      d.setMonth(d.getMonth() - (limit - 1 - i));
       const ym = `${d.getFullYear()}-${d.getMonth()}`;
-      const count = all.filter((a) => {
+      const monthAppts = filtered.filter((a) => {
         const ad = new Date(a.date);
         return `${ad.getFullYear()}-${ad.getMonth()}` === ym;
-      }).length;
-      return { label: MONTH_LABELS[d.getMonth()], count };
+      });
+      const monthRevenue = monthAppts
+        .filter((a) => a.payment?.status === 'PAID')
+        .reduce((s, a) => s + (a.payment?.doctorAmount ?? 0), 0);
+      return {
+        label:   MONTH_LABELS[d.getMonth()] ?? '',
+        count:   monthAppts.length,
+        revenue: monthRevenue,
+      };
     });
 
-    // Modalidades
+    // Modalidades.
     const byModality = {
-      ONLINE:     all.filter((a) => a.modality === 'ONLINE').length,
-      PRESENCIAL: all.filter((a) => a.modality === 'PRESENCIAL').length,
-      CHAT:       all.filter((a) => a.modality === 'CHAT').length,
+      ONLINE:     filtered.filter((a) => a.modality === 'ONLINE').length,
+      PRESENCIAL: filtered.filter((a) => a.modality === 'PRESENCIAL').length,
+      CHAT:       filtered.filter((a) => a.modality === 'CHAT').length,
     };
 
-    // Top pacientes
-    const patientMap = new Map<string, { name: string; count: number }>();
-    for (const a of all) {
+    // Top pacientes.
+    const patientMap = new Map<string, { name: string; count: number; lastDate: string }>();
+    for (const a of filtered) {
       const id = a.patient?.id;
       if (!id) continue;
       const name = `${a.patient?.user?.profile?.firstName ?? ''} ${a.patient?.user?.profile?.lastName ?? ''}`.trim() || 'Paciente';
-      const cur = patientMap.get(id) ?? { name, count: 0 };
+      const cur = patientMap.get(id) ?? { name, count: 0, lastDate: a.date };
       cur.count += 1;
+      if (new Date(a.date) > new Date(cur.lastDate)) cur.lastDate = a.date;
       patientMap.set(id, cur);
     }
     const topPatients = [...patientMap.values()].sort((a, b) => b.count - a.count).slice(0, 5);
 
     return {
-      total: all.length,
+      filtered,
+      total: filtered.length,
       completed: completed.length,
       noShows: noShows.length,
       cancelled: cancelled.length,
@@ -88,7 +126,50 @@ export function DoctorReportsPage() {
       byModality,
       topPatients,
     };
-  }, [appts.state]);
+  }, [appts.state, range]);
+
+  // Exportadores CSV.
+  const exportAppointments = () => {
+    if (!data) return;
+    const rows = data.filtered.map((a) => ({
+      fecha:      new Date(a.date).toISOString().slice(0, 10),
+      hora:       a.time,
+      paciente:   `${a.patient?.user?.profile?.firstName ?? ''} ${a.patient?.user?.profile?.lastName ?? ''}`.trim(),
+      modalidad:  a.modality,
+      estado:     a.status,
+      pago:       a.payment?.status ?? 'SIN_COBRO',
+      bruto:      a.payment?.amount ?? 0,
+      neto:       a.payment?.doctorAmount ?? 0,
+    }));
+    downloadCsv(dateStampedName('citas'), rows);
+  };
+
+  const exportPayments = () => {
+    if (!data) return;
+    const rows = data.filtered
+      .filter((a) => a.payment)
+      .map((a) => ({
+        fecha:        new Date(a.date).toISOString().slice(0, 10),
+        paciente:     `${a.patient?.user?.profile?.firstName ?? ''} ${a.patient?.user?.profile?.lastName ?? ''}`.trim(),
+        modalidad:    a.modality,
+        estado_cita:  a.status,
+        estado_pago:  a.payment?.status,
+        monto_bruto:  a.payment?.amount ?? 0,
+        comision:    (a.payment?.amount ?? 0) - (a.payment?.doctorAmount ?? 0),
+        monto_neto:   a.payment?.doctorAmount ?? 0,
+      }));
+    downloadCsv(dateStampedName('pagos'), rows);
+  };
+
+  const exportPatients = () => {
+    if (!data) return;
+    const rows = data.topPatients.map((p) => ({
+      paciente:       p.name,
+      visitas:        p.count,
+      ultima_visita:  new Date(p.lastDate).toISOString().slice(0, 10),
+    }));
+    downloadCsv(dateStampedName('pacientes-recurrentes'), rows);
+  };
 
   return (
     <div className="space-y-6">
@@ -124,6 +205,30 @@ export function DoctorReportsPage() {
 
       {hasFeature && data && (
         <>
+          {/* Toolbar: rango + descargas */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {(Object.keys(RANGE_LABELS) as RangeKey[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setRange(k)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                    range === k
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {RANGE_LABELS[k]}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <DownloadButton onClick={exportAppointments} label="Citas (CSV)" />
+              <DownloadButton onClick={exportPayments}     label="Pagos (CSV)" />
+              <DownloadButton onClick={exportPatients}     label="Pacientes (CSV)" />
+            </div>
+          </div>
+
           {/* KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Kpi icon={Calendar}    label="Citas totales"   value={String(data.total)}     color="blue" />
@@ -132,29 +237,24 @@ export function DoctorReportsPage() {
             <Kpi icon={Star}        label="Ingresos netos"  value={`$${data.grossRevenue.toFixed(2)}`} color="purple" sub="después de comisión" />
           </div>
 
-          {/* Mensual */}
-          <SectionCard title="Citas por mes" subtitle="Últimos 6 meses">
-            <div className="flex items-end justify-between gap-2 h-40">
-              {data.monthly.map((m, i) => {
-                const max = Math.max(1, ...data.monthly.map((x) => x.count));
-                const h = (m.count / max) * 100;
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                    <div className="w-full relative flex items-end h-32">
-                      <div
-                        className="w-full bg-gradient-to-t from-blue-500 to-indigo-500 rounded-t-lg transition-all"
-                        style={{ height: `${h}%`, minHeight: m.count > 0 ? '8px' : '0' }}
-                      />
-                      <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                        {m.count}
-                      </span>
-                    </div>
-                    <span className="text-xs text-slate-400">{m.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </SectionCard>
+          {/* Tendencias — citas + ingresos */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <SectionCard title="Tendencia de citas" subtitle="Evolución mensual">
+              <TrendLineChart
+                data={data.monthly.map((m) => ({ label: m.label, value: m.count }))}
+                color="#3b82f6"
+                formatValue={(v) => String(Math.round(v))}
+              />
+            </SectionCard>
+
+            <SectionCard title="Tendencia de ingresos" subtitle="Después de comisión, mensual">
+              <TrendLineChart
+                data={data.monthly.map((m) => ({ label: m.label, value: m.revenue }))}
+                color="#8b5cf6"
+                formatValue={(v) => `$${v.toFixed(0)}`}
+              />
+            </SectionCard>
+          </div>
 
           {/* Modalidades + Top pacientes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -205,6 +305,17 @@ export function DoctorReportsPage() {
         </>
       )}
     </div>
+  );
+}
+
+function DownloadButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+    >
+      <Download size={12} /> {label}
+    </button>
   );
 }
 

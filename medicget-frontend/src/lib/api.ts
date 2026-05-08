@@ -155,7 +155,10 @@ export interface ProfileDto {
   avatarUrl?: string;
   address?:  string;
   city?:     string;
+  province?: string;
   country?:  string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ClinicDto {
@@ -163,7 +166,10 @@ export interface ClinicDto {
   name:        string;
   address?:    string;
   city?:       string;
+  province?:   string;
   country?:    string;
+  latitude?:   number;
+  longitude?:  number;
   description?: string;
   phone?:      string;
   email?:      string;
@@ -368,6 +374,9 @@ export interface RegisterBody {
   address?:  string;
   city?:     string;
   country?:  string;
+  province?: string;
+  latitude?: number;
+  longitude?: number;
 
   // CLINIC role
   clinicName?:        string;
@@ -393,6 +402,29 @@ export const authApi = {
   register: (body: RegisterBody) =>
     apiPost<{ token: string; user: UserDto }>('/auth/register', body),
   me:       () => apiGet<UserDto>('/auth/me'),
+  forgotPassword: (email: string) =>
+    apiPost<{ ok: true; message: string }>('/auth/forgot-password', { email }),
+  resetPassword: (token: string, password: string) =>
+    apiPost<{ ok: true; message: string }>('/auth/reset-password', { token, password }),
+};
+
+/**
+ * Notifications API — `/api/v1/notifications/*` (svc-users)
+ *
+ * Las notificaciones se generan automáticamente en otros servicios:
+ *   • svc-appointment crea APPOINTMENT_CONFIRMED, PAYMENT_RECEIVED,
+ *     SYSTEM (chat) y REVIEW_RECEIVED.
+ *   • svc-clinic crea SYSTEM cuando un admin agrega un médico, etc.
+ *
+ * El topbar consulta `list()` cada 30s para refrescar el badge.
+ */
+export const notificationsApi = {
+  list:    (params?: { limit?: number; onlyUnread?: 0 | 1 }) =>
+    apiGet<{ items: NotificationDto[]; unreadCount: number }>('/notifications', params),
+  markRead: (id: string) =>
+    apiPatch<NotificationDto>(`/notifications/${id}/read`, {}),
+  markAllRead: () =>
+    apiPost<{ updated: number }>('/notifications/read-all', {}),
 };
 
 /** svc-users :4002 → /api/v1/users/ */
@@ -651,6 +683,13 @@ export const adminApi = {
     apiGet<PaginatedData<SubscriptionDto>>('/admin/subscriptions', params),
   extendSubscription: (id: string, days: number) =>
     apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/extend`, { days }),
+  /**
+   * Cambia el plan de una suscripción sin pasar por PayPhone (admin
+   * action). Cancela otras suscripciones activas del usuario en una
+   * transacción y deja sólo la nueva activa.
+   */
+  changeSubscriptionPlan: (id: string, planId: string) =>
+    apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/change-plan`, { planId }),
 
   settings:      () => apiGet<AppSettingDto[]>('/admin/settings'),
   saveSettings:  (values: Record<string, string | null>) =>

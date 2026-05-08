@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard } from 'lucide-react';
+import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard, Star } from 'lucide-react';
+import { ReviewModal } from '@/features/shared/reviews/ReviewModal';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { Tabs }          from '@/components/ui/Tabs';
 import { Avatar }        from '@/components/ui/Avatar';
@@ -41,6 +42,7 @@ export function PatientAppointmentsPage() {
   const [viewMode, setViewMode]   = useState<'list' | 'calendar'>('list');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<AppointmentDto | null>(null);
 
   const { state, refetch } = useApi<PaginatedData<AppointmentDto>>(
     () => appointmentsApi.list({ pageSize: 100 }),
@@ -235,6 +237,22 @@ export function PatientAppointmentsPage() {
                     >
                       <Eye size={14} />
                     </Link>
+                    {a.status === 'COMPLETED' && !a.review && (
+                      <button
+                        onClick={() => setReviewing(a)}
+                        className="ml-2 inline-flex items-center gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm"
+                        title="Calificar al médico"
+                      >
+                        <Star size={14} />
+                        <span className="hidden md:inline">Calificar</span>
+                      </button>
+                    )}
+                    {a.status === 'COMPLETED' && a.review && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-amber-500 font-semibold px-2 py-1.5">
+                        <Star size={12} className="fill-amber-400" />
+                        {a.review.rating}/5
+                      </span>
+                    )}
                     {cancellable && (
                       <button
                         onClick={() => handleCancel(a.id)}
@@ -251,6 +269,14 @@ export function PatientAppointmentsPage() {
             </div>
           )}
         </SectionCard>
+      )}
+
+      {reviewing && (
+        <ReviewModal
+          appointment={reviewing}
+          onClose={() => setReviewing(null)}
+          onSaved={() => { setReviewing(null); refetch(); }}
+        />
       )}
     </div>
   );

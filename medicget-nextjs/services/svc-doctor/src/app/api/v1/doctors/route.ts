@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
       modality:  sp.get('modality')  ?? undefined,
       priceMin:  sp.get('priceMin')  ?? undefined,
       priceMax:  sp.get('priceMax')  ?? undefined,
+      country:   sp.get('country')   ?? undefined,
+      province:  sp.get('province')  ?? undefined,
     };
 
     const result = await doctorsService.list(filters, pagination);

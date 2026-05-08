@@ -112,6 +112,8 @@ model User {
   patient       Patient?
   notifications Notification[]
   subscriptions Subscription[]
+  pushSubscriptions PushSubscription[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([role])
   @@index([status])
@@ -127,9 +129,18 @@ model Profile {
   avatarUrl String?
   address   String?
   city      String?
+  province  String?
   country   String?
+  /// Coordenadas geográficas. Opcionales: el médico independiente
+  /// puede atender sólo virtual y dejarlas en null. Cuando se
+  /// completan, se usan para "médicos cerca de vos" y para el marker
+  /// en el mapa del perfil público.
+  latitude  Float?
+  longitude Float?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([country, province])
 }
 
 // ─── Clinic ───────────────────────────────────────────────────────────────────
@@ -140,7 +151,14 @@ model Clinic {
   name        String
   address     String?
   city        String?
+  province    String?
   country     String?
+  /// Coordenadas geográficas — obligatorias en producción para clínicas
+  /// pero el schema las deja opcionales para no bloquear la creación
+  /// inicial. El frontend valida que estén presentes antes de marcar el
+  /// perfil como "completo".
+  latitude    Float?
+  longitude   Float?
   description String?
   phone       String?
   email       String?
@@ -155,6 +173,7 @@ model Clinic {
   appointments Appointment[]
 
   @@index([status])
+  @@index([country, province])
 }
 
 // ─── Doctor ───────────────────────────────────────────────────────────────────
@@ -398,6 +417,52 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([type])
+}
+
+// ─── Push Notifications (Web Push API) ───────────────────────────────────────
+//
+// Una suscripción por dispositivo+navegador. Un mismo usuario puede tener
+// varias (ej: chrome desktop + safari móvil). Eliminamos las que el
+// servidor de push reporta como inválidas (HTTP 410).
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  /// JSON con `p256dh` y `auth` (claves de cifrado del navegador).
+  keys      Json
+  /// User-agent del navegador al suscribirse — útil para mostrar
+  /// "Chrome en Windows" en una futura UI de "dispositivos conectados".
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Password Reset Tokens ────────────────────────────────────────────────────
+//
+// Generados por POST /auth/forgot-password. Guardamos el HASH del token
+// (sha256) y mandamos el token plano por email — esto evita que un dump
+// de la DB exponga tokens válidos. Vencen a los 60 minutos. `usedAt` es
+// no-nulo cuando ya se canjearon — los tokens son single-use.
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  /// SHA-256 hex del token plano que se envió por email.
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  /// IP de quien pidió el reset — útil para auditoría.
+  requestIp String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ─── Chat Messages (CHAT-modality appointments) ───────────────────────────────

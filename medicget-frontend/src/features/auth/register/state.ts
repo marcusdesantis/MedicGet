@@ -37,8 +37,10 @@ export interface DoctorDraft {
   email:     string;
   password:  string;
   terms:     boolean;
-  // Step 2 — RegisterAddressPage
+  // Step 2 — RegisterAddressPage (LocationPicker)
   consultName: string;
+  country:     string;   // nombre legible — obligatorio
+  province:    string;   // nombre legible — obligatorio
   address:     string;
   city:        string;
   zip:         string;
@@ -51,7 +53,6 @@ export interface ClinicDraft {
   clinicName:  string;
   specialists: string;
   city:        string;
-  software:    string;
   // Step 2 — RegisterClinicDetailsPage
   name:                 string;
   lastname:             string;
@@ -63,6 +64,13 @@ export interface ClinicDraft {
   confirmPassword:      string;
   acceptTerms:          boolean;
   confirmAuthorization: boolean;
+  // Step 3 — Ubicación del consultorio (LocationPicker, OBLIGATORIA)
+  country:              string;
+  province:             string;
+  address:              string;
+  cityLocation:         string;     // ciudad detectada/manual del LocationPicker
+  lat:                  number | null;
+  lng:                  number | null;
 }
 
 type DraftMap = {
@@ -76,13 +84,18 @@ const EMPTY: DraftMap = {
   doctor:  {
     name: "", lastname: "", specialty: "", location: "", phone: "",
     email: "", password: "", terms: false,
-    consultName: "", address: "", city: "", zip: "", lat: null, lng: null,
+    consultName: "",
+    country: "", province: "",
+    address: "", city: "", zip: "",
+    lat: null, lng: null,
   },
   clinic:  {
-    clinicName: "", specialists: "", city: "", software: "",
+    clinicName: "", specialists: "", city: "",
     name: "", lastname: "", role: "", email: "", confirmEmail: "",
     phone: "", password: "", confirmPassword: "",
     acceptTerms: false, confirmAuthorization: false,
+    country: "", province: "", address: "", cityLocation: "",
+    lat: null, lng: null,
   },
 };
 
@@ -151,3 +164,4 @@ export function useRegistrationDraft<R extends RegistrationRole>(role: R): [
 
   return [draft, setDraft];
 }
+

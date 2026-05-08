@@ -7,6 +7,7 @@ import { Alert }         from '@/components/ui/Alert';
 import { Avatar }        from '@/components/ui/Avatar';
 import { StatusBadge }   from '@/components/ui/StatusBadge';
 import { Input }         from '@/components/ui/Input';
+import { PhoneField }    from '@/components/ui/PhoneField';
 import { Button }        from '@/components/ui/Button';
 import { useApi }        from '@/hooks/useApi';
 import { adminApi, type UserDto, type PaginatedData } from '@/lib/api';
@@ -347,7 +348,10 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 <Input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </SimpleField>
               <SimpleField label="Teléfono">
-                <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                <PhoneField
+                  value={form.phone}
+                  onChange={(phone) => setForm({ ...form, phone })}
+                />
               </SimpleField>
               <SimpleField label="Nombre *">
                 <Input required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />

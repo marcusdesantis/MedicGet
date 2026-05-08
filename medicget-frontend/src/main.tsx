@@ -14,3 +14,17 @@ createRoot(container).render(
     <App />
   </StrictMode>,
 );
+
+// Registrar el Service Worker para Web Push. Si el browser no lo soporta
+// (Safari iOS <16.4, navegadores viejos) sale silencioso. La suscripción
+// real se dispara cuando el usuario activa el toggle desde la campanita.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[SW] registration failed:', err);
+      });
+  });
+}

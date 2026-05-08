@@ -12,6 +12,10 @@ export interface DoctorFilters {
   /** Price range filters used by the public directory. */
   priceMin?:  number;
   priceMax?:  number;
+  /** Filtros geográficos. Match contra Profile.country/province (médico
+   *  independiente) o contra la clínica asociada. */
+  country?:   string;
+  province?:  string;
 }
 
 export const doctorsRepository = {
@@ -37,6 +41,22 @@ export const doctorsRepository = {
       if (filters.priceMin !== undefined) range.gte = filters.priceMin;
       if (filters.priceMax !== undefined) range.lte = filters.priceMax;
       where.pricePerConsult = range;
+    }
+    // Filtro geográfico: match en User.profile o en la clínica asociada.
+    // Cualquier match de los dos lados cuenta — un médico que atiende
+    // en su consultorio (Profile.country) y también pertenece a una
+    // clínica en otra provincia, aparece en ambos filtros.
+    if (filters.country || filters.province) {
+      const conditions: Record<string, unknown>[] = [];
+      const profileMatch: Record<string, unknown> = {};
+      if (filters.country)  profileMatch.country  = filters.country;
+      if (filters.province) profileMatch.province = filters.province;
+      conditions.push({ user: { profile: profileMatch } });
+      const clinicMatch: Record<string, unknown> = {};
+      if (filters.country)  clinicMatch.country  = filters.country;
+      if (filters.province) clinicMatch.province = filters.province;
+      conditions.push({ clinic: clinicMatch });
+      where.OR = [...((where.OR as unknown[] | undefined) ?? []), ...conditions];
     }
     if (filters.search) {
       where.OR = [

@@ -1,6 +1,7 @@
 import type { AuthUser } from '@medicget/shared/auth';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { paginate } from '@medicget/shared/paginate';
+import { getAllowedModalities, intersectModalities } from '@medicget/shared/subscription';
 import { doctorsRepository, type DoctorFilters } from './doctors.repository';
 import type { UpdateDoctorInput, AvailabilityInput } from './doctors.schemas';
 
@@ -47,6 +48,36 @@ function sanitize<T extends { user?: { email?: unknown; passwordHash?: unknown }
   return d;
 }
 
+/**
+ * Mete a cada doctor del array sus modalidades EFECTIVAS — la
+ * intersección entre `doctor.modalities` (lo que él eligió ofrecer) y
+ * los módulos permitidos por su plan ACTIVO. Esto cierra el loophole
+ * por el que un médico FREE seguía mostrando PRESENCIAL/CHAT después de
+ * downgradearse.
+ *
+ * Hace una sola query a Subscription por todos los userIds, así no
+ * disparamos N+1 al listar.
+ */
+async function applyPlanGating<T extends { id: string; userId: string; modalities: string[] }>(
+  doctors: T[],
+): Promise<T[]> {
+  if (doctors.length === 0) return doctors;
+  const { prisma } = await import('@medicget/shared/prisma');
+  const subs = await prisma.subscription.findMany({
+    where:   { userId: { in: doctors.map((d) => d.userId) }, status: 'ACTIVE' },
+    include: { plan: true },
+    orderBy: { expiresAt: 'desc' },
+  });
+  // Map userId → plan.modules. El primer match (más reciente) gana.
+  const map = new Map<string, string[]>();
+  for (const s of subs) if (!map.has(s.userId)) map.set(s.userId, s.plan.modules);
+
+  return doctors.map((d) => ({
+    ...d,
+    modalities: intersectModalities(d.modalities, map.get(d.userId) ?? ['ONLINE']),
+  }));
+}
+
 export const doctorsService = {
   async list(
     rawFilters: Record<string, string | undefined>,
@@ -66,9 +97,12 @@ export const doctorsService = {
     if (rawFilters.modality)  filters.modality   = rawFilters.modality;
     if (rawFilters.priceMin)  filters.priceMin   = Number(rawFilters.priceMin);
     if (rawFilters.priceMax)  filters.priceMax   = Number(rawFilters.priceMax);
+    if (rawFilters.country)   filters.country    = rawFilters.country;
+    if (rawFilters.province)  filters.province   = rawFilters.province;
 
     const { data, total } = await doctorsRepository.findMany(filters, pagination);
-    return { ok: true, data: paginate(data.map(sanitize), total, pagination) };
+    const gated = await applyPlanGating(data as Array<typeof data[number] & { userId: string }>);
+    return { ok: true, data: paginate(gated.map(sanitize), total, pagination) };
   },
 
   async getById(id: string): Promise<ServiceResult<unknown>> {
@@ -76,7 +110,8 @@ export const doctorsService = {
     if (!doctor) {
       return { ok: false, code: 'NOT_FOUND', message: 'Doctor not found' };
     }
-    return { ok: true, data: sanitize(doctor) };
+    const [gated] = await applyPlanGating([doctor as typeof doctor & { userId: string }]);
+    return { ok: true, data: sanitize(gated ?? doctor) };
   },
 
   async update(
@@ -115,7 +150,22 @@ export const doctorsService = {
       return { ok: false, code: 'FORBIDDEN', message: 'Insufficient permissions' };
     }
 
-    const updated = await doctorsRepository.update(id, input as Record<string, unknown>);
+    // Si el body trae `modalities`, la sanitizamos contra el plan del
+    // médico para que no pueda guardar PRESENCIAL/CHAT estando en FREE.
+    const sanitizedInput = { ...input } as Record<string, unknown>;
+    if (Array.isArray((input as { modalities?: string[] }).modalities)) {
+      const allowed = await getAllowedModalities(doctor.userId);
+      const requested = (input as { modalities: string[] }).modalities;
+      sanitizedInput['modalities'] = requested.filter((m) => allowed.includes(m as 'ONLINE' | 'PRESENCIAL' | 'CHAT'));
+      // Defensa contra "se quedaron sin ninguna modalidad". Si el
+      // recorte deja vacío, forzamos al menos ONLINE para no romper el
+      // perfil — ONLINE está en todos los planes.
+      if ((sanitizedInput['modalities'] as string[]).length === 0) {
+        sanitizedInput['modalities'] = ['ONLINE'];
+      }
+    }
+
+    const updated = await doctorsRepository.update(id, sanitizedInput);
     return { ok: true, data: updated };
   },
 

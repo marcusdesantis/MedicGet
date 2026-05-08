@@ -34,6 +34,7 @@ import { useAuth }      from '@/context/AuthContext';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { appointmentsApi, type AppointmentDto } from '@/lib/api';
 import { chatPathForRole } from '@/features/shared/chat/pages/AppointmentChatPage';
+import { ChatImageGallery } from '@/features/shared/chat/components/ChatImageGallery';
 
 interface AppointmentDetailPageProps {
   /** Where the back arrow returns to. */
@@ -213,24 +214,30 @@ export function AppointmentDetailPage({ backTo }: AppointmentDetailPageProps) {
       )}
 
       {a.modality === 'CHAT' && (
-        <SectionCard>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
-                <MessageSquare size={16} className="text-emerald-600" /> Chat en vivo
-              </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Abrí la sala privada para escribirte con {peerName}.
-              </p>
+        <>
+          <SectionCard>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                  <MessageSquare size={16} className="text-emerald-600" /> Chat en vivo
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Abrí la sala privada para escribirte con {peerName}.
+                </p>
+              </div>
+              <Link
+                to={chatPathForRole(user?.role ?? 'patient', a.id)}
+                className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl transition shadow-sm"
+              >
+                <MessageSquare size={15} /> Abrir chat
+              </Link>
             </div>
-            <Link
-              to={chatPathForRole(user?.role ?? 'patient', a.id)}
-              className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl transition shadow-sm"
-            >
-              <MessageSquare size={15} /> Abrir chat
-            </Link>
-          </div>
-        </SectionCard>
+          </SectionCard>
+
+          {/* Galería de imágenes compartidas en el chat — sólo se muestra
+              si efectivamente hay imágenes (componente self-hides). */}
+          <ChatImageGallery appointmentId={a.id} />
+        </>
       )}
 
       {a.modality === 'PRESENCIAL' && (

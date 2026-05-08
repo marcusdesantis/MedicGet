@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff, Lock, ArrowRight } from 'lucide-react';
+import { Link }         from 'react-router-dom';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
 import { Avatar }         from '@/components/ui/Avatar';
@@ -10,9 +11,11 @@ import { Button }       from '@/components/ui/Button';
 import { Alert }        from '@/components/ui/Alert';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { SpecialtyCombobox } from '@/components/ui/SpecialtyCombobox';
+import { LocationPicker, type LocationValue } from '@/components/ui/LocationPicker';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { useAuth }      from '@/context/AuthContext';
 import { useApi }       from '@/hooks/useApi';
-import { doctorsApi, usersApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
+import { doctorsApi, usersApi, subscriptionsApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
 
 /**
  * Doctor profile — edits BOTH the User.Profile (firstName, lastName, phone)
@@ -39,6 +42,20 @@ export function DoctorProfilePage() {
     () => doctorsApi.getById(doctorId!),
     [doctorId],
   );
+
+  // Plan actual — se usa para gatear las modalidades que el médico
+  // puede activar. Si no hay suscripción, asumimos FREE (sólo ONLINE).
+  const subQ = useApi(() => subscriptionsApi.me(), []);
+  const planModules = useMemo<string[]>(() => {
+    if (subQ.state.status !== 'ready') return ['ONLINE'];
+    return subQ.state.data.subscription?.plan?.modules
+        ?? subQ.state.data.freePlan?.modules
+        ?? ['ONLINE'];
+  }, [subQ.state]);
+  const planName = subQ.state.status === 'ready'
+    ? (subQ.state.data.subscription?.plan?.name ?? subQ.state.data.freePlan?.name ?? 'Free')
+    : 'Free';
+  const isFreePlan = !planModules.includes('PRESENCIAL') && !planModules.includes('CHAT');
 
   const [form, setForm] = useState({
     // Profile fields
@@ -68,6 +85,8 @@ export function DoctorProfilePage() {
     available:       true,
   });
 
+  const [location, setLocation] = useState<LocationValue>({});
+
   // Hydrate the form from the API once.
   useEffect(() => {
     if (state.status !== 'ready') return;
@@ -87,6 +106,14 @@ export function DoctorProfilePage() {
       languages:       fmtLanguages(d.languages),
       modalities:      (d.modalities && d.modalities.length > 0) ? d.modalities : ['ONLINE'],
       available:       d.available ?? true,
+    });
+    setLocation({
+      country:   profile?.country   ?? undefined,
+      province:  profile?.province  ?? undefined,
+      city:      profile?.city      ?? undefined,
+      address:   profile?.address   ?? undefined,
+      latitude:  profile?.latitude  ?? undefined,
+      longitude: profile?.longitude ?? undefined,
     });
   }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -133,6 +160,14 @@ export function DoctorProfilePage() {
           lastName:  form.lastName.trim(),
           phone:     form.phone.trim() || undefined,
           avatarUrl: form.avatarUrl   || undefined,
+          // Ubicación — opcional para médicos independientes que sólo
+          // atienden online. El LocationPicker maneja todos los campos.
+          country:   location.country,
+          province:  location.province,
+          city:      location.city,
+          address:   location.address,
+          latitude:  location.latitude,
+          longitude: location.longitude,
         }),
         // Doctor row
         doctorsApi.update(doctorId, {
@@ -247,7 +282,10 @@ export function DoctorProfilePage() {
                 </FormField>
               </div>
               <FormField label="Teléfono">
-                <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                <PhoneField
+                  value={form.phone}
+                  onChange={(phone) => setForm({ ...form, phone })}
+                />
               </FormField>
             </div>
           </SectionCard>
@@ -275,7 +313,10 @@ export function DoctorProfilePage() {
                   <Input type="number" min="0" step="0.01" value={form.pricePerConsult} onChange={(e) => setForm({ ...form, pricePerConsult: e.target.value })} />
                 </FormField>
                 <FormField label="Duración por consulta (min)">
-                  <Input type="number" min="5" step="5" value={form.consultDuration} onChange={(e) => setForm({ ...form, consultDuration: e.target.value })} />
+                  <DurationPicker
+                    value={form.consultDuration}
+                    onChange={(v) => setForm({ ...form, consultDuration: v })}
+                  />
                 </FormField>
               </div>
 
@@ -335,12 +376,29 @@ export function DoctorProfilePage() {
             </div>
           </SectionCard>
 
+          {/* Ubicación del consultorio (opcional para independientes) */}
+          <SectionCard
+            title="Ubicación del consultorio"
+            subtitle="Opcional. Sólo necesario si atendés en consultorio físico — permite que los pacientes te encuentren con filtros geográficos."
+          >
+            <LocationPicker value={location} onChange={setLocation} />
+          </SectionCard>
+
           {/* Modalidades de atención */}
           <SectionCard
             title="Modalidades de atención"
             subtitle="Elige cómo quieres atender a tus pacientes"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {isFreePlan && (
+              <Alert variant="info">
+                <span className="text-sm">
+                  Estás en <strong>{planName}</strong>. Las modalidades <strong>Presencial</strong> y <strong>Chat en vivo</strong> requieren plan Pro o superior.{' '}
+                  <Link to="/doctor/plan" className="font-semibold underline">Mejorá tu plan →</Link>
+                </span>
+              </Alert>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
               <ModalityToggle
                 value="ONLINE"
                 form={form}
@@ -348,6 +406,7 @@ export function DoctorProfilePage() {
                 icon={<Video size={18} />}
                 label="Videollamada"
                 description="Atiende a tus pacientes desde donde estés"
+                locked={!planModules.includes('ONLINE')}
               />
               <ModalityToggle
                 value="PRESENCIAL"
@@ -356,6 +415,7 @@ export function DoctorProfilePage() {
                 icon={<Building2 size={18} />}
                 label="Presencial"
                 description="Recibí a los pacientes en consultorio"
+                locked={!planModules.includes('PRESENCIAL')}
               />
               <ModalityToggle
                 value="CHAT"
@@ -364,6 +424,7 @@ export function DoctorProfilePage() {
                 icon={<MessageSquare size={18} />}
                 label="Chat en vivo"
                 description="Consulta por mensajería en tiempo real"
+                locked={!planModules.includes('CHAT')}
               />
             </div>
             {form.modalities.length === 0 && (
@@ -396,6 +457,56 @@ export function DoctorProfilePage() {
   );
 }
 
+/**
+ * DurationPicker — chips de presets típicos (15/20/30/45/60) + input
+ * custom para cualquier valor desde 5 min en pasos de 5. El backend
+ * usa este número para generar slots cuando un paciente busca horarios
+ * disponibles del día.
+ */
+const DURATION_PRESETS = [15, 20, 30, 45, 60, 90];
+
+function DurationPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const numeric = Number(value);
+  const isPreset = DURATION_PRESETS.includes(numeric);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {DURATION_PRESETS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onChange(String(p))}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              numeric === p
+                ? 'bg-teal-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            {p} min
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min="5"
+          step="5"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-24"
+        />
+        <span className="text-xs text-slate-500">
+          minutos {isPreset ? '· preset' : '· custom'}
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-400">
+        Cada slot que mostramos a los pacientes durará este tiempo. Cambialo si tus consultas
+        son más largas o más cortas.
+      </p>
+    </div>
+  );
+}
+
 function Field({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
     <div className="flex items-start gap-2">
@@ -411,7 +522,7 @@ function Field({ icon, label }: { icon: React.ReactNode; label: string }) {
  * icon + description so the doctor understands what each modality means.
  */
 function ModalityToggle({
-  value, form, setForm, icon, label, description,
+  value, form, setForm, icon, label, description, locked = false,
 }: {
   value:       AppointmentModality;
   form:        { modalities: AppointmentModality[] } & Record<string, unknown>;
@@ -419,14 +530,39 @@ function ModalityToggle({
   icon:        React.ReactNode;
   label:       string;
   description: string;
+  /** Si true, el plan no incluye esta modalidad — render como upsell. */
+  locked?:     boolean;
 }) {
   const isOn = form.modalities.includes(value);
   const toggle = () => {
+    if (locked) return;
     const next = isOn
       ? form.modalities.filter((m) => m !== value)
       : [...form.modalities, value];
     setForm({ ...form, modalities: next });
   };
+
+  if (locked) {
+    return (
+      <Link
+        to="/doctor/plan"
+        className="block text-left p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition group relative"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-400">
+            {icon}
+          </span>
+          <Lock size={14} className="text-amber-500" />
+        </div>
+        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="text-xs text-slate-400 leading-tight mt-0.5">{description}</p>
+        <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 mt-2 inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+          Mejorar plan <ArrowRight size={10} />
+        </p>
+      </Link>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -458,3 +594,4 @@ function ModalityToggle({
     </button>
   );
 }
+

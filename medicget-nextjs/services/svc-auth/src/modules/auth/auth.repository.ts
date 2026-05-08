@@ -16,6 +16,9 @@ export interface CreateUserInput {
   address?:     string;
   city?:        string;
   country?:     string;
+  province?:    string;
+  latitude?:    number;
+  longitude?:   number;
 
   // Clinic
   clinicName?:        string;
@@ -93,6 +96,9 @@ export const authRepository = {
               address:   input.address,
               city:      input.city,
               country:   input.country,
+              province:  input.province,
+              latitude:  input.latitude,
+              longitude: input.longitude,
             },
           },
         },
@@ -112,6 +118,9 @@ export const authRepository = {
             address:     input.address,
             city:        input.city,
             country:     input.country,
+            province:    input.province,
+            latitude:    input.latitude,
+            longitude:   input.longitude,
           },
         });
       } else if (input.role === 'DOCTOR') {

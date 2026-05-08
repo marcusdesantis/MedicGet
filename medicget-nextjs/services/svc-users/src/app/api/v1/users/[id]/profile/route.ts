@@ -14,7 +14,10 @@ const updateProfileSchema = z
     phone:     z.string().optional(),
     address:   z.string().optional(),
     city:      z.string().optional(),
+    province:  z.string().optional(),
     country:   z.string().optional(),
+    latitude:  z.number().optional(),
+    longitude: z.number().optional(),
     /**
      * Foto de perfil. Por ahora un dataURL (`data:image/jpeg;base64,...`)
      * generado client-side por <AvatarUploader>. Cap de 1 MB cubre 400×400

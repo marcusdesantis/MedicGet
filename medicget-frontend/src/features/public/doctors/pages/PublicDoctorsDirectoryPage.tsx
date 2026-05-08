@@ -38,6 +38,7 @@ import {
 import { Avatar }     from '@/components/ui/Avatar';
 import { useApi }     from '@/hooks/useApi';
 import { doctorsApi, type DoctorDto, type PaginatedData } from '@/lib/api';
+import { COUNTRIES, findCountry } from '@/lib/locations';
 
 const MODALITY_OPTIONS = [
   { value: 'ONLINE',     label: 'Videollamada',  icon: Video },
@@ -57,6 +58,38 @@ export function PublicDoctorsDirectoryPage() {
   const [searchInput, setSearchInput] = useState(params.get('search') ?? '');
   const [mobileFilters, setMobileFilters] = useState(false);
 
+  // Auto-detect del país en la primera carga sin filtros: arrancamos
+  // mostrándote médicos de tu país antes de que toques nada. Si rechazás
+  // el permiso o hay error, no pasa nada — se muestran todos.
+  useEffect(() => {
+    const hasAnyFilter = !!(params.get('country') || params.get('search') || params.get('specialty'));
+    const ranBefore   = sessionStorage.getItem('medicget_geo_run') === '1';
+    if (hasAnyFilter || ranBefore || !navigator.geolocation) return;
+    sessionStorage.setItem('medicget_geo_run', '1');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&accept-language=es`,
+          );
+          const data = await r.json() as { address?: { country_code?: string } };
+          const code = data.address?.country_code?.toUpperCase();
+          const country = COUNTRIES.find((c) => c.code === code);
+          if (country) {
+            const next = new URLSearchParams(params);
+            // Guardamos el NOMBRE (no el código) para que matchee con
+            // Profile.country / Clinic.country que guardan el nombre.
+            next.set('country', country.name);
+            setParams(next, { replace: true });
+          }
+        } catch {/* swallow */}
+      },
+      () => {/* permission denied — no problem */},
+      { timeout: 5000 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Debounce the URL param so we don't refetch on every keystroke.
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -73,12 +106,16 @@ export function PublicDoctorsDirectoryPage() {
   const specialty = params.get('specialty') ?? '';
   const modality  = params.get('modality')  ?? '';
   const priceRng  = params.get('price')     ?? '';
+  const country   = params.get('country')   ?? '';
+  const province  = params.get('province')  ?? '';
 
   const apiParams = useMemo(() => {
     const p: Record<string, string> = { available: 'true', pageSize: '24' };
     if (search)    p.search    = search;
     if (specialty) p.specialty = specialty;
     if (modality)  p.modality  = modality;
+    if (country)   p.country   = country;
+    if (province)  p.province  = province;
     if (priceRng) {
       const range = PRICE_RANGES.find((r) => r.value === priceRng);
       if (range) {
@@ -87,11 +124,11 @@ export function PublicDoctorsDirectoryPage() {
       }
     }
     return p;
-  }, [search, specialty, modality, priceRng]);
+  }, [search, specialty, modality, priceRng, country, province]);
 
   const { state } = useApi<PaginatedData<DoctorDto>>(
     () => doctorsApi.list(apiParams),
-    [apiParams.search, apiParams.specialty, apiParams.modality, apiParams.priceMin, apiParams.priceMax],
+    [apiParams.search, apiParams.specialty, apiParams.modality, apiParams.priceMin, apiParams.priceMax, apiParams.country, apiParams.province],
   );
 
   const setFilter = (key: string, value: string) => {
@@ -101,12 +138,24 @@ export function PublicDoctorsDirectoryPage() {
     setParams(next, { replace: true });
   };
 
+  /** Aplica varios cambios de filtro en un solo `setParams` para no perder
+   *  uno por culpa de los closures stale de React. Lo usa el selector de
+   *  país, que tiene que setear `country` y limpiar `province` a la vez. */
+  const setFilters = (updates: Record<string, string>) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) next.set(k, v);
+      else   next.delete(k);
+    }
+    setParams(next, { replace: true });
+  };
+
   const clearAll = () => {
     setSearchInput('');
     setParams({}, { replace: true });
   };
 
-  const activeFilters = [specialty, modality, priceRng].filter(Boolean).length;
+  const activeFilters = [specialty, modality, priceRng, country, province].filter(Boolean).length;
 
   // Specialties extracted from the current data (could be /specialties endpoint
   // later for proper completeness). Frequency-sorted, top 12.
@@ -173,8 +222,11 @@ export function PublicDoctorsDirectoryPage() {
               specialty={specialty}
               modality={modality}
               priceRng={priceRng}
+              country={country}
+              province={province}
               specialties={specialties}
               onSet={setFilter}
+              onSetMany={setFilters}
               onClear={clearAll}
               activeCount={activeFilters}
             />
@@ -195,8 +247,11 @@ export function PublicDoctorsDirectoryPage() {
                   specialty={specialty}
                   modality={modality}
                   priceRng={priceRng}
+                  country={country}
+                  province={province}
                   specialties={specialties}
                   onSet={setFilter}
+                  onSetMany={setFilters}
                   onClear={clearAll}
                   activeCount={activeFilters}
                 />
@@ -252,13 +307,20 @@ interface FiltersPanelProps {
   specialty:    string;
   modality:     string;
   priceRng:     string;
+  country:      string;
+  province:     string;
   specialties:  string[];
   onSet:        (key: string, value: string) => void;
+  onSetMany:    (updates: Record<string, string>) => void;
   onClear:      () => void;
   activeCount:  number;
 }
 
-function FiltersPanel({ specialty, modality, priceRng, specialties, onSet, onClear, activeCount }: FiltersPanelProps) {
+function FiltersPanel({ specialty, modality, priceRng, country, province, specialties, onSet, onSetMany, onClear, activeCount }: FiltersPanelProps) {
+  // El URL guarda el NOMBRE del país (ej. "Ecuador") para que matchee con
+  // el campo de la base. Buscamos por nombre primero, después por código
+  // por compatibilidad con URLs viejas que tenían el código.
+  const selectedCountry = findCountry(country) ?? COUNTRIES.find((c) => c.code === country);
   return (
     <div className="lg:sticky lg:top-24 space-y-6">
       <div className="flex items-center justify-between">
@@ -267,6 +329,40 @@ function FiltersPanel({ specialty, modality, priceRng, specialties, onSet, onCle
           <button onClick={onClear} className="text-xs text-blue-600 hover:underline">Limpiar</button>
         )}
       </div>
+
+      {/* Ubicación primero — es lo más importante para presencial */}
+      <FilterGroup label="Ubicación">
+        <select
+          // El value del select es el NOMBRE del país (lo que persistimos en
+          // URL y filtramos en backend), pero las opciones llevan el código
+          // como key estable.
+          value={selectedCountry?.name ?? ''}
+          onChange={(e) => {
+            // Se actualizan los dos params en una sola llamada — si los
+            // mandáramos por separado React batchearía sobre `params`
+            // stale y la segunda llamada le ganaría a la primera, dejando
+            // el filtro de país sin aplicar.
+            onSetMany({ country: e.target.value, province: '' });
+          }}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Cualquier país</option>
+          {COUNTRIES.map((c) => (
+            <option key={c.code} value={c.name}>{c.flag} {c.name}</option>
+          ))}
+        </select>
+        <select
+          value={province}
+          disabled={!selectedCountry}
+          onChange={(e) => onSet('province', e.target.value)}
+          className="w-full mt-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+        >
+          <option value="">{selectedCountry ? 'Cualquier provincia' : 'Elegí país primero'}</option>
+          {selectedCountry?.provinces.map((p) => (
+            <option key={p.code} value={p.name}>{p.name}</option>
+          ))}
+        </select>
+      </FilterGroup>
 
       <FilterGroup label="Modalidad">
         {MODALITY_OPTIONS.map((m) => {

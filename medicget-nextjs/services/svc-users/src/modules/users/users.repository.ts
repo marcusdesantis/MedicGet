@@ -9,7 +9,10 @@ export interface UpdateProfileData {
   phone?: string;
   address?: string;
   city?: string;
+  province?: string;
   country?: string;
+  latitude?: number;
+  longitude?: number;
   /** Foto de perfil — dataURL generado por AvatarUploader client-side. */
   avatarUrl?: string;
 }

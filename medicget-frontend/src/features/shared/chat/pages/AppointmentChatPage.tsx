@@ -34,14 +34,26 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Send, Loader2, Check, CheckCheck, MoreVertical,
-  AlertCircle, Smile, Paperclip, Lock,
+  AlertCircle, Smile, Paperclip, Lock, FileText, X,
 } from 'lucide-react';
+import EmojiPicker, { Theme as EmojiTheme, EmojiStyle } from 'emoji-picker-react';
+import { toast }        from 'sonner';
 import { Avatar }       from '@/components/ui/Avatar';
 import { Alert }        from '@/components/ui/Alert';
 import { useApi }       from '@/hooks/useApi';
 import { chatApi, type ChatMessageDto, type ChatThreadDto } from '@/lib/api';
 
 const POLL_INTERVAL_MS = 3000;
+
+/** Tipos MIME aceptados para adjuntos. */
+const ALLOWED_MIMES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+];
+const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB de input
 
 // Tiny helper — same-day check off two ISO strings.
 function isSameDay(a: string, b: string): boolean {
@@ -152,30 +164,144 @@ export function AppointmentChatPage({ backTo }: AppointmentChatPageProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<{
+    name: string;
+    mime: string;
+    dataUrl: string;
+    size: number;
+  } | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [dragOver,  setDragOver]  = useState(false);
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const emojiRef   = useRef<HTMLDivElement>(null);
+  const dragDepth  = useRef(0); // contador para nested dragenter/dragleave
+
+  // `canSend` se desestructura más abajo del state.data (sólo cuando
+  // status==='ready'). Para los useEffect / handlers de drag+paste lo
+  // necesito accesible siempre, así que lo derivo acá con default false.
+  const canSend = state.status === 'ready' ? state.data.canSend : false;
+
+  // Cerrar el emoji picker al click afuera
+  useEffect(() => {
+    if (!showEmoji) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!emojiRef.current?.contains(e.target as Node)) setShowEmoji(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, [showEmoji]);
+
+  const handleFile = async (file: File) => {
+    if (!ALLOWED_MIMES.includes(file.type)) {
+      toast.error('Tipo de archivo no permitido. Sólo imágenes (JPG/PNG/WebP/GIF) y PDF.');
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error('El archivo es muy grande. Máximo 5 MB.');
+      return;
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      setPendingFile({ name: file.name, mime: file.type, dataUrl, size: file.size });
+    } catch {
+      toast.error('No se pudo leer el archivo.');
+    }
+  };
+
+  // ─── Drag & drop ─────────────────────────────────────────────────────
+  // Usamos un contador de "depth" porque dragenter/dragleave se disparan
+  // múltiples veces al pasar sobre elementos hijos. Sin esto el overlay
+  // parpadea cada vez que el cursor cruza un border interno.
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!canSend) return;
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+      dragDepth.current += 1;
+      setDragOver(true);
+    }
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (!canSend) return;
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length === 0) return;
+    if (files.length > 1) toast.info('Sólo se acepta un archivo por mensaje. Te dejo el primero.');
+    void handleFile(files[0]);
+  };
+
+  // ─── Pegar desde portapapeles (Ctrl+V) ───────────────────────────────
+  // Listener global mientras el chat está montado. Detecta imágenes en
+  // el clipboard (típico al copiar de Photoshop, screenshots con la
+  // herramienta del SO, copiar imágenes web, etc.). Sólo procesa si la
+  // pestaña tiene foco para evitar interferencias con otras pegadas.
+  useEffect(() => {
+    if (!canSend) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const fileItem = items.find((it) => it.kind === 'file' && it.type.startsWith('image/'));
+      if (!fileItem) return;
+      const file = fileItem.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      // Las imágenes pegadas no traen nombre — generamos uno con timestamp
+      const ext = file.type.split('/')[1] || 'png';
+      const renamed = new File([file], `pegado-${Date.now()}.${ext}`, { type: file.type });
+      void handleFile(renamed);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSend]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const content = draft.trim();
-    if (!content || sending || !id) return;
+    // Aceptamos enviar SI hay texto O SI hay un adjunto.
+    if ((!content && !pendingFile) || sending || !id) return;
 
     setSending(true);
     setSendError(null);
-    // Optimistic insert with a temporary id — the server's response will
-    // overwrite it. Marked with a `_pending` flag so we can render a
-    // spinner check icon.
     const tempId = `temp-${Date.now()}`;
     const tempMessage: ChatMessageDto = {
       id:            tempId,
       appointmentId: id,
       senderId:      state.status === 'ready' ? state.data.myUserId : '',
       content,
+      attachmentUrl:  pendingFile?.dataUrl ?? null,
+      attachmentName: pendingFile?.name    ?? null,
+      attachmentMime: pendingFile?.mime    ?? null,
       createdAt:     new Date().toISOString(),
     };
     setMessages((prev) => [...prev, tempMessage]);
+    const sentFile = pendingFile;
     setDraft('');
+    setPendingFile(null);
 
     try {
-      const res = await chatApi.send(id, { content });
+      const res = await chatApi.send(id, {
+        content,
+        ...(sentFile && {
+          attachmentUrl:  sentFile.dataUrl,
+          attachmentName: sentFile.name,
+          attachmentMime: sentFile.mime,
+        }),
+      });
       setMessages((prev) => prev.map((m) => (m.id === tempId ? res.data : m)));
     } catch (err: unknown) {
       // Roll back optimistic insert + surface error
@@ -185,6 +311,7 @@ export function AppointmentChatPage({ backTo }: AppointmentChatPageProps) {
           ?.response?.data?.error?.message ?? 'No se pudo enviar el mensaje';
       setSendError(msg);
       setDraft(content);
+      setPendingFile(sentFile);
     } finally {
       setSending(false);
     }
@@ -208,7 +335,7 @@ export function AppointmentChatPage({ backTo }: AppointmentChatPageProps) {
     );
   }
 
-  const { peer, myUserId, canSend, appointment } = state.data;
+  const { peer, myUserId, appointment } = state.data;
   const peerDisplayName = peer.role === 'DOCTOR'
     ? `Dr. ${peer.firstName} ${peer.lastName}`.trim()
     : `${peer.firstName} ${peer.lastName}`.trim();
@@ -217,7 +344,28 @@ export function AppointmentChatPage({ backTo }: AppointmentChatPageProps) {
     : 'Paciente';
 
   return (
-    <div className="flex flex-col -m-4 lg:-m-6 h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950">
+    <div
+      className="relative flex flex-col -m-4 lg:-m-6 h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950"
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {/* Overlay de drop activo */}
+      {dragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/20 backdrop-blur-sm border-4 border-dashed border-blue-500 rounded-lg pointer-events-none">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl px-6 py-5 shadow-2xl flex items-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600">
+              <Paperclip size={22} />
+            </div>
+            <div>
+              <p className="font-bold text-slate-800 dark:text-white">Soltá para adjuntar</p>
+              <p className="text-xs text-slate-500">Imágenes (JPG/PNG/WebP/GIF) o PDF · máx. 5 MB</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <header className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
         <button
@@ -272,50 +420,109 @@ export function AppointmentChatPage({ backTo }: AppointmentChatPageProps) {
             <Lock size={14} /> La conversación está cerrada porque la cita ya finalizó.
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex items-end gap-2">
-            <button
-              type="button"
-              className="p-2 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex-shrink-0"
-              title="Adjuntar archivo (próximamente)"
-              disabled
-            >
-              <Paperclip size={18} />
-            </button>
-            <button
-              type="button"
-              className="p-2 rounded-full text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition flex-shrink-0"
-              title="Insertar emoji"
-              onClick={() => setDraft((d) => d + '😊')}
-            >
-              <Smile size={18} />
-            </button>
-            <div className="flex-1 relative">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  // Enter sends, Shift+Enter inserts a new line — same UX as
-                  // Slack / WhatsApp web. Don't trigger on IME composition.
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    handleSubmit(e as unknown as FormEvent);
-                  }
+          <>
+            {/* Preview del archivo a enviar */}
+            {pendingFile && (
+              <div className="mb-2 flex items-center gap-3 p-2 pr-3 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                {pendingFile.mime.startsWith('image/') ? (
+                  <img
+                    src={pendingFile.dataUrl}
+                    alt={pendingFile.name}
+                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-rose-100 dark:bg-rose-900/30 text-rose-600 flex items-center justify-center flex-shrink-0">
+                    <FileText size={20} />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-slate-800 dark:text-white truncate">{pendingFile.name}</p>
+                  <p className="text-[10px] text-slate-500">
+                    {pendingFile.mime.startsWith('image/') ? 'Imagen' : 'PDF'} · {(pendingFile.size / 1024).toFixed(0)} KB
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingFile(null)}
+                  className="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500"
+                  title="Quitar adjunto"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="flex items-end gap-2 relative">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleFile(f);
+                  if (fileRef.current) fileRef.current.value = '';
                 }}
-                placeholder="Escribe un mensaje…"
-                rows={1}
-                className="w-full resize-none px-4 py-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl text-sm text-slate-800 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
-                style={{ minHeight: '40px' }}
               />
-            </div>
-            <button
-              type="submit"
-              disabled={!draft.trim() || sending}
-              className="p-2.5 rounded-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white transition flex-shrink-0 shadow-sm"
-              title="Enviar"
-            >
-              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </button>
-          </form>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="p-2 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex-shrink-0"
+                title="Adjuntar imagen o PDF"
+              >
+                <Paperclip size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEmoji((s) => !s)}
+                className="p-2 rounded-full text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition flex-shrink-0"
+                title="Insertar emoji"
+              >
+                <Smile size={18} />
+              </button>
+
+              {showEmoji && (
+                <div ref={emojiRef} className="absolute bottom-full mb-2 left-0 z-30">
+                  <EmojiPicker
+                    onEmojiClick={(em) => {
+                      setDraft((d) => d + em.emoji);
+                    }}
+                    theme={EmojiTheme.AUTO}
+                    emojiStyle={EmojiStyle.NATIVE}
+                    searchPlaceHolder="Buscar emoji…"
+                    width={320}
+                    height={380}
+                    lazyLoadEmojis
+                  />
+                </div>
+              )}
+
+              <div className="flex-1 relative">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handleSubmit(e as unknown as FormEvent);
+                    }
+                  }}
+                  placeholder={pendingFile ? 'Agregá un comentario (opcional)…' : 'Escribe un mensaje…'}
+                  rows={1}
+                  className="w-full resize-none px-4 py-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl text-sm text-slate-800 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
+                  style={{ minHeight: '40px' }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={(!draft.trim() && !pendingFile) || sending}
+                className="p-2.5 rounded-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white transition flex-shrink-0 shadow-sm"
+                title="Enviar"
+              >
+                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </form>
+          </>
         )}
         <p className="text-[10px] text-slate-400 text-center mt-2">
           <Lock size={9} className="inline-block mr-1" />
@@ -415,34 +622,69 @@ function MessageBubble({ message, isMine, consecutive, showReceipt }: MessageBub
   return (
     <div className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${consecutive ? 'mt-0.5' : 'mt-2'}`}>
       <div className="max-w-[78%] sm:max-w-[64%] flex flex-col">
-        <div
-          className={[
-            'px-3.5 py-2 text-sm shadow-sm break-words',
-            consecutive ? flatRadius : tailRadius,
-            isMine
-              ? 'bg-blue-600 text-white'
-              : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700',
-            isDeleted && 'italic opacity-60',
-          ].filter(Boolean).join(' ')}
-        >
-          {isDeleted ? (
-            <span>Mensaje eliminado</span>
-          ) : (
-            <>
-              {message.content}
-              {message.attachmentUrl && (
-                <a
-                  href={message.attachmentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block mt-1 text-xs underline ${isMine ? 'text-blue-100' : 'text-blue-600'}`}
-                >
-                  📎 {message.attachmentName ?? 'Adjunto'}
-                </a>
-              )}
-            </>
-          )}
-        </div>
+        {/* Las imágenes se renderean DENTRO de la burbuja sin padding y
+            con la propia foto como fondo. Los PDFs van como link estilo
+            "tarjetita de archivo". */}
+        {!isDeleted && message.attachmentUrl && message.attachmentMime?.startsWith('image/') && (
+          <a
+            href={message.attachmentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`block overflow-hidden mb-1 ${
+              consecutive ? flatRadius : tailRadius
+            } ${isMine ? '' : 'border border-slate-200 dark:border-slate-700'} bg-slate-100 dark:bg-slate-800`}
+            title="Abrir imagen"
+          >
+            <img
+              src={message.attachmentUrl}
+              alt={message.attachmentName ?? 'Imagen'}
+              className="block max-w-full max-h-72 w-auto h-auto object-cover"
+            />
+          </a>
+        )}
+
+        {/* Burbuja de texto/PDF — sólo se muestra si hay contenido textual
+            o si el adjunto es PDF. Una imagen sola sin caption no genera
+            burbuja extra. */}
+        {(!isDeleted && (message.content || (message.attachmentUrl && message.attachmentMime === 'application/pdf')) || isDeleted) && (
+          <div
+            className={[
+              'px-3.5 py-2 text-sm shadow-sm break-words',
+              consecutive ? flatRadius : tailRadius,
+              isMine
+                ? 'bg-blue-600 text-white'
+                : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700',
+              isDeleted && 'italic opacity-60',
+            ].filter(Boolean).join(' ')}
+          >
+            {isDeleted ? (
+              <span>Mensaje eliminado</span>
+            ) : (
+              <>
+                {message.content && <span>{message.content}</span>}
+                {message.attachmentUrl && message.attachmentMime === 'application/pdf' && (
+                  <a
+                    href={message.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={message.attachmentName ?? 'documento.pdf'}
+                    className={`flex items-center gap-2 mt-2 px-3 py-2 rounded-lg ${
+                      isMine
+                        ? 'bg-blue-700/40 hover:bg-blue-700/60 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200'
+                    } transition`}
+                  >
+                    <FileText size={16} className="flex-shrink-0" />
+                    <span className="text-xs font-medium truncate flex-1">{message.attachmentName ?? 'Documento.pdf'}</span>
+                    <span className={`text-[10px] uppercase tracking-wider ${isMine ? 'text-blue-200' : 'text-slate-500'}`}>
+                      PDF
+                    </span>
+                  </a>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Receipt + timestamp — only on the LAST mine message to avoid
             visual noise on long threads */}

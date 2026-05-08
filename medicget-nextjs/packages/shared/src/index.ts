@@ -10,3 +10,5 @@ export * from './email';
 export * from './payphone';
 export * from './settings';
 export * from './subscription';
+export * from './webpush';
+export * from './notifications';

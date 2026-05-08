@@ -40,6 +40,9 @@ const schema = z.object({
   address:   z.string().optional(),
   city:      z.string().optional(),
   country:   z.string().optional(),
+  province:  z.string().optional(),
+  latitude:  z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 
   // ─── Role-specific (all optional, server picks based on `role`) ────────────
   clinicName:        z.string().optional(),

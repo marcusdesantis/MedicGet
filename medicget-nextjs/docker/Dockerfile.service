@@ -58,7 +58,15 @@ COPY services/svc-patient/package.json     ./services/svc-patient/
 COPY services/svc-appointment/package.json ./services/svc-appointment/
 COPY services/svc-dashboard/package.json   ./services/svc-dashboard/
 
-RUN npm install --frozen-lockfile
+# Configurar npm con timeout largo + reintentos para sobrevivir a
+# cortes de red transitorios (ECONNRESET) cuando se instalan paquetes
+# pesados como web-push o tensorflow. Con estos defaults npm reintenta
+# automáticamente hasta 5 veces con backoff exponencial.
+RUN npm config set fetch-timeout 600000 && \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm install --frozen-lockfile --no-audit --no-fund
 
 # =============================================================================
 # Stage 2 — builder
@@ -83,9 +91,18 @@ COPY packages/shared/ ./packages/shared/
 # Target service source only
 COPY services/${SERVICE_NAME}/ ./services/${SERVICE_NAME}/
 
-# Generate Prisma client — no database connection required
-RUN node_modules/.bin/prisma generate \
-      --schema=./packages/shared/prisma/schema.prisma
+# Generate Prisma client — no database connection required.
+# Wrap con retries porque `prisma generate` baja el query engine desde
+# binaries.prisma.sh y a veces el CDN tiene cortes pasajeros (ECONNRESET).
+# Hasta 5 intentos con 15s entre cada uno.
+RUN for i in 1 2 3 4 5; do \
+      node_modules/.bin/prisma generate \
+        --schema=./packages/shared/prisma/schema.prisma && break; \
+      echo "[prisma] generate attempt $i failed — retrying in 15s..." >&2; \
+      sleep 15; \
+    done && \
+    [ -d /app/node_modules/.prisma/client ] || \
+    (echo "[prisma] generate failed after 5 attempts" >&2 && exit 1)
 
 # Build Next.js standalone output
 WORKDIR /app/services/${SERVICE_NAME}

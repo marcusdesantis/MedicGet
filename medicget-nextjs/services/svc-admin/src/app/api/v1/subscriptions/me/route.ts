@@ -14,11 +14,15 @@ export const dynamic = 'force-dynamic';
  * el Y" header and gate features.
  */
 export const GET = withAuth(async (_req: NextRequest, { user }) => {
-  // Most recent active subscription, if any
+  // Devolvemos la suscripción más recientemente creada (ACTIVE o PENDING).
+  // Orden por `expiresAt` rompe el flujo de upgrade: la FREE auto-creada al
+  // registro tiene `expiresAt` a 100 años — más lejos que la PRO recién
+  // creada — y termina ocultando la PENDING_PAYMENT real. `createdAt desc`
+  // siempre devuelve la última operación del usuario.
   const subscription = await prisma.subscription.findFirst({
     where:   { userId: user.id, status: { in: ['ACTIVE', 'PENDING_PAYMENT'] } },
     include: { plan: true },
-    orderBy: { expiresAt: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
 
   // Always return the FREE plan for the user's audience as a fallback

@@ -11,8 +11,8 @@ interface Props {
 }
 
 /**
- * Clinic flow — step 1 form. Collects clinic-level info (name, size,
- * location, software). Validation lives in the parent page.
+ * Clinic flow — step 1 form. Collects clinic-level info (name, size, city).
+ * Validation lives in the parent page.
  */
 export const ClinicForm = ({ form, setForm, errors }: Props) => {
   return (
@@ -55,18 +55,7 @@ export const ClinicForm = ({ form, setForm, errors }: Props) => {
         )}
       </FormField>
 
-      <FormField label="Programa de gestión utilizado (opcional)">
-        <Select
-          value={form.software}
-          onChange={(v) => setForm({ software: v })}
-          options={[
-            { label: "Ninguno", value: "none" },
-            { label: "Propio", value: "custom" },
-            { label: "Otro", value: "other" },
-          ]}
-        />
-      </FormField>
-
     </div>
   );
 };
+
