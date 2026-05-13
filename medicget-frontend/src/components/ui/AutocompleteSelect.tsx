@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { matchesSearch } from "@/lib/search";
 
@@ -20,6 +20,29 @@ export const AutocompleteSelect = ({
 }: Props) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar al hacer click fuera del componente. Usamos `mousedown` en vez
+  // de `click` para que dispare antes de que un blur sobre el input arme
+  // un focus loop.
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [open]);
+
+  // Cerrar con Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   // Case + diacritic-insensitive: "cardiologia" matchea "Cardiología".
   const filtered = options.filter((opt) => matchesSearch(query, opt.label));
@@ -31,7 +54,7 @@ export const AutocompleteSelect = ({
   };
 
   return (
-    <div className="relative">
+    <div ref={wrapperRef} className="relative">
 
       {/* INPUT */}
       <div
@@ -46,7 +69,7 @@ export const AutocompleteSelect = ({
             setQuery(e.target.value);
             setOpen(true);
           }}
-          className="w-full py-2 bg-transparent outline-none text-sm"
+          className="w-full py-2 bg-transparent outline-none text-sm text-slate-800 dark:text-white placeholder-slate-400"
           placeholder="Buscar especialidad..."
         />
       </div>
@@ -56,7 +79,7 @@ export const AutocompleteSelect = ({
         <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow max-h-48 overflow-auto">
 
           {filtered.length === 0 && (
-            <div className="p-2 text-sm text-slate-400">
+            <div className="p-2 text-sm text-slate-400 dark:text-slate-500">
               No hay resultados
             </div>
           )}
@@ -65,7 +88,7 @@ export const AutocompleteSelect = ({
             <div
               key={opt.value}
               onClick={() => select(opt)}
-              className="p-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              className="p-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
             >
               {opt.label}
             </div>

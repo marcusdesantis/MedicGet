@@ -6,9 +6,13 @@ import { AuthCard } from "@/components/ui/AuthCard";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
-import { AutocompleteSelect } from "@/components/ui/AutocompleteSelect";
+// Antes usaba `AutocompleteSelect` con una lista corta de `features/auth/
+// register/data/specialties.ts`, mientras que el step 1 del registro usaba
+// `SpecialtyCombobox` con el catálogo completo (`lib/specialties.ts`).
+// Quedaban dos UIs con dos listas distintas — confuso para el médico.
+// Unificamos: ambos steps usan ahora el mismo combobox + el mismo catálogo.
+import { SpecialtyCombobox } from "@/components/ui/SpecialtyCombobox";
 import { Alert } from "@/components/ui/Alert";
-import { specialties } from "@/features/auth/register/data/specialties";
 import { useAuth } from "@/context/AuthContext";
 import { doctorsApi } from "@/lib/api";
 
@@ -49,6 +53,19 @@ export function DoctorSetupPage() {
     });
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
+
+    // Sincronizar form.specialty con el valor del user cuando AuthContext
+    // termine de hacer su bootstrap. Sin esto, el `useState` inicial
+    // captura `user = null` (loading) y el campo queda vacío aunque
+    // el doctor ya haya ingresado la especialidad en el step 1.
+    //
+    // Solo sobrescribimos si el form todavía no tiene valor — así
+    // respetamos lo que el usuario tipea después.
+    useEffect(() => {
+        const fromUser = user?.dto.doctor?.specialty;
+        if (!fromUser) return;
+        setForm((prev) => prev.specialty ? prev : { ...prev, specialty: fromUser });
+    }, [user]);
 
     // Bounce non-doctor users away once auth has finished loading.
     useEffect(() => {
@@ -141,16 +158,37 @@ export function DoctorSetupPage() {
                 )}
 
                 <div className="space-y-4">
-                    <FormField label="Especialidad *">
-                        <AutocompleteSelect
-                            options={specialties}
-                            value={form.specialty}
-                            onChange={(v) => setForm({ ...form, specialty: v })}
-                        />
-                        {errors.specialty && form.specialty !== "" && (
-                            <p className="text-xs text-rose-600 mt-1">{errors.specialty}</p>
-                        )}
-                    </FormField>
+                    {/* Especialidad: si ya viene cargada desde el registro
+                        (step 1), no la pedimos de nuevo — solo mostramos
+                        un chip read-only con un link "Cambiar" hacia el
+                        perfil. Si por alguna razón llegó vacía (cuenta
+                        creada por superadmin, doctor sin completar
+                        registro), caemos al combobox completo. */}
+                    {form.specialty.trim() ? (
+                        <FormField label="Especialidad">
+                            <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
+                                <span className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                    <Stethoscope size={14} className="text-teal-600 dark:text-teal-400" />
+                                    {form.specialty}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                    Cambiar luego desde tu perfil
+                                </span>
+                            </div>
+                        </FormField>
+                    ) : (
+                        <FormField label="Especialidad *">
+                            <SpecialtyCombobox
+                                value={form.specialty}
+                                onChange={(v) => setForm({ ...form, specialty: v })}
+                                invalid={!!errors.specialty && form.specialty !== ""}
+                                required
+                            />
+                            {errors.specialty && form.specialty !== "" && (
+                                <p className="text-xs text-rose-600 mt-1">{errors.specialty}</p>
+                            )}
+                        </FormField>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                         <FormField label="Número de licencia / colegiatura">

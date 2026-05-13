@@ -8,7 +8,11 @@ import { CardContainer } from '@/components/ui/CardContainer';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
 import { doctorsApi, type DoctorDto, type PaginatedData } from '@/lib/api';
-import { specialties as SPECIALTY_OPTIONS } from '@/features/auth/register/data/specialties';
+// Catálogo único de especialidades para toda la app — antes esta página
+// usaba la lista corta de `register/data/specialties.ts`. Ahora consumimos
+// el mismo catálogo que SpecialtyCombobox usa en registro + setup, así
+// el paciente filtra contra TODAS las especialidades disponibles.
+import { DEFAULT_SPECIALTIES } from '@/lib/specialties';
 
 /**
  * Fields rendered in the search filter bar. Specialty is read from the URL
@@ -88,8 +92,8 @@ export function SearchDoctorsPage() {
             className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Todas las especialidades</option>
-            {SPECIALTY_OPTIONS.map((s) => (
-              <option key={s.value} value={s.label}>{s.label}</option>
+            {DEFAULT_SPECIALTIES.map((s) => (
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
           <button
