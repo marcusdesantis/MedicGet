@@ -38,6 +38,14 @@ export const LoginPage = () => {
     try {
       const result = await login(form.email.trim(), form.password);
       if (!result.success) {
+        // Cuenta existe pero el email no se verificó: en lugar de
+        // mostrar solo el mensaje, llevamos al usuario a la pantalla
+        // de verificación con el email precargado para que pueda
+        // ingresar el código o pedir reenvío.
+        if (result.requiresVerification) {
+          navigate(`/verify-email?email=${encodeURIComponent(result.email ?? form.email.trim())}`);
+          return;
+        }
         setError(result.error ?? 'Error al iniciar sesión');
         return;
       }

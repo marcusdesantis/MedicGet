@@ -30,6 +30,7 @@ export const appointmentsService = {
     // ponemos un cron real con node-cron o un worker dedicado.
     void paymentService.sweepExpired().catch(() => {/* swallow */});
     void sweepReminders().catch(() => {/* swallow */});
+    void sweepStaleAppointments().catch(() => {/* swallow */});
 
     const filters: AppointmentFilters = {};
 
@@ -266,11 +267,81 @@ export const appointmentsService = {
       void notifyCancellation(id, user.id).catch(() => {/* swallow */});
     }
 
+    // ─── Doble validación de finalización ───────────────────────────────
+    // Cuando el MÉDICO intenta marcar `status: COMPLETED`, NO cerramos la
+    // cita directamente — el flujo correcto es:
+    //   1. Setear `doctorCompletedAt` (médico marcó atendida).
+    //   2. Notificar al paciente para que confirme.
+    //   3. La cita queda en ONGOING hasta que el paciente confirme.
+    //   4. Cuando el paciente confirma, `patientConfirmedAt` se setea y
+    //      ahí sí pasa a COMPLETED (en `confirmCompletion`).
+    //   5. Si 24h después no confirmó, el sweeper la cierra.
+    //
+    // Si el CLINIC marca COMPLETED, asumimos que tiene autoridad y
+    // cerramos directo (caso "admin de la clínica corrige a mano").
+    // PATIENT no puede llegar acá por el role check de arriba.
+    if (body.status === 'COMPLETED' && user.role === 'DOCTOR') {
+      const updated = await appointmentsRepository.update(id, {
+        // Forzamos status a ONGOING — pendiente de confirmación del paciente.
+        status:            'ONGOING',
+        doctorCompletedAt: new Date(),
+        notes:             body.notes,
+        updatedBy:         user.id,
+      });
+      void notifyDoctorMarkedCompleted(id).catch(() => {/* swallow */});
+      return { ok: true, data: updated };
+    }
+
     const updated = await appointmentsRepository.update(id, {
       ...body,
       updatedBy: user.id,
     });
 
+    // Si la cita pasa a COMPLETED por otra vía (clinic admin, sweeper) y
+    // todavía no había sido notificada la finalización al paciente, lo
+    // hacemos ahora.
+    if (body.status === 'COMPLETED') {
+      void notifyAppointmentFinalized(id).catch(() => {/* swallow */});
+    }
+
+    return { ok: true, data: updated };
+  },
+
+  /**
+   * Paciente confirma que la atención se realizó. Cierra la doble
+   * validación: setea `patientConfirmedAt`, transiciona a COMPLETED y
+   * dispara la notificación de finalización a ambas partes.
+   *
+   * Requiere que el médico haya marcado previamente con
+   * `doctorCompletedAt` — si no, devolvemos 400 con mensaje claro.
+   */
+  async confirmCompletion(id: string, user: AuthUser): Promise<ServiceResult<unknown>> {
+    if (user.role !== 'PATIENT') {
+      return { ok: false, code: 'FORBIDDEN', message: 'Solo el paciente puede confirmar la atención.' };
+    }
+
+    const appointment = await appointmentsRepository.findById(id);
+    if (!appointment) return { ok: false, code: 'NOT_FOUND', message: 'Appointment not found' };
+
+    const { prisma } = await import('@medicget/shared/prisma');
+    const patient = await prisma.patient.findUnique({ where: { userId: user.id } });
+    if (!patient || appointment.patientId !== patient.id) {
+      return { ok: false, code: 'FORBIDDEN', message: 'Access denied' };
+    }
+
+    if (!(appointment as { doctorCompletedAt?: Date | null }).doctorCompletedAt) {
+      return { ok: false, code: 'BAD_REQUEST', message: 'El médico todavía no marcó la cita como atendida.' };
+    }
+    if (appointment.status === 'COMPLETED') {
+      return { ok: false, code: 'CONFLICT', message: 'La cita ya estaba finalizada.' };
+    }
+
+    const updated = await appointmentsRepository.update(id, {
+      status:             'COMPLETED',
+      patientConfirmedAt: new Date(),
+      updatedBy:          user.id,
+    });
+    void notifyAppointmentFinalized(id).catch(() => {/* swallow */});
     return { ok: true, data: updated };
   },
 
@@ -654,6 +725,158 @@ async function sweepReminders(): Promise<number> {
     sent++;
   }
   return sent;
+}
+
+/**
+ * Notifica al PACIENTE que el médico marcó la cita como atendida y le
+ * pide que confirme. Disparado al ejecutar la primera mitad de la doble
+ * validación.
+ */
+async function notifyDoctorMarkedCompleted(appointmentId: string): Promise<void> {
+  const { prisma } = await import('@medicget/shared/prisma');
+  const a = await prisma.appointment.findUnique({
+    where:   { id: appointmentId },
+    include: {
+      patient: { select: { userId: true, user: { select: { profile: { select: { firstName: true } } } } } },
+      doctor:  { select: { user: { select: { profile: { select: { firstName: true, lastName: true } } } } } },
+    },
+  });
+  if (!a) return;
+
+  const docName = `Dr. ${a.doctor.user.profile?.firstName ?? ''} ${a.doctor.user.profile?.lastName ?? ''}`.trim();
+
+  await createNotification({
+    userId:   a.patient.userId,
+    type:     'APPOINTMENT_COMPLETED_BY_DOCTOR',
+    title:    'Tu médico finalizó la consulta',
+    message:  `${docName} marcó la atención como realizada. Por favor, confirmá desde la app que se hizo correctamente.`,
+    metadata: { appointmentId },
+    pushUrl:  `/patient/appointments/${appointmentId}`,
+  });
+}
+
+/**
+ * Notifica a AMBAS partes que la cita quedó finalizada (doble validación
+ * cerrada o cierre administrativo). Best-effort.
+ */
+async function notifyAppointmentFinalized(appointmentId: string): Promise<void> {
+  const { prisma } = await import('@medicget/shared/prisma');
+  const a = await prisma.appointment.findUnique({
+    where:   { id: appointmentId },
+    include: {
+      patient: { select: { userId: true, user: { select: { profile: { select: { firstName: true } } } } } },
+      doctor:  { select: { userId: true, user: { select: { profile: { select: { firstName: true, lastName: true } } } } } },
+    },
+  });
+  if (!a) return;
+
+  const patientFirst = a.patient.user.profile?.firstName ?? 'paciente';
+  const docName = `Dr. ${a.doctor.user.profile?.firstName ?? ''} ${a.doctor.user.profile?.lastName ?? ''}`.trim();
+
+  await Promise.all([
+    createNotification({
+      userId:   a.patient.userId,
+      type:     'APPOINTMENT_FINALIZED',
+      title:    'Cita finalizada',
+      message:  `La consulta con ${docName} se completó. Si querés, dejale una reseña.`,
+      metadata: { appointmentId },
+      pushUrl:  `/patient/appointments/${appointmentId}`,
+    }),
+    createNotification({
+      userId:   a.doctor.userId,
+      type:     'APPOINTMENT_FINALIZED',
+      title:    'Atención confirmada',
+      message:  `${patientFirst} confirmó la atención. La cita quedó cerrada.`,
+      metadata: { appointmentId },
+      pushUrl:  `/doctor/appointments/${appointmentId}`,
+    }),
+  ]);
+}
+
+/**
+ * Sweeper de citas vencidas. Cierra automáticamente las citas cuyo
+ * `date + time` ya pasó hace suficiente tiempo y nadie tocó:
+ *
+ *   • PENDING con paso > 24 h         → NO_SHOW (paciente nunca pagó)
+ *   • UPCOMING / ONGOING con paso > 4 h → COMPLETED (asumimos atendida)
+ *
+ * Esto resuelve el síntoma reportado de "citas atendidas que siguen
+ * apareciendo como programadas" — antes nada movía esos registros y se
+ * quedaban indefinidamente en la pestaña "Próximas" del paciente y del
+ * médico.
+ *
+ * NOTA: cuando se implemente la doble validación (médico finaliza →
+ * paciente confirma), el sweeper también auto-confirmará las que el
+ * médico marcó como completadas y el paciente nunca confirmó después
+ * de 24 h. Por ahora cubre el caso del MVP.
+ *
+ * Best-effort. Sin transacción global — cada cita se actualiza
+ * individualmente para no bloquear si una falla.
+ */
+async function sweepStaleAppointments(): Promise<number> {
+  const { prisma } = await import('@medicget/shared/prisma');
+  const now = Date.now();
+  const FOUR_HOURS_MS  = 4  * 60 * 60 * 1000;
+  const TWENTYFOUR_MS  = 24 * 60 * 60 * 1000;
+
+  // Filtro grueso a nivel DB: solo citas de los últimos 30 días con status
+  // potencialmente "vivo". El bound evita escanear años de historial.
+  const lookbackStart = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const candidates = await prisma.appointment.findMany({
+    where: {
+      status: { in: ['PENDING', 'UPCOMING', 'ONGOING'] },
+      date:   { gte: lookbackStart, lte: new Date(now) },
+    },
+    select: {
+      id: true, date: true, time: true, status: true,
+      doctorCompletedAt: true,
+    },
+    take: 500,
+  });
+
+  let updated = 0;
+  for (const a of candidates) {
+    // Asumimos TZ del médico = Ecuador (UTC-5) — alineado con `create()`.
+    // Cuando se implemente la TZ por país del médico, este offset se
+    // resuelve via doctor.profile.country.
+    const dateOnly    = new Date(a.date).toISOString().slice(0, 10);
+    const apptInstant = new Date(`${dateOnly}T${a.time}:00-05:00`).getTime();
+    const elapsed     = now - apptInstant;
+
+    let nextStatus: 'NO_SHOW' | 'COMPLETED' | null = null;
+    let autoConfirm = false;
+
+    // Caso "doble validación expirada": el médico marcó atendida hace
+    // >24h y el paciente nunca confirmó → la cerramos como COMPLETED de
+    // oficio (asumimos buena fe; el paciente podía reportar disputa).
+    const doctorMarkedAt = a.doctorCompletedAt ? new Date(a.doctorCompletedAt).getTime() : null;
+    if (a.status === 'ONGOING' && doctorMarkedAt && now - doctorMarkedAt > TWENTYFOUR_MS) {
+      nextStatus = 'COMPLETED';
+      autoConfirm = true;
+    } else if (a.status === 'PENDING' && elapsed > TWENTYFOUR_MS) {
+      nextStatus = 'NO_SHOW';
+    } else if ((a.status === 'UPCOMING' || a.status === 'ONGOING') && elapsed > FOUR_HOURS_MS) {
+      nextStatus = 'COMPLETED';
+    }
+    if (!nextStatus) continue;
+
+    try {
+      await prisma.appointment.update({
+        where: { id: a.id },
+        data:  {
+          status: nextStatus,
+          ...(autoConfirm ? { patientConfirmedAt: new Date() } : {}),
+        },
+      });
+      if (nextStatus === 'COMPLETED') {
+        void notifyAppointmentFinalized(a.id).catch(() => {/* swallow */});
+      }
+      updated++;
+    } catch {
+      /* swallow — la próxima pasada lo reintenta */
+    }
+  }
+  return updated;
 }
 
 /**

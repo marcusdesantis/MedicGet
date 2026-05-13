@@ -15,6 +15,7 @@ import { SpecialtyCombobox }  from '@/components/ui/SpecialtyCombobox';
 import { useApi }         from '@/hooks/useApi';
 import { useAuth }        from '@/context/AuthContext';
 import { clinicsApi, doctorsApi, type DoctorDto, type PaginatedData } from '@/lib/api';
+import { matchesSearch } from '@/lib/search';
 
 function fullName(p?: { firstName?: string; lastName?: string }): string {
   return [p?.firstName, p?.lastName].filter(Boolean).join(' ') || '—';
@@ -50,13 +51,10 @@ export function ManageDoctorsPage() {
 
   const visible = useMemo(() => {
     if (state.status !== 'ready') return [];
-    const q = search.trim().toLowerCase();
-    if (!q) return state.data.data;
-    return state.data.data.filter((d) => {
-      const name = fullName(d.user?.profile).toLowerCase();
-      const spec = d.specialty.toLowerCase();
-      return name.includes(q) || spec.includes(q);
-    });
+    // Case + diacritic-insensitive: "cardiologia" matchea "Cardiología".
+    return state.data.data.filter((d) =>
+      matchesSearch(search, fullName(d.user?.profile), d.specialty),
+    );
   }, [state, search]);
 
   const toggleAvailable = async (doctor: DoctorDto) => {

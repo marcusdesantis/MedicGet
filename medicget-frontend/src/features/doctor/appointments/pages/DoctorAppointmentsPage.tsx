@@ -13,6 +13,7 @@ import { AppointmentCalendar } from '@/components/ui/AppointmentCalendar';
 import { useApi }         from '@/hooks/useApi';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { appointmentsApi, type AppointmentDto, type PaginatedData } from '@/lib/api';
+import { matchesSearch } from '@/lib/search';
 
 const TABS = ['Todas', 'Pendientes', 'Próximas', 'Completadas', 'Canceladas'] as const;
 
@@ -53,11 +54,11 @@ export function DoctorAppointmentsPage() {
   const visible = useMemo(() => {
     if (state.status !== 'ready') return [];
     const statusFilter = TAB_STATUSES[tab];
-    const q = search.trim().toLowerCase();
     return state.data.data.filter((a) => {
       const matchStatus = !statusFilter || statusFilter.includes(a.status);
-      const matchSearch = !q || patientName(a).toLowerCase().includes(q);
-      return matchStatus && matchSearch;
+      // Búsqueda case + diacritic-insensitive sobre el nombre del paciente.
+      const matchSearchOk = matchesSearch(search, patientName(a));
+      return matchStatus && matchSearchOk;
     });
   }, [state, tab, search]);
 
@@ -92,7 +93,7 @@ export function DoctorAppointmentsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <Tabs tabs={[...TABS]} active={tab} onChange={(v) => setTab(v as typeof TABS[number])} />
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <SearchInput value={search} onChange={setSearch} placeholder="Buscar paciente..." className="flex-1 sm:w-48" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Buscar pacientes..." className="flex-1 sm:w-48" />
           <ViewToggleDoctor value={viewMode} onChange={setViewMode} />
         </div>
       </div>

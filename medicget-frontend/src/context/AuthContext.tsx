@@ -49,6 +49,21 @@ export interface AuthResult {
    */
   field?:  string;
   role?:   UserRole;
+  /**
+   * Código de error del backend (ej. 'EMAIL_NOT_VERIFIED', 'CONFLICT').
+   * El consumidor lo usa para tomar acciones específicas más allá del
+   * mensaje (redirigir a otra pantalla, mostrar UI distinta, etc.).
+   */
+  code?:   string;
+  /**
+   * En el flujo nuevo, register devuelve `requiresVerification` y NO
+   * loguea al usuario automáticamente. La página de registro debe
+   * redirigir a /verify-email cuando este flag está en true.
+   * También se setea cuando login encuentra una cuenta sin verificar
+   * (code === 'EMAIL_NOT_VERIFIED').
+   */
+  requiresVerification?: boolean;
+  email?:                string;
 }
 
 interface AuthContextType {
@@ -101,11 +116,12 @@ function dtoToUser(dto: UserDto): User {
  * We extract the field name and the most actionable message from either
  * shape, falling back to the generic Spanish copy on network errors.
  */
-function extractApiError(err: unknown, fallback: string): { message: string; field?: string } {
+function extractApiError(err: unknown, fallback: string): { message: string; field?: string; code?: string } {
   const errorBody = (err as {
     response?: {
       data?: {
         error?: {
+          code?:    string;
           message?: string;
           details?: unknown;
         };
@@ -114,13 +130,14 @@ function extractApiError(err: unknown, fallback: string): { message: string; fie
   })?.response?.data?.error;
 
   const message = errorBody?.message ?? fallback;
+  const code    = errorBody?.code;
   const details = errorBody?.details;
 
   // Shape #1 — { field: "email" }
   if (details && typeof details === "object" && "field" in details) {
     const fieldVal = (details as { field?: unknown }).field;
     if (typeof fieldVal === "string") {
-      return { message, field: fieldVal };
+      return { message, field: fieldVal, code };
     }
   }
 
@@ -131,12 +148,12 @@ function extractApiError(err: unknown, fallback: string): { message: string; fie
     const entries = Object.entries(details as Record<string, unknown>);
     for (const [field, msgs] of entries) {
       if (Array.isArray(msgs) && msgs.length > 0 && typeof msgs[0] === "string") {
-        return { message: msgs[0] as string, field };
+        return { message: msgs[0] as string, field, code };
       }
     }
   }
 
-  return { message };
+  return { message, code };
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -169,20 +186,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(mappedUser);
       return { success: true, role: mappedUser.role };
     } catch (err: unknown) {
-      const { message, field } = extractApiError(err, 'Credenciales incorrectas');
-      return { success: false, error: message, field };
+      const { message, field, code } = extractApiError(err, 'Credenciales incorrectas');
+      // Si la cuenta existe pero el email no fue verificado, marcamos
+      // requiresVerification para que LoginPage redirija a /verify-email
+      // en lugar de mostrar solo el mensaje.
+      if (code === 'EMAIL_NOT_VERIFIED') {
+        return {
+          success: false,
+          error:   message,
+          field,
+          code,
+          requiresVerification: true,
+          email,
+        };
+      }
+      return { success: false, error: message, field, code };
     }
   }, []);
 
   const register = useCallback(async (body: RegisterBody): Promise<AuthResult> => {
     try {
       const res = await authApi.register(body);
-      localStorage.setItem(TOKEN_KEY, res.data.token);
-      const mappedUser = dtoToUser(res.data.user);
-      setUser(mappedUser);
-      // Wipe the wizard draft so a future visit to /register starts fresh.
+      // El backend ahora requiere verificación de email — no se loguea
+      // automáticamente. Limpiamos el draft del wizard y devolvemos
+      // requiresVerification:true para que la página redirija a /verify-email.
       clearRegistrationDraft();
-      return { success: true, role: mappedUser.role };
+      return {
+        success: true,
+        requiresVerification: true,
+        email: res.data.email,
+      };
     } catch (err: unknown) {
       const { message, field } = extractApiError(err, 'No se pudo crear la cuenta');
       return { success: false, error: message, field };

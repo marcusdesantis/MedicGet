@@ -1,3 +1,4 @@
+import type { DoctorAvailability } from '@prisma/client';
 import type { AuthUser } from '@medicget/shared/auth';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { paginate } from '@medicget/shared/paginate';
@@ -278,7 +279,7 @@ export const doctorsService = {
     const dayOfWeek = DAY_OF_WEEK_MAP[normalizedDate.getUTCDay()];
     const availability = await doctorsRepository.findAvailability(doctorId);
     const dayAvailability = availability.find(
-      (a) => a.dayOfWeek === dayOfWeek && a.isActive,
+      (a: DoctorAvailability) => a.dayOfWeek === dayOfWeek && a.isActive,
     );
 
     if (!dayAvailability) {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search } from "lucide-react";
+import { matchesSearch } from "@/lib/search";
 
 type Option = {
   label: string;
@@ -20,9 +21,8 @@ export const AutocompleteSelect = ({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
-  const filtered = options.filter((opt) =>
-    opt.label.toLowerCase().includes(query.toLowerCase())
-  );
+  // Case + diacritic-insensitive: "cardiologia" matchea "Cardiología".
+  const filtered = options.filter((opt) => matchesSearch(query, opt.label));
 
   const select = (opt: Option) => {
     onChange(opt.label);

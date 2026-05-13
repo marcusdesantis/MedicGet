@@ -1,3 +1,4 @@
+import type { Patient } from '@prisma/client';
 import type { AuthUser } from '@medicget/shared/auth';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { paginate } from '@medicget/shared/paginate';
@@ -25,7 +26,7 @@ export const patientsService = {
       return {
         ok: true,
         data: paginate(
-          data.filter((p) => p.id === patient.id),
+          data.filter((p: Patient) => p.id === patient.id),
           1,
           pagination,
         ),

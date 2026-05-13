@@ -27,14 +27,16 @@ const ADMIN_PASSWORD = '12345678';
  * cambia el valor, el bootstrap NO lo machaca (sólo escribe cuando
  * `value` es null).
  *
- * Email: cuenta corporativa de Abisoft (`soportemedicget@abisoft.it`).
- * Si tu hosting no usa `smtp.abisoft.it` cambialo desde
- * /admin/settings → Configuración de correo.
+ * Email: cuenta corporativa de Abisoft (`soportemedicget@abisoft.it`)
+ * usando el SMTP de Aruba (smtps.aruba.it:465). Si tu hosting tiene
+ * otro proveedor, cambialo desde /admin/settings → Configuración de
+ * correo. SSL implícito queda en false porque así está configurado en
+ * el panel actual; cambialo si te tira "wrong version number".
  */
 const DEFAULT_SETTINGS: Record<string, string> = {
   SMTP_ENABLED:    'true',
-  SMTP_HOST:       'smtp.abisoft.it',
-  SMTP_PORT:       '587',
+  SMTP_HOST:       'smtps.aruba.it',
+  SMTP_PORT:       '465',
   SMTP_SECURE:     'false',
   SMTP_USER:       'soportemedicget@abisoft.it',
   SMTP_PASS:       'Ecuador7.',

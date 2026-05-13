@@ -76,7 +76,7 @@ export function Sidebar({
                      hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-white
                      transition border border-slate-200 dark:border-slate-700 text-xs gap-1.5"
         >
-          {collapsed ? <ChevronRight size={15} /> : <><ChevronLeft size={15} /><span>Colapsar</span></>}
+          {collapsed ? <ChevronRight size={15} /> : <><ChevronLeft size={15} /><span>Ocultar columna</span></>}
         </button>
       </div>
     </div>

@@ -43,6 +43,8 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   DELETED
+  /// Registró pero todavía no verificó su email. No puede loguearse.
+  PENDING_VERIFICATION
 }
 
 enum AppointmentStatus {
@@ -78,8 +80,14 @@ enum NotificationType {
   APPOINTMENT_CONFIRMED
   APPOINTMENT_CANCELLED
   APPOINTMENT_REMINDER
+  /// El médico marcó la cita como atendida, el paciente debe confirmar.
+  APPOINTMENT_COMPLETED_BY_DOCTOR
+  /// Doble validación cerrada: ambas partes confirmaron la atención.
+  APPOINTMENT_FINALIZED
   PAYMENT_RECEIVED
   REVIEW_RECEIVED
+  /// Verificación de email pendiente / completada.
+  EMAIL_VERIFICATION
   SYSTEM
 }
 
@@ -96,15 +104,20 @@ enum DayOfWeek {
 // ─── Core User / Identity ─────────────────────────────────────────────────────
 
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String
-  role         Role
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  createdBy    String?
-  updatedBy    String?
+  id              String     @id @default(cuid())
+  email           String     @unique
+  passwordHash    String
+  role            Role
+  status          UserStatus @default(ACTIVE)
+  /// Set cuando el usuario hace click en el enlace o ingresa el código
+  /// de verificación. Mientras sea null y status sea PENDING_VERIFICATION,
+  /// el login está bloqueado. Mantenemos también el timestamp aún cuando
+  /// el status ya cambió a ACTIVE para auditoría.
+  emailVerifiedAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  createdBy       String?
+  updatedBy       String?
 
   profile       Profile?
   clinic        Clinic?
@@ -114,6 +127,7 @@ model User {
   subscriptions Subscription[]
   pushSubscriptions PushSubscription[]
   passwordResetTokens PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
 
   @@index([role])
   @@index([status])
@@ -205,12 +219,13 @@ model Doctor {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clinic       Clinic?              @relation(fields: [clinicId], references: [id])
-  appointments Appointment[]
-  availability DoctorAvailability[]
-  slots        AppointmentSlot[]
-  reviews      Review[]
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic         Clinic?              @relation(fields: [clinicId], references: [id])
+  appointments   Appointment[]
+  availability   DoctorAvailability[]
+  slots          AppointmentSlot[]
+  reviews        Review[]
+  medicalRecords MedicalRecord[]
 
   @@index([clinicId])
   @@index([specialty])
@@ -274,9 +289,10 @@ model Patient {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
-  reviews      Review[]
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments   Appointment[]
+  reviews        Review[]
+  medicalRecords MedicalRecord[]
 
   @@index([status])
 }
@@ -313,6 +329,14 @@ model Appointment {
   // the waiting room and the patient sees real-time confirmation.
   patientArrivedAt  DateTime?
   doctorCheckedInAt DateTime?
+  // ─── Doble validación de finalización ───────────────────────────────
+  // Flujo: médico marca "atendida" → `doctorCompletedAt` se setea + se
+  // crea notificación al paciente. Paciente confirma desde su lado →
+  // `patientConfirmedAt` se setea y la cita transiciona a COMPLETED.
+  // Si pasan >24h del doctorCompletedAt sin que el paciente confirme,
+  // el sweeper de citas vencidas la cierra como COMPLETED de oficio.
+  doctorCompletedAt  DateTime?
+  patientConfirmedAt DateTime?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   createdBy    String?
@@ -326,6 +350,7 @@ model Appointment {
   review  Review?
   payment Payment?
   messages ChatMessage[]
+  medicalRecord MedicalRecord?
 
   @@index([patientId])
   @@index([doctorId])
@@ -463,6 +488,66 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// Token para verificación de email tras registro. Análogo al
+/// PasswordResetToken pero con doble formato:
+///   • `tokenHash`: SHA-256 del token largo embebido en el link.
+///   • `code`:      6 dígitos numéricos para que el usuario pueda copiar
+///                  el código del email a la app (útil en mobile).
+/// Cualquiera de los dos sirve para verificar. Single-use, expira a las
+/// 24h.
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([code])
+  @@index([expiresAt])
+}
+
+/// Formulario de atención médica — uno por cita, llenado por el médico
+/// durante / después de la consulta. Captura motivo, síntomas y
+/// enfermedades preexistentes del paciente para esa consulta puntual.
+/// Diferente del array `Patient.conditions` (que es el "perfil de
+/// fondo" del paciente) — `MedicalRecord` registra el snapshot de cada
+/// visita.
+model MedicalRecord {
+  id              String   @id @default(cuid())
+  appointmentId   String   @unique
+  patientId       String
+  doctorId        String
+  /// Motivo principal de la consulta — texto libre.
+  reason          String
+  /// Síntomas relatados por el paciente — texto libre, generalmente
+  /// listado separado por saltos de línea.
+  symptoms        String?
+  /// Enfermedades existentes / antecedentes relevantes capturados en
+  /// esa cita. Puede sobrescribir / complementar lo que ya está en
+  /// Patient.conditions[].
+  existingConditions String?
+  /// Diagnóstico provisional / impresión clínica del médico.
+  diagnosis       String?
+  /// Tratamiento o indicaciones — receta, controles, derivaciones.
+  treatment       String?
+  /// Notas adicionales privadas del médico.
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient     Patient     @relation(fields: [patientId], references: [id])
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+
+  @@index([patientId])
+  @@index([doctorId])
 }
 
 // ─── Chat Messages (CHAT-modality appointments) ───────────────────────────────

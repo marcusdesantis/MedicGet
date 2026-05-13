@@ -48,23 +48,92 @@ export async function ensureFreeSubscription(
 }
 
 /**
- * Re-aplica los módulos canónicos a los planes seedeados. Esto cubre el
- * caso en que agregamos features nuevos (PAYMENTS_DASHBOARD para médicos,
- * por ejemplo) y los planes ya estaban en la DB con el set viejo.
+ * Catálogo canónico de planes. El bootstrap usa esto para hacer UPSERT
+ * en la tabla `Plan` cada vez que arranca el sistema:
+ *   • Si el plan no existe → se crea con name, monthlyPrice, modules,
+ *     limits y sortOrder.
+ *   • Si ya existe → se actualizan solo los `modules` para que un
+ *     deploy nuevo no le borre al superadmin sus cambios de precio o
+ *     descripción. El catálogo de módulos es la fuente de verdad.
  *
- * Sólo toca planes con `code` y `audience` conocidos — no afecta planes
- * custom que el superadmin haya creado.
+ * Si querés cambiar el precio o el copy, hacelo desde /admin/plans —
+ * la edición persiste, este bootstrap respeta lo que vos hayas tocado.
  */
-const CANONICAL_MODULES: Record<string, Record<string, string[]>> = {
+interface PlanSpec {
+  name:         string;
+  description:  string;
+  monthlyPrice: number;
+  modules:      string[];
+  limits:       Record<string, unknown>;
+  sortOrder:    number;
+}
+
+const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM', PlanSpec>> = {
   DOCTOR: {
-    FREE:    ['ONLINE'],
-    PRO:     ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
-    PREMIUM: ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'PRIORITY_SEARCH', 'BRANDING'],
+    FREE: {
+      name:         'Free',
+      description:  'Para empezar a recibir consultas online sin costo.',
+      monthlyPrice: 0,
+      modules:      ['ONLINE'],
+      limits:       { maxAppointmentsPerMonth: 20 },
+      sortOrder:    1,
+    },
+    PRO: {
+      name:         'Pro',
+      description:  'Atendé online, presencial y por chat con dashboard de pagos.',
+      monthlyPrice: 19.99,
+      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
+      limits:       { maxAppointmentsPerMonth: 200 },
+      sortOrder:    2,
+    },
+    PREMIUM: {
+      name:         'Premium',
+      description:  'Todo lo de Pro + reportes, búsqueda priorizada y branding propio.',
+      monthlyPrice: 49.99,
+      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'PRIORITY_SEARCH', 'BRANDING'],
+      limits:       { maxAppointmentsPerMonth: null },
+      sortOrder:    3,
+    },
   },
   CLINIC: {
-    FREE:    ['ONLINE'],
-    PRO:     ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
-    PREMIUM: ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'MULTI_LOCATION', 'PRIORITY_SUPPORT'],
+    FREE: {
+      name:         'Free',
+      description:  'Una clínica con un médico, modalidad online.',
+      monthlyPrice: 0,
+      modules:      ['ONLINE'],
+      limits:       { maxDoctors: 1, maxAppointmentsPerMonth: 50 },
+      sortOrder:    1,
+    },
+    PRO: {
+      name:         'Pro',
+      description:  'Multi-médico, todas las modalidades, dashboard de pagos.',
+      monthlyPrice: 49.99,
+      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
+      limits:       { maxDoctors: 10, maxAppointmentsPerMonth: 1000 },
+      sortOrder:    2,
+    },
+    PREMIUM: {
+      name:         'Premium',
+      description:  'Sin límites de médicos, reportes avanzados, multi-sede y soporte prioritario.',
+      monthlyPrice: 129.99,
+      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'MULTI_LOCATION', 'PRIORITY_SUPPORT'],
+      limits:       { maxDoctors: null, maxAppointmentsPerMonth: null },
+      sortOrder:    3,
+    },
+  },
+};
+
+// Compat con código existente que importa CANONICAL_MODULES.
+const CANONICAL_MODULES: Record<string, Record<string, string[]>> = {
+  DOCTOR: {
+    FREE:    PLAN_CATALOG.DOCTOR.FREE.modules,
+    PRO:     PLAN_CATALOG.DOCTOR.PRO.modules,
+    PREMIUM: PLAN_CATALOG.DOCTOR.PREMIUM.modules,
+  },
+  CLINIC: {
+    FREE:    PLAN_CATALOG.CLINIC.FREE.modules,
+    PRO:     PLAN_CATALOG.CLINIC.PRO.modules,
+    PREMIUM: PLAN_CATALOG.CLINIC.PREMIUM.modules,
   },
 };
 
@@ -112,6 +181,18 @@ export function intersectModalities(
 
 let plansBootstrapped = false;
 
+/**
+ * Re-aplica los módulos canónicos a los planes existentes. Sólo hace
+ * `updateMany` — NO crea planes que no existan. La creación inicial
+ * vive en el seed (`prisma/seed.ts`), que es la fuente de verdad para
+ * la instalación.
+ *
+ * Esto cubre el caso en que agregamos un módulo nuevo en el catálogo
+ * (ej. `PAYMENTS_DASHBOARD`) y queremos que los planes existentes lo
+ * reciban sin re-correr el seed.
+ *
+ * Idempotente.
+ */
 export async function bootstrapPlanFeatures(): Promise<void> {
   if (plansBootstrapped) return;
   try {
@@ -131,3 +212,10 @@ export async function bootstrapPlanFeatures(): Promise<void> {
     // Silencioso — si la tabla todavía no existe (pre-migración) reintenta luego.
   }
 }
+
+/**
+ * Exporta el catálogo canónico para que `prisma/seed.ts` lo consuma.
+ * Mantenerlo acá garantiza una sola fuente de verdad entre el seed
+ * inicial y el bootstrap que actualiza módulos.
+ */
+export { PLAN_CATALOG };

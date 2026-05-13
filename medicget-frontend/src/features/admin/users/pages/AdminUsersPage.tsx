@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Loader2, Ban, Trash2, RotateCcw, Search, UserPlus, X, Copy, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Loader2, Ban, Trash2, RotateCcw, Search, UserPlus, X, Copy, Check, Edit3 } from 'lucide-react';
 import { toast }         from 'sonner';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { SectionCard }   from '@/components/ui/SectionCard';
@@ -10,7 +10,7 @@ import { Input }         from '@/components/ui/Input';
 import { PhoneField }    from '@/components/ui/PhoneField';
 import { Button }        from '@/components/ui/Button';
 import { useApi }        from '@/hooks/useApi';
-import { adminApi, type UserDto, type PaginatedData } from '@/lib/api';
+import { adminApi, type UserDto, type PaginatedData, type AdminUserPatch } from '@/lib/api';
 
 const ROLE_LABEL: Record<string, string> = {
   PATIENT: 'Paciente', DOCTOR: 'Médico', CLINIC: 'Clínica', ADMIN: 'Admin',
@@ -27,6 +27,9 @@ export function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [acting, setActing] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // Edición completa — el modal abre con el user seleccionado y permite
+  // tocar todos los campos lógicos de su perfil.
+  const [editing, setEditing] = useState<UserDto | null>(null);
 
   const { state, refetch } = useApi<PaginatedData<UserDto>>(
     () => adminApi.users({ role: role || undefined, search: search || undefined, pageSize: 100 }),
@@ -67,6 +70,14 @@ export function AdminUsersPage() {
         <CreateUserModal
           onClose={() => setShowCreate(false)}
           onCreated={() => { setShowCreate(false); refetch(); }}
+        />
+      )}
+
+      {editing && (
+        <EditUserModal
+          user={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); refetch(); }}
         />
       )}
 
@@ -149,6 +160,14 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => setEditing(u)}
+                            disabled={acting === u.id}
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2 py-1 rounded-lg transition disabled:opacity-50"
+                            title="Editar"
+                          >
+                            <Edit3 size={12} /> Editar
+                          </button>
                           {u.status === 'ACTIVE' ? (
                             <button
                               onClick={() => handleStatus(u.id, 'INACTIVE')}
@@ -420,6 +439,366 @@ function CredRow({ label, value, bold, onCopy, copied }: {
         {copied ? <Check size={13} /> : <Copy size={13} />}
         {copied ? 'Copiado' : 'Copiar'}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Wrapper local sobre `<PhoneField/>` que añade un `<label>` arriba.
+ * Igual que LabeledInput — el componente base no acepta `label`.
+ */
+function LabeledPhone({
+  label, value, onChange,
+}: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+        {label}
+      </label>
+      <PhoneField value={value} onChange={onChange} />
+    </div>
+  );
+}
+
+/**
+ * Wrapper local sobre `<Input/>` que añade un `<label>` arriba.
+ * El componente base `Input` no acepta `label` como prop — antes pasaba
+ * silenciosamente como atributo HTML y no se renderizaba el texto. Este
+ * wrapper resuelve ambos casos (Create y Edit modals).
+ */
+function LabeledInput({
+  label, className, ...rest
+}: { label: string; className?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className={className}>
+      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+        {label}
+      </label>
+      <Input {...rest} />
+    </div>
+  );
+}
+
+/* ─────────────── Edit user modal — superadmin full edit ─────────────── */
+
+/**
+ * Modal de edición completa de un usuario. Carga los valores actuales
+ * desde el UserDto pasado por prop y manda un PATCH parcial con sólo
+ * lo que cambió. Soporta los 4 roles — los campos role-specific se
+ * renderizan condicionalmente.
+ *
+ * Por simplicidad UI, modelamos arrays clínicos del paciente como
+ * textarea con un item por línea.
+ */
+function EditUserModal({
+  user, onClose, onSaved,
+}: {
+  user:    UserDto;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const role = user.role;
+  // Extraemos role-specific data — el UserDto incluye estos relacionados
+  // si el backend los devuelve. Cast laxo por si la lista los omite.
+  const u = user as unknown as {
+    clinic?:  Record<string, unknown> | null;
+    doctor?:  Record<string, unknown> | null;
+    patient?: Record<string, unknown> | null;
+  };
+
+  const [form, setForm] = useState(() => ({
+    email:    user.email ?? '',
+    status:   user.status as 'ACTIVE' | 'INACTIVE' | 'DELETED' | 'PENDING_VERIFICATION',
+    profile: {
+      firstName: user.profile?.firstName ?? '',
+      lastName:  user.profile?.lastName  ?? '',
+      phone:     (user.profile?.phone ?? '') as string,
+      address:   (user.profile?.address ?? '') as string,
+      city:      (user.profile?.city ?? '') as string,
+      province:  (user.profile?.province ?? '') as string,
+      country:   (user.profile?.country ?? '') as string,
+    },
+    clinic: {
+      name:        (u.clinic?.['name']        as string) ?? '',
+      description: (u.clinic?.['description'] as string) ?? '',
+      address:     (u.clinic?.['address']     as string) ?? '',
+      city:        (u.clinic?.['city']        as string) ?? '',
+      province:    (u.clinic?.['province']    as string) ?? '',
+      country:     (u.clinic?.['country']     as string) ?? '',
+      phone:       (u.clinic?.['phone']       as string) ?? '',
+      email:       (u.clinic?.['email']       as string) ?? '',
+      website:     (u.clinic?.['website']     as string) ?? '',
+    },
+    doctor: {
+      specialty:       (u.doctor?.['specialty']       as string) ?? '',
+      licenseNumber:   (u.doctor?.['licenseNumber']   as string) ?? '',
+      experience:      Number(u.doctor?.['experience']      ?? 0),
+      pricePerConsult: Number(u.doctor?.['pricePerConsult'] ?? 0),
+      consultDuration: Number(u.doctor?.['consultDuration'] ?? 30),
+      bio:             (u.doctor?.['bio']             as string) ?? '',
+      languages:       ((u.doctor?.['languages']      as string[]) ?? []).join(', '),
+      modalities:      ((u.doctor?.['modalities']     as string[]) ?? ['ONLINE']),
+      available:       Boolean(u.doctor?.['available'] ?? true),
+    },
+    patient: {
+      dateOfBirth: (u.patient?.['dateOfBirth']   as string) ?? '',
+      bloodType:   (u.patient?.['bloodType']     as string) ?? '',
+      allergies:   ((u.patient?.['allergies']    as string[]) ?? []).join('\n'),
+      conditions:  ((u.patient?.['conditions']   as string[]) ?? []).join('\n'),
+      medications: ((u.patient?.['medications']  as string[]) ?? []).join('\n'),
+      notes:       (u.patient?.['notes']         as string) ?? '',
+    },
+  }));
+
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState<string | null>(null);
+
+  // Helpers tipados pequeños — más legibles que setForm con spread anidado.
+  const updProfile = (k: keyof typeof form.profile, v: string) =>
+    setForm((p) => ({ ...p, profile: { ...p.profile, [k]: v } }));
+  const updClinic = (k: keyof typeof form.clinic, v: string) =>
+    setForm((p) => ({ ...p, clinic: { ...p.clinic, [k]: v } }));
+  const updDoctor = <K extends keyof typeof form.doctor>(k: K, v: typeof form.doctor[K]) =>
+    setForm((p) => ({ ...p, doctor: { ...p.doctor, [k]: v } }));
+  const updPatient = (k: keyof typeof form.patient, v: string) =>
+    setForm((p) => ({ ...p, patient: { ...p.patient, [k]: v } }));
+
+  const submit = async () => {
+    setSaving(true);
+    setErr(null);
+    const patch: AdminUserPatch = {
+      email:  form.email.trim().toLowerCase() || undefined,
+      status: form.status,
+      profile: {
+        firstName: form.profile.firstName,
+        lastName:  form.profile.lastName,
+        phone:     form.profile.phone,
+        address:   form.profile.address,
+        city:      form.profile.city,
+        province:  form.profile.province,
+        country:   form.profile.country,
+      },
+    };
+    if (role === 'CLINIC') {
+      patch.clinic = { ...form.clinic };
+    } else if (role === 'DOCTOR') {
+      patch.doctor = {
+        specialty:       form.doctor.specialty,
+        licenseNumber:   form.doctor.licenseNumber,
+        experience:      Number.isFinite(form.doctor.experience) ? form.doctor.experience : 0,
+        pricePerConsult: Number.isFinite(form.doctor.pricePerConsult) ? form.doctor.pricePerConsult : 0,
+        consultDuration: Number.isFinite(form.doctor.consultDuration) ? form.doctor.consultDuration : 30,
+        bio:             form.doctor.bio,
+        languages:       form.doctor.languages.split(',').map((s) => s.trim()).filter(Boolean),
+        modalities:      form.doctor.modalities as ('ONLINE' | 'PRESENCIAL' | 'CHAT')[],
+        available:       form.doctor.available,
+      };
+    } else if (role === 'PATIENT') {
+      patch.patient = {
+        dateOfBirth: form.patient.dateOfBirth || undefined,
+        bloodType:   form.patient.bloodType,
+        allergies:   form.patient.allergies.split('\n').map((s) => s.trim()).filter(Boolean),
+        conditions:  form.patient.conditions.split('\n').map((s) => s.trim()).filter(Boolean),
+        medications: form.patient.medications.split('\n').map((s) => s.trim()).filter(Boolean),
+        notes:       form.patient.notes,
+      };
+    }
+    try {
+      await adminApi.updateUserFull(user.id, patch);
+      toast.success('Cambios guardados');
+      onSaved();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'No se pudo actualizar el usuario';
+      setErr(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Auto-focus on first field cuando abre — pequeño detalle UX.
+  useEffect(() => { /* placeholder for potential side-effects */ }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm overflow-y-auto p-4 pt-10">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="font-semibold flex items-center gap-2 text-slate-800 dark:text-white">
+            <Edit3 size={18} className="text-blue-600" /> Editar usuario
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          {err && <Alert variant="error">{err}</Alert>}
+
+          {/* ── Cuenta ── */}
+          <section className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Cuenta</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Estado</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value as typeof form.status })}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm"
+                >
+                  <option value="ACTIVE">Activo</option>
+                  <option value="INACTIVE">Suspendido</option>
+                  <option value="PENDING_VERIFICATION">Pendiente verificación</option>
+                  <option value="DELETED">Eliminado</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Perfil ── */}
+          <section className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Perfil</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <LabeledInput label="Nombre"   value={form.profile.firstName} onChange={(e) => updProfile('firstName', e.target.value)} />
+              <LabeledInput label="Apellido" value={form.profile.lastName}  onChange={(e) => updProfile('lastName',  e.target.value)} />
+              <LabeledPhone label="Teléfono" value={form.profile.phone} onChange={(v) => updProfile('phone', v)} />
+              <LabeledInput label="País"     value={form.profile.country}   onChange={(e) => updProfile('country',  e.target.value)} />
+              <LabeledInput label="Provincia" value={form.profile.province} onChange={(e) => updProfile('province', e.target.value)} />
+              <LabeledInput label="Ciudad"   value={form.profile.city}      onChange={(e) => updProfile('city',     e.target.value)} />
+              <LabeledInput label="Dirección" value={form.profile.address}  onChange={(e) => updProfile('address',  e.target.value)} className="sm:col-span-2" />
+            </div>
+          </section>
+
+          {/* ── Clínica ── */}
+          {role === 'CLINIC' && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Clínica</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <LabeledInput label="Nombre comercial" value={form.clinic.name}    onChange={(e) => updClinic('name', e.target.value)} />
+                <LabeledPhone label="Teléfono"    value={form.clinic.phone}   onChange={(v) => updClinic('phone', v)} />
+                <LabeledInput label="Email"            value={form.clinic.email}   onChange={(e) => updClinic('email', e.target.value)} />
+                <LabeledInput label="Web"              value={form.clinic.website} onChange={(e) => updClinic('website', e.target.value)} />
+                <LabeledInput label="Dirección"        value={form.clinic.address} onChange={(e) => updClinic('address', e.target.value)} className="sm:col-span-2" />
+                <LabeledInput label="Ciudad"           value={form.clinic.city}    onChange={(e) => updClinic('city', e.target.value)} />
+                <LabeledInput label="Provincia"        value={form.clinic.province} onChange={(e) => updClinic('province', e.target.value)} />
+                <LabeledInput label="País"             value={form.clinic.country} onChange={(e) => updClinic('country', e.target.value)} />
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Descripción</label>
+                  <textarea
+                    value={form.clinic.description}
+                    onChange={(e) => updClinic('description', e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm"
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ── Médico ── */}
+          {role === 'DOCTOR' && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Médico</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <LabeledInput label="Especialidad"       value={form.doctor.specialty}     onChange={(e) => updDoctor('specialty', e.target.value)} />
+                <LabeledInput label="Nº licencia"        value={form.doctor.licenseNumber} onChange={(e) => updDoctor('licenseNumber', e.target.value)} />
+                <LabeledInput label="Experiencia (años)" type="number" value={String(form.doctor.experience)}      onChange={(e) => updDoctor('experience', Number(e.target.value))} />
+                <LabeledInput label="Precio consulta $"  type="number" value={String(form.doctor.pricePerConsult)} onChange={(e) => updDoctor('pricePerConsult', Number(e.target.value))} />
+                <LabeledInput label="Duración (min)"     type="number" value={String(form.doctor.consultDuration)} onChange={(e) => updDoctor('consultDuration', Number(e.target.value))} />
+                <LabeledInput label="Idiomas (coma)"     value={form.doctor.languages}     onChange={(e) => updDoctor('languages', e.target.value)} />
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Modalidades aceptadas</label>
+                  <div className="flex gap-3 flex-wrap">
+                    {(['ONLINE','PRESENCIAL','CHAT'] as const).map((m) => (
+                      <label key={m} className="inline-flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={form.doctor.modalities.includes(m)}
+                          onChange={(e) => updDoctor(
+                            'modalities',
+                            e.target.checked
+                              ? Array.from(new Set([...form.doctor.modalities, m]))
+                              : form.doctor.modalities.filter((x) => x !== m),
+                          )}
+                        />
+                        {m.charAt(0) + m.slice(1).toLowerCase()}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Biografía</label>
+                  <textarea
+                    value={form.doctor.bio}
+                    onChange={(e) => updDoctor('bio', e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm"
+                  />
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={form.doctor.available}
+                    onChange={(e) => updDoctor('available', e.target.checked)}
+                  />
+                  Disponible para recibir citas
+                </label>
+              </div>
+            </section>
+          )}
+
+          {/* ── Paciente ── */}
+          {role === 'PATIENT' && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Datos clínicos</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <LabeledInput label="Fecha nacimiento" type="date" value={form.patient.dateOfBirth?.slice(0,10) ?? ''} onChange={(e) => updPatient('dateOfBirth', e.target.value)} />
+                <LabeledInput label="Grupo sanguíneo"  value={form.patient.bloodType} onChange={(e) => updPatient('bloodType', e.target.value)} />
+                {(['allergies','conditions','medications'] as const).map((k) => (
+                  <div key={k} className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">
+                      {k === 'allergies' ? 'Alergias' : k === 'conditions' ? 'Enfermedades' : 'Medicación'} <span className="font-normal opacity-60">(una por línea)</span>
+                    </label>
+                    <textarea
+                      value={form.patient[k]}
+                      onChange={(e) => updPatient(k, e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm"
+                    />
+                  </div>
+                ))}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Notas</label>
+                  <textarea
+                    value={form.patient.notes}
+                    onChange={(e) => updPatient('notes', e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm"
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-slate-800">
+          <button onClick={onClose} disabled={saving} className="text-sm text-slate-500 hover:text-slate-700 px-4 py-2">
+            Cancelar
+          </button>
+          <Button
+            onClick={submit}
+            disabled={saving}
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            Guardar cambios
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

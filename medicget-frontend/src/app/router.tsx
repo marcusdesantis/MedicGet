@@ -5,6 +5,7 @@ import { HomePage } from '@/features/home/pages/HomePage';
 import { LoginPage } from '@/features/auth/login/pages/LoginPage';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password/pages/ForgotPasswordPage';
 import { ResetPasswordPage }  from '@/features/auth/reset-password/pages/ResetPasswordPage';
+import { VerifyEmailPage }    from '@/features/auth/verify-email/pages/VerifyEmailPage';
 import { RegisterProfilePage } from '@/features/auth/register/pages/RegisterProfilePage';
 import { RegisterAddressPage } from '@/features/auth/register/pages/RegisterAddressPage';
 import { RegisterProfessionalPage } from '@/features/auth/register/pages/RegisterProfessionalPage';
@@ -122,6 +123,7 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password',  element: <ResetPasswordPage /> },
+  { path: '/verify-email',    element: <VerifyEmailPage /> },
   { path: '/register', element: <RegisterProfilePage /> },
   { path: '/register/address', element: <RegisterAddressPage /> },
   { path: '/register/professional', element: <RegisterProfessionalPage /> },

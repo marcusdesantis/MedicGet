@@ -1,11 +1,50 @@
-import { PrismaClient, Role, AppointmentStatus, DayOfWeek, PaymentStatus, PaymentMethod } from '@prisma/client';
+import { PrismaClient, Role, AppointmentStatus, DayOfWeek, PaymentStatus, PaymentMethod, PlanAudience, PlanCode, SubscriptionStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { PLAN_CATALOG } from '../src/subscription';
 
 const prisma = new PrismaClient();
 const hash = (pw: string) => bcrypt.hashSync(pw, 10);
 
 async function main() {
   console.log('🌱  Seeding database…');
+
+  // ── Superadmin ───────────────────────────────────────────────────────────────
+  await prisma.user.upsert({
+    where:  { email: 'admin@gmail.com' },
+    update: {},
+    create: {
+      email:           'admin@gmail.com',
+      passwordHash:    hash('12345678'),
+      role:            Role.ADMIN,
+      emailVerifiedAt: new Date(),
+      profile: { create: { firstName: 'Super', lastName: 'Admin' } },
+    },
+  });
+  console.log('  ✓ Admin   → admin@gmail.com / 12345678');
+
+  // ── Plans (catálogo canónico) ────────────────────────────────────────────────
+  const planByKey = new Map<string, string>(); // 'DOCTOR_FREE' → planId
+  for (const [audience, plans] of Object.entries(PLAN_CATALOG)) {
+    for (const [code, spec] of Object.entries(plans)) {
+      const p = await prisma.plan.upsert({
+        where:  { audience_code: { audience: audience as PlanAudience, code: code as PlanCode } },
+        update: {},
+        create: {
+          audience:     audience as PlanAudience,
+          code:         code as PlanCode,
+          name:         spec.name,
+          description:  spec.description,
+          monthlyPrice: spec.monthlyPrice,
+          modules:      spec.modules,
+          limits:       spec.limits as object,
+          isActive:     true,
+          sortOrder:    spec.sortOrder,
+        },
+      });
+      planByKey.set(`${audience}_${code}`, p.id);
+    }
+  }
+  console.log(`  ✓ Plans   → ${planByKey.size} (Doctor + Clinic × Free/Pro/Premium)`);
 
   // ── Clinic ───────────────────────────────────────────────────────────────────
   const clinicUser = await prisma.user.upsert({
@@ -150,6 +189,48 @@ async function main() {
   }
   console.log(`  ✓ ${apptSeeds.length} appointments + payments seeded`);
 
+  // ── Subscriptions FREE para clínica y doctores ────────────────────────────────
+  // Sin esto, ensureFreeSubscription en register sólo cubre nuevos usuarios.
+  // El seed le asigna el FREE de su audiencia a los demo accounts para que
+  // las modalidades funcionen out-of-the-box.
+  const FAR_FUTURE = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000);
+  const clinicFreePlanId = planByKey.get('CLINIC_FREE');
+  const doctorFreePlanId = planByKey.get('DOCTOR_FREE');
+
+  if (clinicFreePlanId) {
+    await prisma.subscription.upsert({
+      where:  { id: `sub-${clinicUser.id}` },
+      update: {},
+      create: {
+        id:        `sub-${clinicUser.id}`,
+        userId:    clinicUser.id,
+        planId:    clinicFreePlanId,
+        status:    SubscriptionStatus.ACTIVE,
+        startsAt:  new Date(),
+        expiresAt: FAR_FUTURE,
+        autoRenew: false,
+      },
+    });
+  }
+  if (doctorFreePlanId) {
+    for (const d of doctors) {
+      await prisma.subscription.upsert({
+        where:  { id: `sub-${d.userId}` },
+        update: {},
+        create: {
+          id:        `sub-${d.userId}`,
+          userId:    d.userId,
+          planId:    doctorFreePlanId,
+          status:    SubscriptionStatus.ACTIVE,
+          startsAt:  new Date(),
+          expiresAt: FAR_FUTURE,
+          autoRenew: false,
+        },
+      });
+    }
+  }
+  console.log(`  ✓ Subscriptions FREE → ${doctors.length + 1} (clinic + ${doctors.length} doctors)`);
+
   // ── Notifications ─────────────────────────────────────────────────────────────
   await prisma.notification.createMany({
     data: [
@@ -163,7 +244,8 @@ async function main() {
   console.log('  ✓ Notifications seeded');
 
   console.log('\n✅  Seed complete!\n');
-  console.log('Demo credentials:');
+  console.log('Credentials:');
+  console.log('  admin@gmail.com        / 12345678   (superadmin)');
   console.log('  clinica@medicget.com   / clinica');
   console.log('  medico@medicget.com    / medico');
   console.log('  paciente@medicget.com  / paciente');

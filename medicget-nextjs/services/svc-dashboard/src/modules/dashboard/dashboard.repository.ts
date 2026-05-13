@@ -58,10 +58,15 @@ export async function getClinicDashboard(clinicId: string) {
     // Total doctors in clinic
     prisma.doctor.count({ where: { clinicId } }),
 
-    // Total unique patients who had an appointment with this clinic
-    prisma.appointment.groupBy({
-      by: ['patientId'],
-      where: { clinicId },
+    // Total unique patients who had an appointment with this clinic.
+    // Usamos findMany + distinct en vez de groupBy: groupBy sin
+    // agregación (_count / _sum / etc.) genera un tipo Prisma que TS
+    // estricto rechaza como `any` en el .then callback. findMany+distinct
+    // expresa la misma intención y devuelve un tipo concreto.
+    prisma.appointment.findMany({
+      where:    { clinicId },
+      distinct: ['patientId'],
+      select:   { patientId: true },
     }).then((rows) => rows.length),
 
     // Today's appointments

@@ -1,3 +1,4 @@
+import type { DoctorAvailability } from '@prisma/client';
 import { prisma } from '@medicget/shared/prisma';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { toSkipTake } from '@medicget/shared/paginate';
@@ -116,7 +117,11 @@ export const doctorsRepository = {
     return prisma.doctor.update({ where: { id }, data });
   },
 
-  async findAvailability(doctorId: string) {
+  // Tipo de retorno explícito: previene que el callsite reciba un `any`
+  // bajo TS strict cuando llama a `.find((a) => ...)` o `.map((a) => ...)`.
+  // Sin la anotación, Next.js build a veces no logra inferir el tipo a
+  // través del Promise + chain de Prisma y falla con noImplicitAny.
+  async findAvailability(doctorId: string): Promise<DoctorAvailability[]> {
     return prisma.doctorAvailability.findMany({
       where: { doctorId },
       orderBy: { dayOfWeek: 'asc' },

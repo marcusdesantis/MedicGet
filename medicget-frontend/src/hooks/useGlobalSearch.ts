@@ -20,6 +20,7 @@ import {
   doctorsApi, appointmentsApi, adminApi, clinicsApi,
   type DoctorDto, type AppointmentDto, type UserDto, type PaginatedData,
 } from '@/lib/api';
+import { normalizeSearch, matchesSearch } from '@/lib/search';
 
 export interface SearchResult {
   id:        string;
@@ -114,8 +115,9 @@ async function searchAdmin(q: string): Promise<SearchResult[]> {
   }
 
   if (plans) {
+    // Case + diacritic-insensitive: "premium" matchea "Premium", "PREMIUM".
     const matching = plans.data.filter(
-      (p) => p.name.toLowerCase().includes(q.toLowerCase()) || p.code.toLowerCase().includes(q.toLowerCase()),
+      (p) => matchesSearch(q, p.name, p.code),
     );
     out.push(...matching.map<SearchResult>((p) => ({
       id:       `plan-${p.id}`,
@@ -154,14 +156,14 @@ async function searchDoctor(q: string): Promise<SearchResult[]> {
   const out: SearchResult[] = [];
 
   if (appointments) {
-    // Pacientes únicos extraídos de las citas
+    // Pacientes únicos extraídos de las citas — búsqueda case + diacritic-insensitive.
     const seenPatients = new Set<string>();
-    const lower = q.toLowerCase();
+    const qNorm = normalizeSearch(q);
     for (const a of appointments.data.data) {
       const p = a.patient;
       if (!p || seenPatients.has(p.id)) continue;
       const name = `${p.user?.profile?.firstName ?? ''} ${p.user?.profile?.lastName ?? ''}`.trim();
-      if (name.toLowerCase().includes(lower)) {
+      if (normalizeSearch(name).includes(qNorm)) {
         seenPatients.add(p.id);
         out.push({
           id:       `patient-${p.id}`,
@@ -218,13 +220,13 @@ function doctorToResult(d: DoctorDto): SearchResult {
 }
 
 function filterAppointments(list: AppointmentDto[], q: string, hrefBase: string): SearchResult[] {
-  const lower = q.toLowerCase();
+  const qNorm = normalizeSearch(q);
   const matches: SearchResult[] = [];
   for (const a of list) {
     const docName  = `${a.doctor?.user?.profile?.firstName ?? ''} ${a.doctor?.user?.profile?.lastName ?? ''}`.trim();
     const patName  = `${a.patient?.user?.profile?.firstName ?? ''} ${a.patient?.user?.profile?.lastName ?? ''}`.trim();
-    const haystack = `${docName} ${patName} ${a.doctor?.specialty ?? ''} ${a.notes ?? ''}`.toLowerCase();
-    if (!haystack.includes(lower)) continue;
+    const haystack = normalizeSearch(`${docName} ${patName} ${a.doctor?.specialty ?? ''} ${a.notes ?? ''}`);
+    if (!haystack.includes(qNorm)) continue;
     matches.push({
       id:       `appt-${a.id}`,
       category: 'Citas',

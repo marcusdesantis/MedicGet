@@ -11,6 +11,7 @@ import { Alert }         from '@/components/ui/Alert';
 import { useApi }        from '@/hooks/useApi';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { appointmentsApi, type AppointmentDto, type PaginatedData } from '@/lib/api';
+import { matchesSearch } from '@/lib/search';
 
 const TABS = ['Todas', 'Pendientes', 'Próximas', 'Completadas', 'Canceladas'] as const;
 
@@ -44,14 +45,15 @@ export function ClinicAppointmentsPage() {
   const visible = useMemo(() => {
     if (state.status !== 'ready') return [];
     const statusFilter = TAB_STATUSES[tab];
-    const q = search.trim().toLowerCase();
     return state.data.data.filter((a) => {
       const matchStatus = !statusFilter || statusFilter.includes(a.status);
       if (!matchStatus) return false;
-      if (!q) return true;
-      const pName = fullName(a.patient?.user?.profile).toLowerCase();
-      const dName = fullName(a.doctor?.user?.profile).toLowerCase();
-      return pName.includes(q) || dName.includes(q);
+      // Búsqueda case + diacritic-insensitive sobre paciente/médico.
+      return matchesSearch(
+        search,
+        fullName(a.patient?.user?.profile),
+        fullName(a.doctor?.user?.profile),
+      );
     });
   }, [state, tab, search]);
 
@@ -78,7 +80,7 @@ export function ClinicAppointmentsPage() {
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <Tabs tabs={[...TABS]} active={tab} onChange={(v) => setTab(v as typeof TABS[number])} />
-        <SearchInput value={search} onChange={setSearch} placeholder="Paciente o médico..." className="w-56" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Buscar paciente o médico..." className="w-56" />
       </div>
 
       {actionError && <Alert variant="error">{actionError}</Alert>}

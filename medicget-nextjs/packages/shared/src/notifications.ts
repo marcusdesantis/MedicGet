@@ -20,16 +20,14 @@
  *   });
  */
 
+import type { NotificationType } from '@prisma/client';
 import { prisma } from './prisma';
 import { sendPushToUser } from './webpush';
 
-type NotificationType =
-  | 'APPOINTMENT_CONFIRMED'
-  | 'APPOINTMENT_CANCELLED'
-  | 'APPOINTMENT_REMINDER'
-  | 'PAYMENT_RECEIVED'
-  | 'REVIEW_RECEIVED'
-  | 'SYSTEM';
+// El tipo `NotificationType` se importa directamente de Prisma client
+// para que se mantenga sincronizado con el schema. Antes había una unión
+// hardcoded acá que quedaba desfasada cada vez que se agregaba un valor
+// al enum del schema.prisma (ej. APPOINTMENT_COMPLETED_BY_DOCTOR).
 
 export interface CreateNotificationInput {
   userId:    string;

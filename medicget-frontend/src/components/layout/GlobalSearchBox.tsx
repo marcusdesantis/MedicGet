@@ -72,6 +72,20 @@ export function GlobalSearchBox() {
     ownClinicId,
   });
 
+  // Placeholder por rol — refleja lo que cada perfil realmente puede
+  // buscar (los searchers en useGlobalSearch). Pedido del PM:
+  //   • PATIENT → médicos (y sus propias citas)
+  //   • DOCTOR  → pacientes (y sus propias citas)
+  //   • CLINIC  → médicos + pacientes + citas de la clínica
+  //   • ADMIN   → todos los usuarios + planes
+  //   • público → fallback genérico
+  const placeholder =
+    user?.role === 'patient' ? 'Buscar médicos…'
+    : user?.role === 'doctor'  ? 'Buscar pacientes…'
+    : user?.role === 'clinic'  ? 'Buscar médicos o pacientes…'
+    : user?.role === 'admin'   ? 'Buscar usuarios o planes…'
+    : 'Buscar…';
+
   // Reset hover al cambiar la lista
   useEffect(() => { setHover(0); }, [results, open]);
 
@@ -141,7 +155,7 @@ export function GlobalSearchBox() {
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Buscar médicos, citas, pacientes…"
+          placeholder={placeholder}
           className="flex-1 bg-transparent outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 min-w-0"
         />
         {!query && (

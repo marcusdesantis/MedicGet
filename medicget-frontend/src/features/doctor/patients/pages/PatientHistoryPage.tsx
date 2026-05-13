@@ -10,6 +10,7 @@ import { Alert }        from '@/components/ui/Alert';
 import { useApi }       from '@/hooks/useApi';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { appointmentsApi, patientsApi, type AppointmentDto, type PatientDto, type PaginatedData } from '@/lib/api';
+import { matchesSearch } from '@/lib/search';
 
 /**
  * Summary built per patient from the doctor's full appointment list.
@@ -102,9 +103,9 @@ export function PatientHistoryPage() {
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return patients;
-    return patients.filter((p) => p.fullName.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q));
+    if (!search.trim()) return patients;
+    // Búsqueda case + diacritic-insensitive: "Jose" matchea "José", etc.
+    return patients.filter((p) => matchesSearch(search, p.fullName, p.email));
   }, [patients, search]);
 
   const selectedPatient = patients.find((p) => p.patientId === selected) ?? null;
@@ -135,7 +136,7 @@ export function PatientHistoryPage() {
           noPadding
           title={`Pacientes (${patients.length})`}
           action={
-            <SearchInput value={search} onChange={setSearch} placeholder="Buscar..." className="w-44" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar pacientes..." className="w-44" />
           }
         >
           {filtered.length === 0 ? (

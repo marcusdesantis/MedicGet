@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Save, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Save, CheckCircle2, AlertCircle, Loader2, Copy } from 'lucide-react';
 import { PageHeader }  from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
@@ -65,6 +65,12 @@ export function DoctorCalendarPage() {
   const [saveError,   setSaveError]   = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // "Plantilla rápida" — el médico ingresa un rango y lo replica a todos
+  // los días que tenga marcados. Default igual al DEFAULT_DAY para que se
+  // sienta como una continuación natural de los rows de abajo.
+  const [tplStart, setTplStart] = useState<string>(DEFAULT_DAY.startTime);
+  const [tplEnd,   setTplEnd]   = useState<string>(DEFAULT_DAY.endTime);
+
   const { state, refetch } = useApi<AvailabilityDto[]>(
     () => doctorsApi.getAvailability(doctorId!),
     [doctorId],
@@ -114,6 +120,28 @@ export function DoctorCalendarPage() {
     setDays((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
     setSaveSuccess(false);
   };
+
+  /**
+   * Replica el rango `tplStart..tplEnd` a TODOS los días marcados (active).
+   * Útil cuando el médico tiene el mismo horario todos los días que atiende
+   * — evita configurar día por día. Si no hay ninguno marcado, no hace nada
+   * (el botón se deshabilita visualmente).
+   */
+  const applyTemplateToActive = () => {
+    if (tplStart >= tplEnd) return;
+    setDays((prev) => {
+      const next = { ...prev };
+      for (const { key } of DAYS) {
+        if (!next[key].active) continue;
+        next[key] = { ...next[key], startTime: tplStart, endTime: tplEnd };
+      }
+      return next;
+    });
+    setSaveSuccess(false);
+  };
+
+  const activeCountForTpl = DAYS.filter(({ key }) => days[key].active).length;
+  const tplValid = tplStart < tplEnd;
 
   const isValid = DAYS.every(({ key }) => {
     const d = days[key];
@@ -174,6 +202,57 @@ export function DoctorCalendarPage() {
         subtitle={`${activeDayCount} ${activeDayCount === 1 ? 'día activo' : 'días activos'}`}
         noPadding
       >
+        {/* Plantilla rápida — el médico ingresa una vez el rango y lo replica
+            a todos los días que tenga marcados con el botón. Pedido por PM. */}
+        <div className="px-5 py-4 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+                Plantilla rápida
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                Configurá un rango y aplicalo a todos los días que tengas marcados abajo.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={tplStart}
+                onChange={(e) => setTplStart(e.target.value)}
+                className="time-input rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <span className="text-sm text-slate-400">a</span>
+              <input
+                type="time"
+                value={tplEnd}
+                onChange={(e) => setTplEnd(e.target.value)}
+                className="time-input rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <button
+                type="button"
+                onClick={applyTemplateToActive}
+                disabled={!tplValid || activeCountForTpl === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-teal-200 dark:border-teal-800 bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-900/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  !tplValid
+                    ? 'La hora de inicio debe ser anterior a la de fin'
+                    : activeCountForTpl === 0
+                      ? 'Marcá al menos un día abajo para aplicar la plantilla'
+                      : `Replicar a ${activeCountForTpl} día${activeCountForTpl === 1 ? '' : 's'}`
+                }
+              >
+                <Copy size={13} />
+                Aplicar a {activeCountForTpl === 0 ? 'días marcados' : `${activeCountForTpl} día${activeCountForTpl === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+          {!tplValid && (
+            <p className="mt-2 text-[11px] text-rose-600 flex items-center gap-1">
+              <AlertCircle size={11} /> El horario de inicio debe ser anterior al de fin
+            </p>
+          )}
+        </div>
+
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {DAYS.map(({ key, label }) => {
             const d = days[key];

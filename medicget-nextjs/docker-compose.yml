@@ -39,6 +39,21 @@ services:
       JWT_EXPIRES_IN: 7d
       NODE_ENV:       production
       PORT:           "4001"
+      # svc-auth manda emails (verify-email, resend-verification,
+      # forgot-password) por sí mismo, así que necesita la config SMTP
+      # como fallback cuando AppSettings de la DB todavía no se sembró
+      # (primer arranque, antes de que el superadmin entre a /admin).
+      # Si el superadmin edita estos valores en /admin/settings, la DB
+      # gana sobre las env vars (ver shared/settings.ts).
+      SMTP_HOST:    smtps.aruba.it
+      SMTP_PORT:    "465"
+      SMTP_SECURE:  "false"
+      SMTP_USER:    soportemedicget@abisoft.it
+      SMTP_PASS:    Ecuador7.
+      SMTP_FROM:    MedicGet <soportemedicget@abisoft.it>
+      # URL del frontend para construir los links en los emails (botón
+      # "Verificar mi cuenta", "Restablecer contraseña").
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     expose:
       - "4001"
     networks:
@@ -162,16 +177,21 @@ services:
       # ─── Email (nodemailer) ────────────────────────────────────────────
       # If SMTP_HOST is empty the email service falls back to logging to
       # stdout — useful for local dev without setting up a real inbox.
-      # For real sending, plug in any SMTP provider:
-      #   • Gmail (with app password): smtp.gmail.com / 587
-      #   • Mailtrap (free testing):    smtp.mailtrap.io / 587
-      #   • SendGrid / Mailgun / SES:   their SMTP endpoint
-      SMTP_HOST: smtp.gmail.com
-      SMTP_PORT: 587
-      SMTP_SECURE: false
-      SMTP_USER: medicget593@gmail.com
-      SMTP_PASS: obao bhbg lght bqjf
-      SMTP_FROM: MedicGet <medicget593@gmail.com>
+      # Estos valores actúan como fallback si AppSettings (DB) no tiene
+      # los campos seteados. El superadmin puede editarlos en runtime
+      # desde /admin/settings sin tocar el compose.
+      #
+      # Default: cuenta corporativa Abisoft via Aruba SMTP (smtps.aruba.it:465).
+      # Otros proveedores comunes:
+      #   • Gmail (app password): smtp.gmail.com / 587 / secure=false
+      #   • Mailtrap (testing):   smtp.mailtrap.io / 587 / secure=false
+      #   • SendGrid / Mailgun / SES: su endpoint SMTP
+      SMTP_HOST: smtps.aruba.it
+      SMTP_PORT: 465
+      SMTP_SECURE: "false"
+      SMTP_USER: soportemedicget@abisoft.it
+      SMTP_PASS: Ecuador7.
+      SMTP_FROM: MedicGet <soportemedicget@abisoft.it>
       # ─── Videollamada ──────────────────────────────────────────────────
       # Self-hosted Jitsi? Apuntá aquí. Vacío usa el servidor público gratis.
       JITSI_BASE_URL: ${JITSI_BASE_URL:-https://meet.jit.si}

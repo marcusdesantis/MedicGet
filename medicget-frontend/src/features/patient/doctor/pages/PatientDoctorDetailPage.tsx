@@ -17,6 +17,9 @@ import {
   doctorsApi, appointmentsApi,
   type DoctorDto, type SlotDto, type AppointmentModality,
 } from '@/lib/api';
+import {
+  countryToTimezone, isSlotPastInTz, tzShortLabel,
+} from '@/lib/timezone';
 
 /**
  * Formats a Date as YYYY-MM-DD in local time. Used for the slot API which
@@ -27,22 +30,19 @@ function dayKey(d: Date): string {
 }
 
 /**
- * Returns true if `dayKey + slotTime` already happened in the patient's
- * local timezone (which we assume matches the doctor's, since today the
- * platform serves a single country — Ecuador, UTC-5).
- *
- * Note on TZ handling: dates in the DB are stored as Postgres DATE (no
- * timezone) and times as strings "HH:MM". We interpret them in the
- * BROWSER'S local timezone via `new Date('YYYY-MM-DDTHH:MM:00')`. If the
- * platform later expands across timezones we'll need to store the doctor's
- * IANA timezone on the Doctor row and convert here.
- *
- * `bufferMin` lets callers add a small head-start (e.g. 15min) so the
- * patient has time to pay/confirm without the slot expiring mid-flow.
+ * ¿El slot ya pasó en la TZ del médico? El backend guarda los slots como
+ * wall-clock del médico (no UTC). Si comparamos contra `new Date()` con
+ * la TZ del navegador del paciente, un paciente desde Italia ve sus 09:00
+ * locales como ya-pasadas cuando en Ecuador son las 02:00. Resolvemos
+ * usando la TZ derivada del país del médico (fallback America/Guayaquil).
  */
-function isSlotPast(dayKey: string, slotTime: string, bufferMin = 0): boolean {
-  const slot = new Date(`${dayKey}T${slotTime}:00`);
-  return slot.getTime() <= Date.now() + bufferMin * 60_000;
+function isSlotPast(
+  dayKey:    string,
+  slotTime:  string,
+  tz:        string,
+  bufferMin: number = 0,
+): boolean {
+  return isSlotPastInTz(dayKey, slotTime, tz, bufferMin);
 }
 
 /**
@@ -155,6 +155,9 @@ export function PatientDoctorDetailPage() {
   const doc = doctorState.state.data;
   const profile = doc.user?.profile;
   const hasClinic = !!doc.clinic?.id;
+  // TZ del médico para mostrar y filtrar horarios. Fallback Ecuador.
+  const doctorTz   = countryToTimezone(profile?.country);
+  const doctorTzLabel = tzShortLabel(doctorTz);
   // Doctor independiente = sin clínica. Igual puede recibir reservas (la
   // migración `appointment_optional_clinic` lo permite). Solo cambia que
   // PRESENCIAL no tiene un consultorio formal, así que dependemos del
@@ -326,7 +329,7 @@ export function PatientDoctorDetailPage() {
 
           <SectionCard
             title="Horarios disponibles"
-            subtitle="Selecciona el horario que prefieras"
+            subtitle={`Horas en ${doctorTzLabel} (zona horaria del médico)`}
           >
             {slotsState.state.status === 'loading' && (
               <div className="flex items-center justify-center py-8 text-slate-400">
@@ -343,7 +346,7 @@ export function PatientDoctorDetailPage() {
               //     selected day is today). 15-min buffer so the patient has
               //     time to confirm/pay without the slot expiring.
               const allSlots = slotsState.state.data.filter((s) => !s.isBooked);
-              const free     = allSlots.filter((s) => !isSlotPast(selectedDay, s.time, 15));
+              const free     = allSlots.filter((s) => !isSlotPast(selectedDay, s.time, doctorTz, 15));
 
               const isToday      = selectedDay === days[0].key;
               const allWentBy    = isToday && allSlots.length > 0 && free.length === 0;

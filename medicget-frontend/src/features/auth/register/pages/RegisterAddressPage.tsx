@@ -127,10 +127,20 @@ export const RegisterAddressPage = () => {
         setSubmitting(false);
 
         if (result.success) {
-            // Send fresh doctors to the professional-profile setup wizard so
-            // they finish license/price/bio before landing on the dashboard.
-            // They can skip and go straight to /doctor from there.
-            navigate("/doctor/setup", { replace: true });
+            if (result.requiresVerification) {
+                // Tras verificar el email, el flujo continúa a /doctor/setup
+                // (lo recordamos en query param para que VerifyEmailPage
+                // pueda redirigir correctamente).
+                navigate(
+                    `/verify-email?email=${encodeURIComponent(result.email ?? '')}&next=${encodeURIComponent('/doctor/setup')}`,
+                    { replace: true },
+                );
+            } else {
+                // Send fresh doctors to the professional-profile setup wizard so
+                // they finish license/price/bio before landing on the dashboard.
+                // They can skip and go straight to /doctor from there.
+                navigate("/doctor/setup", { replace: true });
+            }
         } else {
             setSubmitError({
                 message: result.error ?? "No se pudo crear la cuenta",

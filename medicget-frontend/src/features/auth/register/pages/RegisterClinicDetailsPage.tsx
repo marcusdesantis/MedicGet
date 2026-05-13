@@ -140,7 +140,11 @@ export const RegisterClinicDetailsPage = () => {
         setSubmitting(false);
 
         if (result.success) {
-            navigate("/clinic", { replace: true });
+            if (result.requiresVerification) {
+                navigate(`/verify-email?email=${encodeURIComponent(result.email ?? '')}`, { replace: true });
+            } else {
+                navigate("/clinic", { replace: true });
+            }
         } else {
             setSubmitError({
                 message: result.error ?? "No se pudo crear la cuenta",

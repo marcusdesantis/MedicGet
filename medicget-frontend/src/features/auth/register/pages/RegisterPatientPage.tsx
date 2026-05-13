@@ -69,7 +69,13 @@ export const RegisterPatientPage = () => {
         setSubmitting(false);
 
         if (result.success) {
-            navigate("/patient", { replace: true });
+            // Si el backend pide verificar email primero (flujo nuevo de
+            // doble opt-in), llevamos al usuario a la pantalla de verificación.
+            if (result.requiresVerification) {
+                navigate(`/verify-email?email=${encodeURIComponent(result.email ?? '')}`, { replace: true });
+            } else {
+                navigate("/patient", { replace: true });
+            }
         } else {
             setSubmitError({
                 message: result.error ?? "No se pudo crear la cuenta",

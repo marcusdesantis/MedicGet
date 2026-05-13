@@ -1,5 +1,5 @@
 import { prisma } from '@medicget/shared/prisma';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma, Role, UserStatus } from '@prisma/client';
 
 /**
  * Inputs accepted by `create`. The profile, role, and password fields are
@@ -10,6 +10,13 @@ export interface CreateUserInput {
   email:        string;
   passwordHash: string;
   role:         Role;
+  /**
+   * Estado inicial del usuario. Default ACTIVE (cuentas creadas por
+   * superadmin desde /admin/users). El flujo de auto-registro lo manda
+   * en PENDING_VERIFICATION para forzar la verificación de email antes
+   * de poder loguearse.
+   */
+  status?:      UserStatus;
   firstName:    string;
   lastName:     string;
   phone?:       string;
@@ -88,6 +95,9 @@ export const authRepository = {
           email:        input.email.toLowerCase(),
           passwordHash: input.passwordHash,
           role:         input.role,
+          // Si el caller pasa status (auto-registro → PENDING_VERIFICATION),
+          // se respeta. Sin él, queda ACTIVE por el default del schema.
+          ...(input.status ? { status: input.status } : {}),
           profile: {
             create: {
               firstName: input.firstName,

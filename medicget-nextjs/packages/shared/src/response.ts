@@ -18,12 +18,19 @@ export interface ApiErrorBody {
 const ERROR_STATUS: Record<string, number> = {
   BAD_REQUEST: 400,
   VALIDATION_ERROR: 400,
+  /** Token de password reset / email verify inválido, usado o expirado. */
+  INVALID_TOKEN: 400,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
+  /** Cuenta existe pero email aún no verificado — flow distinto del 403
+   *  genérico para que el frontend redirija a /verify-email. */
+  EMAIL_NOT_VERIFIED: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
   UNPROCESSABLE: 422,
   RATE_LIMITED: 429,
+  /** Email/SMTP no pudo entregar — recurso externo. */
+  BAD_GATEWAY: 502,
   INTERNAL: 500,
 };
 

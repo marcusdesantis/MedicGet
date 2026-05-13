@@ -253,7 +253,16 @@ export interface AppointmentDto {
    * Appointment.clinicId column is optional after migration
    * `20260506100000_appointment_optional_clinic_modality`.
    */
-  clinic:       { id: string; name: string } | null;
+  clinic:       {
+    id:         string;
+    name:       string;
+    address?:   string;
+    city?:      string;
+    province?:  string;
+    country?:   string;
+    phone?:     string;
+    email?:     string;
+  } | null;
   /**
    * Auto-generated Jitsi Meet URL. Populated only when modality is ONLINE.
    * Sent to the patient by email at booking time and reused on both sides
@@ -264,6 +273,10 @@ export interface AppointmentDto {
   patientArrivedAt?:  string | null;
   /** PRESENCIAL only — set when the doctor taps "Recibí al paciente". */
   doctorCheckedInAt?: string | null;
+  /** Doble validación — set cuando el médico marca la cita como atendida. */
+  doctorCompletedAt?:  string | null;
+  /** Doble validación — set cuando el paciente confirma la atención. */
+  patientConfirmedAt?: string | null;
   payment?:     PaymentDto | null;
   review?:      ReviewDto  | null;
 }
@@ -340,6 +353,85 @@ export interface PaymentDto {
   notes?:        string;
 }
 
+/**
+ * Patch parcial enviado por el superadmin desde /admin/users para
+ * editar cualquier usuario. Refleja el Zod schema del backend en
+ * svc-admin/.../admin/users/[id]/route.ts.
+ */
+export interface AdminUserPatch {
+  email?:  string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'DELETED' | 'PENDING_VERIFICATION';
+  profile?: {
+    firstName?: string;
+    lastName?:  string;
+    phone?:     string;
+    address?:   string;
+    city?:      string;
+    province?:  string;
+    country?:   string;
+    latitude?:  number | null;
+    longitude?: number | null;
+    avatarUrl?: string;
+  };
+  clinic?: {
+    name?:        string;
+    description?: string;
+    address?:     string;
+    city?:        string;
+    province?:    string;
+    country?:     string;
+    latitude?:    number | null;
+    longitude?:   number | null;
+    phone?:       string;
+    email?:       string;
+    website?:     string;
+    logoUrl?:     string;
+  };
+  doctor?: {
+    specialty?:       string;
+    licenseNumber?:   string;
+    experience?:      number;
+    pricePerConsult?: number;
+    bio?:             string;
+    consultDuration?: number;
+    languages?:       string[];
+    modalities?:      ('ONLINE' | 'PRESENCIAL' | 'CHAT')[];
+    available?:       boolean;
+  };
+  patient?: {
+    dateOfBirth?: string;
+    bloodType?:   string;
+    allergies?:   string[];
+    conditions?:  string[];
+    medications?: string[];
+    notes?:       string;
+  };
+}
+
+export interface MedicalRecordDto {
+  id:                 string;
+  appointmentId:      string;
+  patientId:          string;
+  doctorId:           string;
+  reason:             string;
+  symptoms?:          string;
+  existingConditions?: string;
+  diagnosis?:         string;
+  treatment?:         string;
+  notes?:             string;
+  createdAt:          string;
+  updatedAt:          string;
+}
+
+export interface MedicalRecordInput {
+  reason:              string;
+  symptoms?:           string;
+  existingConditions?: string;
+  diagnosis?:          string;
+  treatment?:          string;
+  notes?:              string;
+}
+
 export interface ReviewDto {
   id:        string;
   rating:    number;
@@ -399,13 +491,25 @@ export interface RegisterBody {
 export const authApi = {
   login:    (email: string, password: string) =>
     apiPost<{ token: string; user: UserDto }>('/auth/login', { email, password }),
+  /**
+   * Tras registro, el backend devuelve `requiresVerification: true` y NO
+   * un token JWT. El usuario debe verificar email antes de loguearse.
+   */
   register: (body: RegisterBody) =>
-    apiPost<{ token: string; user: UserDto }>('/auth/register', body),
+    apiPost<{ requiresVerification: true; email: string; user: UserDto }>('/auth/register', body),
   me:       () => apiGet<UserDto>('/auth/me'),
   forgotPassword: (email: string) =>
     apiPost<{ ok: true; message: string }>('/auth/forgot-password', { email }),
   resetPassword: (token: string, password: string) =>
     apiPost<{ ok: true; message: string }>('/auth/reset-password', { token, password }),
+  /**
+   * Verifica el email via token (del link) o código (6 dígitos). En éxito
+   * devuelve `{ token, user }` para auto-login.
+   */
+  verifyEmail: (body: { token?: string; code?: string; email?: string }) =>
+    apiPost<{ token: string; user: UserDto }>('/auth/verify-email', body),
+  resendVerification: (email: string) =>
+    apiPost<{ ok: true }>('/auth/resend-verification', { email }),
 };
 
 /**
@@ -493,6 +597,20 @@ export const appointmentsApi = {
   updatePayment: (id: string, body: Partial<PaymentDto>)    => apiPatch<PaymentDto>(`/appointments/${id}/payment`, body),
   createReview:  (id: string, body: { rating: number; comment?: string; isPublic?: boolean }) =>
     apiPost<ReviewDto>(`/appointments/${id}/review`, body),
+  /**
+   * Doble validación de finalización — segunda mitad. El paciente confirma
+   * que la atención se realizó correctamente; backend setea patientConfirmedAt
+   * y la cita transiciona a COMPLETED.
+   */
+  confirmCompletion: (id: string) =>
+    apiPost<AppointmentDto>(`/appointments/${id}/confirm-completion`, {}),
+  /**
+   * Formulario de atención médica del médico para esa cita. GET retorna el
+   * registro (o 404 si no existe todavía). PUT/POST upsertea — el frontend
+   * usa POST para crear y PATCH para editar.
+   */
+  getMedicalRecord:    (id: string)                              => apiGet<MedicalRecordDto>(`/appointments/${id}/medical-record`),
+  upsertMedicalRecord: (id: string, body: MedicalRecordInput)    => apiPost<MedicalRecordDto>(`/appointments/${id}/medical-record`, body),
   /**
    * PRESENCIAL check-in events. Patient taps `arrived`, doctor taps
    * `patient_received` (which also flips the cita to ONGOING) or
@@ -670,8 +788,15 @@ export const publicSettingsApi = {
 export const adminApi = {
   stats:        () => apiGet<AdminStatsDto>('/admin/stats'),
   users:        (params?: Record<string, unknown>) => apiGet<PaginatedData<UserDto>>('/admin/users', params),
-  setUserStatus:(id: string, status: 'ACTIVE' | 'INACTIVE' | 'DELETED') =>
+  setUserStatus:(id: string, status: 'ACTIVE' | 'INACTIVE' | 'DELETED' | 'PENDING_VERIFICATION') =>
     apiPatch<UserDto>(`/admin/users/${id}`, { status }),
+  /**
+   * Edición completa de un usuario por el superadmin. Patch parcial —
+   * cualquier campo undefined se ignora; pasar '' como string borra el
+   * campo en DB.
+   */
+  updateUserFull: (id: string, body: AdminUserPatch) =>
+    apiPatch<UserDto>(`/admin/users/${id}`, body),
   deleteUser:   (id: string) => apiDelete<UserDto>(`/admin/users/${id}`),
 
   listPlans:    () => apiGet<PlanDto[]>('/admin/plans'),

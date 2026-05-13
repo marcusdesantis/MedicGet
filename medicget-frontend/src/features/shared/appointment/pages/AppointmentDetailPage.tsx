@@ -18,7 +18,7 @@
  *  back link, but the body is shared.
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Building2, Loader2, Video, MessageSquare,
@@ -32,7 +32,7 @@ import { SectionCard }  from '@/components/ui/SectionCard';
 import { useApi }       from '@/hooks/useApi';
 import { useAuth }      from '@/context/AuthContext';
 import { appointmentStatusMap } from '@/lib/statusConfig';
-import { appointmentsApi, type AppointmentDto } from '@/lib/api';
+import { appointmentsApi, type AppointmentDto, type MedicalRecordDto, type MedicalRecordInput } from '@/lib/api';
 import { chatPathForRole } from '@/features/shared/chat/pages/AppointmentChatPage';
 import { ChatImageGallery } from '@/features/shared/chat/components/ChatImageGallery';
 
@@ -88,6 +88,24 @@ export function AppointmentDetailPage({ backTo }: AppointmentDetailPageProps) {
     }
   };
 
+  // Doble validación — paciente confirma la atención. Ver appointmentsService.
+  const confirmCompletion = async () => {
+    if (!id) return;
+    setActing(true);
+    setActionError(null);
+    try {
+      await appointmentsApi.confirmCompletion(id);
+      refetch();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? 'No se pudo confirmar la atención';
+      setActionError(msg);
+    } finally {
+      setActing(false);
+    }
+  };
+
   if (state.status === 'loading') {
     return (
       <div className="flex items-center justify-center py-24 text-slate-400">
@@ -122,12 +140,28 @@ export function AppointmentDetailPage({ backTo }: AppointmentDetailPageProps) {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   });
 
-  const clinicAddress =
-    a.clinic && [a.clinic.name, peerProfile?.address, peerProfile?.city, peerProfile?.country]
-      .filter(Boolean).join(', ');
+  // Dirección a mostrar al paciente en PRESENCIAL:
+  //   1) Si hay clínica → tomar address/city/province/country DE LA CLÍNICA.
+  //   2) Si no hay clínica (médico independiente) → caer al profile del médico.
+  // Antes solo se mostraba `clinic.name + peerProfile.address` (los datos
+  // de la clínica como dirección no aparecían), lo cual confundía al
+  // paciente porque parecía que el consultorio "no tenía dirección".
+  const addrPieces = a.clinic
+    ? [a.clinic.address, a.clinic.city, a.clinic.province, a.clinic.country]
+    : [peerProfile?.address, peerProfile?.city, peerProfile?.province, peerProfile?.country];
+  const cleanAddress = addrPieces.filter(Boolean).join(', ');
+  const clinicAddress = a.clinic
+    ? [a.clinic.name, cleanAddress].filter(Boolean).join(' · ')
+    : cleanAddress || undefined;
+
+  // Teléfonos visibles para el paciente en PRESENCIAL — del médico y, si
+  // aplica, también de la clínica. Ambos son opcionales en el schema.
+  const doctorPhone = isPatient ? peerProfile?.phone : undefined;
+  const clinicPhone = isPatient ? a.clinic?.phone   : undefined;
+
   const directionsUrl =
-    a.clinic
-      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${a.clinic.name} ${peerProfile?.address ?? ''}`)}`
+    cleanAddress
+      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(cleanAddress)}`
       : null;
 
   return (
@@ -145,6 +179,30 @@ export function AppointmentDetailPage({ backTo }: AppointmentDetailPageProps) {
       </div>
 
       {actionError && <Alert variant="error">{actionError}</Alert>}
+
+      {/* ── Doble validación de finalización ──
+          Cuando el médico marcó la cita como atendida pero el paciente
+          todavía no confirmó, mostramos un bloque grande. Visible para
+          ambos roles, pero el botón "Confirmar atención" solo aparece al
+          paciente. Si no confirma en 24h, el sweeper la cierra automático. */}
+      {a.doctorCompletedAt && !a.patientConfirmedAt && a.status !== 'COMPLETED' && (
+        <FinalizationPanel
+          appointment={a}
+          isPatient={isPatient}
+          acting={acting}
+          onConfirm={confirmCompletion}
+        />
+      )}
+
+      {/* ── EN CURSO banner ──
+          Cuando status === ONGOING mostramos un banner grande y un
+          cronómetro contando desde que el médico recibió al paciente
+          (PRESENCIAL) o desde la hora programada (ONLINE/CHAT). Eso le da
+          al médico una referencia visible de cuánto lleva la consulta y
+          al paciente confirmación visual de que la sesión está activa. */}
+      {a.status === 'ONGOING' && !a.doctorCompletedAt && (
+        <OngoingBanner appointment={a} showTimerForRole={isDoctor || isPatient} />
+      )}
 
       {/* ── Hero card ── */}
       <SectionCard>
@@ -251,7 +309,18 @@ export function AppointmentDetailPage({ backTo }: AppointmentDetailPageProps) {
           clinicAddress={clinicAddress || undefined}
           directionsUrl={directionsUrl}
           peerName={peerName}
+          doctorPhone={doctorPhone}
+          clinicPhone={clinicPhone}
         />
+      )}
+
+      {/* ── Formulario de atención médica (sólo médico) ── */}
+      {isDoctor && (
+        <MedicalRecordSection appointment={a} />
+      )}
+      {/* Paciente puede ver el resumen post-consulta como solo-lectura. */}
+      {isPatient && a.status === 'COMPLETED' && (
+        <MedicalRecordSection appointment={a} readOnly />
       )}
 
       {/* ── Timeline ── */}
@@ -259,6 +328,220 @@ export function AppointmentDetailPage({ backTo }: AppointmentDetailPageProps) {
         <h3 className="font-semibold text-slate-800 dark:text-white mb-3">Línea de tiempo</h3>
         <Timeline appointment={a} />
       </SectionCard>
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────────── */
+/*  Medical Record — formulario de atención                              */
+/* ───────────────────────────────────────────────────────────────────── */
+
+/**
+ * Formulario de atención médica. El médico ingresa motivo, síntomas,
+ * enfermedades existentes, diagnóstico y tratamiento. Auto-fetch del
+ * registro existente al montar.
+ *
+ * - Médico → edición + guardar.
+ * - Paciente / clínica en modo `readOnly` → solo lectura.
+ */
+function MedicalRecordSection({
+  appointment,
+  readOnly = false,
+}: {
+  appointment: AppointmentDto;
+  readOnly?:   boolean;
+}) {
+  const [form, setForm] = useState<MedicalRecordInput>({
+    reason:             appointment.notes ?? '',
+    symptoms:           '',
+    existingConditions: '',
+    diagnosis:          '',
+    treatment:          '',
+    notes:              '',
+  });
+  const [loaded, setLoaded]   = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  // Fetch del registro existente. 404 es esperable cuando aún no se creó.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await appointmentsApi.getMedicalRecord(appointment.id);
+        if (cancelled) return;
+        const r: MedicalRecordDto = res.data;
+        setForm({
+          reason:             r.reason,
+          symptoms:           r.symptoms             ?? '',
+          existingConditions: r.existingConditions   ?? '',
+          diagnosis:          r.diagnosis            ?? '',
+          treatment:          r.treatment            ?? '',
+          notes:              r.notes                ?? '',
+        });
+      } catch {
+        /* sin registro todavía — form queda vacío */
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [appointment.id]);
+
+  const save = async () => {
+    if (!form.reason.trim()) {
+      setError('El motivo de la consulta es obligatorio.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      await appointmentsApi.upsertMedicalRecord(appointment.id, {
+        reason:             form.reason.trim(),
+        symptoms:           form.symptoms?.trim() || undefined,
+        existingConditions: form.existingConditions?.trim() || undefined,
+        diagnosis:          form.diagnosis?.trim() || undefined,
+        treatment:          form.treatment?.trim() || undefined,
+        notes:              form.notes?.trim() || undefined,
+      });
+      setSuccess(true);
+      setEditing(false);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'No se pudo guardar la atención';
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!loaded) {
+    return (
+      <SectionCard>
+        <div className="flex items-center gap-2 text-slate-400 text-sm">
+          <Loader2 size={14} className="animate-spin" /> Cargando ficha de atención…
+        </div>
+      </SectionCard>
+    );
+  }
+
+  const disabled = readOnly || (!editing && !!form.reason);
+
+  return (
+    <SectionCard
+      title="Ficha de atención"
+      subtitle={readOnly ? 'Resumen de la consulta' : 'Completá los datos de la atención'}
+    >
+      <div className="space-y-3">
+        <Field2
+          label="Motivo de la consulta *"
+          value={form.reason}
+          onChange={(v) => setForm({ ...form, reason: v })}
+          disabled={disabled}
+          rows={2}
+          placeholder="¿Qué trae al paciente hoy?"
+        />
+        <Field2
+          label="Síntomas relatados"
+          value={form.symptoms ?? ''}
+          onChange={(v) => setForm({ ...form, symptoms: v })}
+          disabled={disabled}
+          rows={3}
+          placeholder="Cefalea, fiebre, tos seca, etc."
+        />
+        <Field2
+          label="Enfermedades / antecedentes existentes"
+          value={form.existingConditions ?? ''}
+          onChange={(v) => setForm({ ...form, existingConditions: v })}
+          disabled={disabled}
+          rows={2}
+          placeholder="Hipertensión, diabetes tipo 2, asma…"
+        />
+        <Field2
+          label="Diagnóstico / impresión clínica"
+          value={form.diagnosis ?? ''}
+          onChange={(v) => setForm({ ...form, diagnosis: v })}
+          disabled={disabled}
+          rows={2}
+        />
+        <Field2
+          label="Indicaciones / tratamiento"
+          value={form.treatment ?? ''}
+          onChange={(v) => setForm({ ...form, treatment: v })}
+          disabled={disabled}
+          rows={3}
+          placeholder="Medicación, controles, derivaciones…"
+        />
+        {!readOnly && (
+          <Field2
+            label="Notas privadas del médico"
+            value={form.notes ?? ''}
+            onChange={(v) => setForm({ ...form, notes: v })}
+            disabled={disabled}
+            rows={2}
+            placeholder="No se muestran al paciente."
+          />
+        )}
+      </div>
+
+      {error && <Alert variant="error" className="mt-3">{error}</Alert>}
+      {success && (
+        <p className="mt-3 text-sm text-emerald-600 flex items-center gap-1.5">
+          <CheckCircle size={14} /> Ficha guardada.
+        </p>
+      )}
+
+      {!readOnly && (
+        <div className="mt-4 flex justify-end gap-2">
+          {disabled ? (
+            <button
+              onClick={() => { setEditing(true); setSuccess(false); }}
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 px-4 py-2"
+            >
+              Editar ficha
+            </button>
+          ) : (
+            <button
+              onClick={save}
+              disabled={saving}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              Guardar ficha
+            </button>
+          )}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function Field2({
+  label, value, onChange, disabled, rows = 2, placeholder,
+}: {
+  label:       string;
+  value:       string;
+  onChange:    (v: string) => void;
+  disabled?:   boolean;
+  rows?:       number;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+        {label}
+      </label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={rows}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 dark:disabled:bg-slate-800/60 disabled:cursor-not-allowed resize-none"
+      />
     </div>
   );
 }
@@ -277,11 +560,15 @@ interface PresencialPanelProps {
   clinicAddress?: string;
   directionsUrl:  string | null;
   peerName:       string;
+  /** Teléfono del médico — visible solo al paciente. */
+  doctorPhone?:   string;
+  /** Teléfono de la clínica — visible solo al paciente. */
+  clinicPhone?:   string;
 }
 
 function PresencialPanel({
   appointment, isPatient, isDoctor, acting, onCheckin, onUpdateStatus,
-  clinicAddress, directionsUrl, peerName,
+  clinicAddress, directionsUrl, peerName, doctorPhone, clinicPhone,
 }: PresencialPanelProps) {
   const a = appointment;
   const arrived  = !!a.patientArrivedAt;
@@ -332,6 +619,43 @@ function PresencialPanel({
           </div>
         </div>
       </div>
+
+      {/* Teléfonos de contacto — solo visibles al paciente. El backend
+          devuelve a.clinic.phone y peerProfile.phone (médico). Mostramos
+          ambos cuando existan, con tel: links para móvil. */}
+      {isPatient && (doctorPhone || clinicPhone) && (
+        <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Phone size={12} /> Contacto del consultorio
+          </p>
+          <div className="space-y-1.5">
+            {doctorPhone && (
+              <a
+                href={`tel:${doctorPhone.replace(/\s+/g, '')}`}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              >
+                <span className="text-sm text-slate-700 dark:text-slate-200">
+                  <span className="text-xs text-slate-400 mr-2">Médico</span>
+                  {doctorPhone}
+                </span>
+                <Phone size={14} className="text-blue-600 flex-shrink-0" />
+              </a>
+            )}
+            {clinicPhone && clinicPhone !== doctorPhone && (
+              <a
+                href={`tel:${clinicPhone.replace(/\s+/g, '')}`}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              >
+                <span className="text-sm text-slate-700 dark:text-slate-200">
+                  <span className="text-xs text-slate-400 mr-2">Consultorio</span>
+                  {clinicPhone}
+                </span>
+                <Phone size={14} className="text-blue-600 flex-shrink-0" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Prep instructions */}
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -534,6 +858,147 @@ function Timeline({ appointment: a }: { appointment: AppointmentDto }) {
 /* ───────────────────────────────────────────────────────────────────── */
 /*  Bits                                                                */
 /* ───────────────────────────────────────────────────────────────────── */
+
+/* ───────────────────────────────────────────────────────────────────── */
+/*  Finalization panel — doble validación                                */
+/* ───────────────────────────────────────────────────────────────────── */
+
+/**
+ * Banner de doble validación. Solo se monta cuando el médico ya marcó
+ * `doctorCompletedAt` y el paciente todavía no confirmó. Al paciente le
+ * mostramos un CTA grande "Confirmar atención"; al médico le mostramos
+ * un estado "esperando confirmación del paciente" + el reloj de cuánto
+ * falta para el auto-cierre (24h desde doctorCompletedAt).
+ */
+function FinalizationPanel({
+  appointment,
+  isPatient,
+  acting,
+  onConfirm,
+}: {
+  appointment: AppointmentDto;
+  isPatient:   boolean;
+  acting:      boolean;
+  onConfirm:   () => void;
+}) {
+  const markedAt = appointment.doctorCompletedAt
+    ? new Date(appointment.doctorCompletedAt).getTime()
+    : Date.now();
+  const deadline = markedAt + 24 * 60 * 60 * 1000;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const remainingMs = Math.max(0, deadline - now);
+  const remainingH  = Math.floor(remainingMs / 3_600_000);
+  const remainingM  = Math.floor((remainingMs % 3_600_000) / 60_000);
+
+  return (
+    <div className="rounded-2xl border-2 border-amber-400 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/40 dark:to-yellow-950/40 p-6 shadow-lg shadow-amber-400/10">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+        <div className="flex items-start gap-3">
+          <CheckCircle size={24} className="text-amber-600 flex-shrink-0 mt-1" />
+          <div>
+            <p className="text-lg font-bold text-amber-800 dark:text-amber-200">
+              {isPatient
+                ? 'El médico marcó la consulta como atendida'
+                : 'Esperando confirmación del paciente'}
+            </p>
+            <p className="text-sm text-amber-700/90 dark:text-amber-200/90 mt-1">
+              {isPatient
+                ? 'Confirmá desde tu lado que la atención se realizó. Si no respondés en las próximas horas, se dará por finalizada automáticamente.'
+                : `Le enviamos una notificación al paciente. Si no responde en ~${remainingH}h ${remainingM}m, la cita se cierra de oficio.`}
+            </p>
+          </div>
+        </div>
+        {isPatient && (
+          <button
+            onClick={onConfirm}
+            disabled={acting}
+            className="inline-flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-5 py-3 rounded-xl transition shadow-sm shadow-amber-600/30 disabled:opacity-50 flex-shrink-0"
+          >
+            {acting ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+            Confirmar atención
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────────── */
+/*  Ongoing banner + cronómetro                                          */
+/* ───────────────────────────────────────────────────────────────────── */
+
+/**
+ * Banner grande "EN CURSO" con un cronómetro vivo. La hora de inicio se
+ * resuelve, en prioridad:
+ *   1. `doctorCheckedInAt` (PRESENCIAL — paciente ya fue recibido)
+ *   2. la hora programada de la cita (`date + time` interpretado como
+ *      wall-clock Ecuador, alineado con el resto del backend)
+ *
+ * Ticks cada segundo via setInterval; el componente se desmonta cuando
+ * la cita deja de estar ONGOING, así que no hay leak.
+ */
+function OngoingBanner({
+  appointment,
+  showTimerForRole,
+}: {
+  appointment:      AppointmentDto;
+  showTimerForRole: boolean;
+}) {
+  const startedAt = useMemo(() => {
+    if (appointment.doctorCheckedInAt) {
+      return new Date(appointment.doctorCheckedInAt).getTime();
+    }
+    const dateOnly = new Date(appointment.date).toISOString().slice(0, 10);
+    return Date.parse(`${dateOnly}T${appointment.time}:00-05:00`);
+  }, [appointment.doctorCheckedInAt, appointment.date, appointment.time]);
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const elapsedMs = Math.max(0, now - startedAt);
+  const hh = Math.floor(elapsedMs / 3_600_000);
+  const mm = Math.floor((elapsedMs % 3_600_000) / 60_000);
+  const ss = Math.floor((elapsedMs % 60_000) / 1000);
+  const timer = `${hh > 0 ? String(hh).padStart(2, '0') + ':' : ''}${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+
+  return (
+    <div className="rounded-2xl border-2 border-emerald-500 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 p-6 shadow-lg shadow-emerald-500/10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <span className="relative flex h-4 w-4">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500" />
+          </span>
+          <div>
+            <p className="text-3xl sm:text-4xl font-extrabold text-emerald-700 dark:text-emerald-300 tracking-tight leading-none">
+              CONSULTA EN CURSO
+            </p>
+            <p className="text-sm text-emerald-700/80 dark:text-emerald-300/80 mt-1">
+              La cita está activa en este momento.
+            </p>
+          </div>
+        </div>
+        {showTimerForRole && (
+          <div className="flex flex-col items-end">
+            <p className="text-[10px] uppercase tracking-widest text-emerald-700/70 dark:text-emerald-300/70 font-semibold">
+              Tiempo de consulta
+            </p>
+            <p className="font-mono text-3xl sm:text-4xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
+              {timer}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ModalityIcon({ modality }: { modality: 'ONLINE' | 'PRESENCIAL' | 'CHAT' }) {
   if (modality === 'ONLINE')     return <Video size={13} />;

@@ -12,6 +12,16 @@ export interface AppointmentFilters {
   clinicId?: string;
 }
 
+/**
+ * Includes usados en listados y detalle.
+ *
+ * Nota (fix bug review): `review` se incluye también en el listado porque
+ * el frontend (PatientAppointmentsPage) decide si mostrar el botón
+ * "Calificar" basándose en `a.review == null`. Si no lo incluimos aquí,
+ * el listado piensa que la cita NO tiene review y muestra el botón → al
+ * enviar la reseña por segunda vez el backend responde 409 CONFLICT
+ * "Review already exists". Costo en bytes es mínimo (1 row por cita).
+ */
 const appointmentIncludes = {
   patient: {
     include: {
@@ -29,12 +39,13 @@ const appointmentIncludes = {
   },
   clinic: true,
   payment: true,
+  review:  true,
 } satisfies Prisma.AppointmentInclude;
 
-const appointmentIncludesFull = {
-  ...appointmentIncludes,
-  review: true,
-} satisfies Prisma.AppointmentInclude;
+// Alias preservado para semantica de detalle. Hoy idéntico al listado, pero
+// dejamos el nombre por si en el futuro queremos incluir mensajes / historial
+// solo en el detalle y no en el listado.
+const appointmentIncludesFull = appointmentIncludes;
 
 function buildWhere(filters: AppointmentFilters): Prisma.AppointmentWhereInput {
   const where: Prisma.AppointmentWhereInput = {};

@@ -50,8 +50,19 @@ export function ReviewModal({ appointment, onClose, onSaved }: ReviewModalProps)
       toast.success('¡Gracias por tu reseña!');
       onSaved();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
-        ?.response?.data?.error?.message ?? 'No se pudo enviar la reseña';
+      // El backend devuelve un payload tipado `{ ok: false, error: { code, message, details? } }`.
+      // Surface el mensaje real al usuario y, si ya existe una reseña para esta
+      // cita (CONFLICT), cerramos el modal y refrescamos el listado para que
+      // el botón "Calificar" desaparezca.
+      const errObj = (err as { response?: { data?: { error?: { code?: string; message?: string } } } })?.response?.data?.error;
+      const code = errObj?.code;
+      const msg  = errObj?.message ?? 'No se pudo enviar la reseña';
+
+      if (code === 'CONFLICT') {
+        toast.info('Esta cita ya tiene una reseña.');
+        onSaved();
+        return;
+      }
       setError(msg);
     } finally {
       setSaving(false);
