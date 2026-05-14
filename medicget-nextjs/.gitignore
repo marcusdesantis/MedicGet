@@ -5,9 +5,9 @@ build/
 coverage/
 
 # Credenciales sensibles — no deben versionarse.
-.env
-.env.local
-.env.*.local
+#.env
+#.env.local
+#.env.*.local
 !.env.example
 
 *.log
