@@ -937,7 +937,7 @@ function PricingCard({ plan, highlight }: { plan: PlanDto; highlight: boolean })
       </h3>
       <div className="mt-3">
         <span className={`text-4xl font-bold ${highlight ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
-          ${plan.monthlyPrice.toFixed(0)}
+          ${plan.monthlyPrice.toFixed(2)}
         </span>
         <span className={`text-sm ${highlight ? 'text-blue-100' : 'text-slate-500'}`}>/mes</span>
       </div>
@@ -964,7 +964,7 @@ function PricingCard({ plan, highlight }: { plan: PlanDto; highlight: boolean })
             : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100'
         }`}
       >
-        {isFree ? 'Empezar gratis' : `Suscribirme · $${plan.monthlyPrice}/mes`}
+        {isFree ? 'Empezar gratis' : `Suscribirme · $${plan.monthlyPrice.toFixed(2)}/mes`}
       </Link>
     </div>
   );

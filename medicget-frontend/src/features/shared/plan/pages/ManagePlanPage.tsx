@@ -208,7 +208,7 @@ export function ManagePlanPage() {
                 <div className="mt-3">
                   <span className={`text-3xl font-bold ${
                     isHighlight && !isCurrent ? 'text-white' : 'text-slate-800 dark:text-white'
-                  }`}>${p.monthlyPrice.toFixed(0)}</span>
+                  }`}>${p.monthlyPrice.toFixed(2)}</span>
                   <span className={`text-sm ${
                     isHighlight && !isCurrent ? 'text-blue-100' : 'text-slate-500'
                   }`}>/mes</span>

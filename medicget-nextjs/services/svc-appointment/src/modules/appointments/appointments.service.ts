@@ -2,7 +2,6 @@ import { appointmentsRepository, type AppointmentFilters } from './appointments.
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { paginate } from '@medicget/shared/paginate';
 import type { AuthUser } from '@medicget/shared/auth';
-import { generateMeetingUrl } from '@medicget/shared/meeting';
 import { sendEmail }          from '@medicget/shared/email';
 import { getAllowedModalities } from '@medicget/shared/subscription';
 import { createNotification } from '@medicget/shared/notifications';
@@ -168,25 +167,17 @@ export const appointmentsService = {
       slot?.id,
     );
 
-    // ─── Side effects: meeting link + email ────────────────────────────
-    // Only ONLINE appointments need a video room. PRESENCIAL is in-person
-    // and CHAT happens in-app, so no Jitsi URL is generated for those.
-    let meetingUrl: string | null = null;
-    if (requestedModality === 'ONLINE') {
-      meetingUrl = await generateMeetingUrl(appointment.id);
-      await prisma.appointment.update({
-        where: { id: appointment.id },
-        data:  { meetingUrl },
-      });
-    }
-
-    // Notify the patient by email. Best-effort — we don't block the API
-    // response on a slow SMTP server, but we do log failures.
-    void notifyAppointmentCreated(appointment.id, meetingUrl);
+    // ─── NO side effects hasta que el pago esté confirmado ────────────
+    // El meetingUrl (Jitsi) y los emails de confirmación se generan en
+    // `paymentService.confirm` cuando PayPhone aprueba el pago. Antes
+    // de eso la cita existe en estado PENDING reservando el slot, pero
+    // el paciente todavía no recibió email ni link de videollamada —
+    // así evitamos mandar links a citas que después se auto-cancelan
+    // por falta de pago.
 
     return {
       ok: true,
-      data: { ...appointment, meetingUrl },
+      data: { ...appointment, meetingUrl: null },
     };
   },
 
@@ -503,113 +494,12 @@ export const appointmentsService = {
  * email them. They can always grab the link from the appointment detail
  * drawer in the calendar / appointments page.
  */
-async function notifyAppointmentCreated(appointmentId: string, meetingUrl: string | null) {
-  try {
-    const { prisma } = await import('@medicget/shared/prisma');
-    const appt = await prisma.appointment.findUnique({
-      where:   { id: appointmentId },
-      include: {
-        patient: { include: { user: { include: { profile: true } } } },
-        doctor:  { include: { user: { include: { profile: true } } } },
-        clinic:  true,
-      },
-    });
-    if (!appt) return;
-
-    const patientEmail = appt.patient?.user?.email;
-    if (!patientEmail) return;
-
-    const patientName  = appt.patient?.user?.profile?.firstName ?? 'paciente';
-    const doctorName   = `${appt.doctor?.user?.profile?.firstName ?? ''} ${appt.doctor?.user?.profile?.lastName ?? ''}`.trim();
-    const dateStr      = new Date(appt.date).toLocaleDateString('es-ES', {
-      weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-    });
-
-    const modalityCopy =
-      appt.modality === 'ONLINE'     ? 'Videollamada (online)' :
-      appt.modality === 'PRESENCIAL' ? `Presencial${appt.clinic ? ` en ${appt.clinic.name}` : ''}` :
-      'Chat en vivo';
-
-    const meetingBlock = meetingUrl
-      ? `
-        <div style="background:#dbeafe;border-radius:12px;padding:20px;margin:24px 0;text-align:center">
-          <p style="margin:0 0 12px;font-size:13px;color:#1e40af;font-weight:600;letter-spacing:.05em;text-transform:uppercase">
-            Enlace de la videollamada
-          </p>
-          <a href="${meetingUrl}"
-             style="display:inline-block;background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600">
-            Unirme a la consulta
-          </a>
-          <p style="margin:14px 0 0;font-size:12px;color:#475569">
-            Guardá este enlace. Lo necesitarás el día de la consulta:<br/>
-            <a href="${meetingUrl}" style="color:#2563eb;word-break:break-all">${meetingUrl}</a>
-          </p>
-        </div>`
-      : '';
-
-    const html = `
-      <!doctype html>
-      <html><body style="font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;padding:24px">
-        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #e2e8f0">
-          <h1 style="font-size:22px;color:#0f172a;margin:0 0 8px">¡Hola ${patientName}!</h1>
-          <p style="font-size:15px;color:#475569;margin:0 0 24px">
-            Tu cita con <strong>Dr. ${doctorName}</strong> fue reservada con éxito. Acá los detalles:
-          </p>
-
-          <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
-            <tr><td style="padding:8px 0;color:#64748b;font-size:13px">Fecha</td>
-                <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right;text-transform:capitalize">${dateStr}</td></tr>
-            <tr><td style="padding:8px 0;color:#64748b;font-size:13px">Hora</td>
-                <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right">${appt.time}</td></tr>
-            <tr><td style="padding:8px 0;color:#64748b;font-size:13px">Modalidad</td>
-                <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right">${modalityCopy}</td></tr>
-            <tr><td style="padding:8px 0;color:#64748b;font-size:13px">Especialidad</td>
-                <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right">${appt.doctor?.specialty ?? '—'}</td></tr>
-            <tr><td style="padding:8px 0;color:#64748b;font-size:13px">Precio</td>
-                <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:700;text-align:right">$${appt.price.toFixed(2)}</td></tr>
-          </table>
-
-          ${meetingBlock}
-
-          <p style="font-size:13px;color:#64748b;margin:24px 0 0;line-height:1.5">
-            Recordá que la cita queda <strong>pendiente de pago</strong>. Una vez confirmado el pago,
-            recibirás un correo final con la confirmación.
-          </p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0"/>
-          <p style="font-size:11px;color:#94a3b8;margin:0">
-            MedicGet · Este es un correo automático, por favor no respondas.
-          </p>
-        </div>
-      </body></html>
-    `;
-
-    const textParts = [
-      `Hola ${patientName},`,
-      ``,
-      `Tu cita con Dr. ${doctorName} (${appt.doctor?.specialty ?? '—'}) fue reservada.`,
-      ``,
-      `Fecha: ${dateStr}`,
-      `Hora: ${appt.time}`,
-      `Modalidad: ${modalityCopy}`,
-      `Precio: $${appt.price.toFixed(2)}`,
-      meetingUrl ? `\nEnlace de videollamada: ${meetingUrl}` : '',
-      ``,
-      `La cita está pendiente de pago. Recibirás otro correo cuando se confirme.`,
-      ``,
-      `— MedicGet`,
-    ];
-
-    await sendEmail({
-      to:      patientEmail,
-      subject: `Cita reservada con Dr. ${doctorName} · ${dateStr.split(',')[0]}`,
-      html,
-      text: textParts.join('\n'),
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[notifyAppointmentCreated] failed:', err);
-  }
-}
+// `notifyAppointmentCreated` se eliminó. Antes se disparaba en
+// `appointmentsService.create` y mandaba un email tipo "Cita reservada
+// · Pendiente de pago" al paciente. Como la cita ahora SOLO se notifica
+// cuando el pago fue confirmado, esa función ya no aplica. La nueva
+// función equivalente vive en `payment.service.ts` →
+// `notifyAppointmentConfirmed`.
 
 /**
  * Sweeper de recordatorios. Busca citas que:

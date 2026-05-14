@@ -1,9 +1,20 @@
-import { View, Text } from 'react-native';
+/**
+ * Index del área autenticada — redirige al home del rol del usuario.
+ * Es defensa por si alguien navega a /(main) sin un subgrupo concreto.
+ */
 
-export default function HomeScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-slate-50">
-      <Text className="text-lg font-medium text-slate-700">medicget</Text>
-    </View>
-  );
+import { Redirect } from 'expo-router';
+import { useAuth, UserRole } from '@/context/AuthContext';
+
+const ROLE_HOME: Record<UserRole, string> = {
+  patient: '/(main)/(patient)',
+  doctor: '/(main)/(doctor)',
+  clinic: '/(main)/(clinic)',
+  admin: '/(main)/(admin)',
+};
+
+export default function MainIndex() {
+  const { user } = useAuth();
+  if (!user) return <Redirect href="/(auth)/login" />;
+  return <Redirect href={ROLE_HOME[user.role] as any} />;
 }

@@ -78,7 +78,9 @@ export const LoginPage = () => {
           <p className="text-sm text-slate-400 mt-1">Accede a tu cuenta</p>
         </div>
 
-        {/* Google */}
+        {/* Login con Google — oculto por ahora. Reactivar cuando esté el
+            OAuth backend configurado (Google Cloud Console + svc-auth). */}
+        {/*
         <div className="space-y-3">
           <SocialButton
             icon={<img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5" />}
@@ -87,6 +89,7 @@ export const LoginPage = () => {
         </div>
 
         <Divider />
+        */}
 
         {/* Form */}
         <div className="space-y-4">

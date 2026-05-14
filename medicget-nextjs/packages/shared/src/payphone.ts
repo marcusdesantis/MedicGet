@@ -1,73 +1,73 @@
 /**
- * PayPhone client wrapper.
+ * PayPhone client wrapper — flow "Cajita de Pagos Web".
  *
  *   PayPhone is Ecuador's main payment processor (https://www.payphone.com).
- *   We use their "Payment Box" flow:
+ *   La integración correcta de la "Cajita de Pagos" es:
  *
- *     1. Server  POST /api/Sale            → returns paymentId + redirectUrl
- *     2. Client  is redirected to redirectUrl, pays on PayPhone-hosted page
- *     3. PayPhone redirects back to our PAYMENT_RETURN_URL with `id` and
- *        `clientTransactionId` query params
- *     4. Server  POST /api/Sale/Confirm    → returns final status (Approved /
- *        Rejected / Cancelled). Idempotent — safe to call twice.
- *     5. Server  POST /api/Sale/Cancel     → optional, for refunds
- *
- *   The merchant token is provisioned per-store from PayPhone's commercial
- *   panel and lives in the PAYPHONE_TOKEN env var. The store id (numeric)
- *   goes in PAYPHONE_STORE_ID. The base URL switches between sandbox and
- *   production via PAYPHONE_BASE_URL — both PayPhone environments share the
- *   same auth scheme.
+ *     1. FRONTEND  carga el script + CSS del widget desde CDN de PayPhone.
+ *     2. FRONTEND  llama al BACKEND para "preparar" una sesión de pago
+ *                  → el backend NO contacta a PayPhone en este paso;
+ *                  solo persiste un Payment PENDING y genera un
+ *                  clientTransactionId único.
+ *     3. BACKEND   responde con `{ token, storeId, amount, amountWithTax,
+ *                  tax, clientTransactionId, reference }` que el widget
+ *                  necesita para renderizar.
+ *     4. FRONTEND  instancia `new PPaymentButtonBox({...}).render('pp-button')`.
+ *     5. USUARIO   completa el pago en el widget (tarjeta o app PayPhone).
+ *     6. PayPhone  redirige al `responseUrl` con `?id=...&clientTransactionId=...`.
+ *     7. FRONTEND  manda esos params al BACKEND.
+ *     8. BACKEND   confirma con `POST https://paymentbox.payphonetodoesposible.com/api/confirm`.
  *
  *   Stub fallback:
- *     If PAYPHONE_TOKEN is empty, this module returns a simulated success
- *     response so the rest of the app can be exercised end-to-end without a
- *     live merchant account. The redirect URL points to our own
- *     `/payment/return?fakeOk=1` route so the dev flow stays clickable.
+ *     Si PAYPHONE_TOKEN está vacío, este módulo devuelve respuestas
+ *     simuladas — el frontend detecta `stubMode: true` y salta el widget,
+ *     marcando la cita como pagada para que el resto del flow sea
+ *     testeable end-to-end sin credenciales.
  */
 
-const STUB_BASE_URL = 'http://localhost:5173/payment/return';
+import { getSetting, getSettingNumber } from './settings';
 
-export interface PrepareSaleArgs {
-  /** Total in CENTS (PayPhone uses cents — $10.00 → 1000). */
-  amountCents:           number;
-  /** Subtotal that's subject to taxes. Same unit as `amountCents`. */
-  amountWithTaxCents?:   number;
-  /** Tax amount (already included in `amountCents`). */
-  taxCents?:             number;
-  /** Our internal id — survives the round trip via `clientTransactionId`. */
-  clientTransactionId:   string;
-  /** Where PayPhone redirects the user after payment (success OR failure). */
-  responseUrl:           string;
-  /** Where PayPhone redirects if the user explicitly cancels. */
-  cancellationUrl:       string;
-  /** Free-form description shown on PayPhone's UI. */
-  reference:             string;
-  /** Optional patient e-mail. */
-  email?:                string;
-  /** Optional patient phone. */
-  phoneNumber?:          string;
-  /** Optional patient document (DNI / RUC). */
-  documentId?:           string;
+/** Host del endpoint de confirmación. Diferente al panel de comercio. */
+const CONFIRM_BASE_URL = 'https://paymentbox.payphonetodoesposible.com/api';
+
+/* ───────────────────────────── Types ───────────────────────────── */
+
+/**
+ * Datos que el backend devuelve al frontend para que monte el widget.
+ * Todos los campos son los que `PPaymentButtonBox` exige.
+ */
+export interface CheckoutSession {
+  ok:                   true;
+  /** Bearer token del comercio — se inyecta en el widget. */
+  token:                string;
+  storeId:              string;
+  /** Monto total en centavos (suma de los componentes). */
+  amount:               number;
+  amountWithoutTax:     number;
+  amountWithTax:        number;
+  tax:                  number;
+  service:              number;
+  tip:                  number;
+  currency:             string;
+  /** ID único nuestro — sobrevive el round-trip por `clientTransactionId`. */
+  clientTransactionId:  string;
+  reference:            string;
+  /** URL a la que PayPhone redirige al finalizar. */
+  responseUrl:          string;
+  /** Indica al frontend que estamos en modo dev: saltar widget y aprobar. */
+  stubMode:             boolean;
 }
 
-export interface PrepareSaleResult {
-  ok:        true;
-  paymentId: string;   // numeric id (we store it as a string for safety)
-  token:     string;
-  /** URL to redirect the user to. Open in same window or new tab. */
-  redirectUrl: string;
-}
-
-export interface PrepareSaleError {
+export interface CheckoutSessionError {
   ok:    false;
   error: string;
 }
 
 export interface ConfirmSaleResult {
   ok:    true;
-  /** PayPhone's final state. We map it to our PaymentStatus. */
+  /** PayPhone's final state. */
   status: 'Approved' | 'Rejected' | 'Cancelled' | 'Pending';
-  /** Amount actually charged (cents). May differ if PayPhone adjusts. */
+  /** Amount actually charged (cents). */
   amountCents: number;
   transactionId?: string;
   cardBrand?:    string;
@@ -81,179 +81,188 @@ export interface ConfirmSaleError {
 
 /* ───────────────────────────── Internal helpers ───────────────────────────── */
 
-import { getSetting, getSettingNumber } from './settings';
-
 async function getConfig() {
   const token   = await getSetting('PAYPHONE_TOKEN');
   const storeId = await getSetting('PAYPHONE_STORE_ID');
-  const baseUrl = await getSetting(
-    'PAYPHONE_BASE_URL',
-    'https://pay.payphonetodoesposible.com/api',
-  );
-  return { token, storeId, baseUrl: baseUrl! };
+  return { token, storeId };
 }
 
-/** True when we have credentials and should hit the real PayPhone API. */
+/** True when we have credentials and should use the real widget. */
 export async function isPayphoneConfigured(): Promise<boolean> {
   const { token, storeId } = await getConfig();
   return !!token && !!storeId;
 }
 
-async function payphoneFetch<T>(
-  path:   string,
-  body:   Record<string, unknown>,
-): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
-  const { token, baseUrl } = await getConfig();
-  if (!token) {
-    return { ok: false, error: 'PayPhone not configured (PAYPHONE_TOKEN missing)' };
-  }
+/* ───────────────────────────── Public API ───────────────────────────── */
 
-  try {
-    const res = await fetch(`${baseUrl}${path}`, {
-      method:  'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      return { ok: false, error: `PayPhone ${res.status}: ${text.slice(0, 200)}` };
-    }
-    const json = text ? JSON.parse(text) : {};
-    return { ok: true, data: json as T };
-  } catch (err) {
-    return { ok: false, error: (err as Error).message };
-  }
+export interface BuildCheckoutSessionArgs {
+  amountCents:           number;
+  amountWithTaxCents?:   number;
+  taxCents?:             number;
+  clientTransactionId:   string;
+  responseUrl:           string;
+  reference:             string;
 }
-
-/* ───────────────────────────── Public API ───────────────────────────────── */
 
 export const payphone = {
   /**
-   * Step 1 — register the sale with PayPhone and get a redirect URL.
+   * Step 1 — el backend prepara los datos que el widget del frontend
+   * necesita. NO contacta a PayPhone — la "preparación" sucede en el
+   * navegador cuando el widget se monta.
    *
-   * In stub mode (no token), returns a fake URL pointing back at our own
-   * return endpoint with `?fakeOk=1` so the rest of the flow is testable.
+   * En stub mode (sin token) devuelve `stubMode: true` para que el
+   * frontend salte el widget y simule un pago aprobado.
    */
-  async prepareSale(args: PrepareSaleArgs): Promise<PrepareSaleResult | PrepareSaleError> {
+  async buildCheckoutSession(args: BuildCheckoutSessionArgs): Promise<CheckoutSession | CheckoutSessionError> {
     const { token, storeId } = await getConfig();
 
-    if (!token) {
-      // Stub: simulate a successful registration immediately. The "redirect
-      // URL" loops straight back to our return endpoint with a magic
-      // `fakeOk=1` flag the frontend uses to short-circuit the confirm.
-      const fakeId = `stub-${Date.now()}`;
-      const url = new URL(args.responseUrl);
-      url.searchParams.set('id',                fakeId);
-      url.searchParams.set('clientTransactionId', args.clientTransactionId);
-      url.searchParams.set('fakeOk', '1');
+    if (!token || !storeId) {
       return {
-        ok:           true,
-        paymentId:    fakeId,
-        token:        'stub-token',
-        redirectUrl:  url.toString(),
+        ok:                   true,
+        token:                'stub-token',
+        storeId:              'stub-store',
+        amount:               args.amountCents,
+        amountWithoutTax:     args.amountCents - (args.amountWithTaxCents ?? 0) - (args.taxCents ?? 0),
+        amountWithTax:        args.amountWithTaxCents ?? 0,
+        tax:                  args.taxCents ?? 0,
+        service:              0,
+        tip:                  0,
+        currency:             'USD',
+        clientTransactionId:  args.clientTransactionId,
+        reference:            args.reference,
+        responseUrl:          args.responseUrl,
+        stubMode:             true,
       };
     }
 
-    const body = {
-      amount:            args.amountCents,
-      amountWithoutTax:  0,
-      amountWithTax:     args.amountWithTaxCents ?? args.amountCents,
-      tax:               args.taxCents ?? 0,
-      service:           0,
-      tip:               0,
-      currency:          'USD',
-      storeId,
-      clientTransactionId: args.clientTransactionId,
-      responseUrl:         args.responseUrl,
-      cancellationUrl:     args.cancellationUrl,
-      reference:           args.reference,
-      ...(args.email       && { email:        args.email }),
-      ...(args.phoneNumber && { phoneNumber:  args.phoneNumber }),
-      ...(args.documentId  && { documentId:   args.documentId }),
-    };
-
-    const res = await payphoneFetch<{
-      payWithCard: string;
-      paymentId:   number;
-      paymentToken: string;
-    }>('/Sale', body);
-
-    if (!res.ok) return { ok: false, error: res.error };
+    // Validar la composición del monto. PayPhone exige:
+    //   amount = amountWithoutTax + amountWithTax + tax + service + tip
+    const amountWithTax    = args.amountWithTaxCents ?? 0;
+    const tax              = args.taxCents ?? 0;
+    const amountWithoutTax = args.amountCents - amountWithTax - tax;
+    if (amountWithoutTax < 0) {
+      return { ok: false, error: 'Composición de monto inválida (amountWithTax+tax excede el total)' };
+    }
 
     return {
-      ok:          true,
-      paymentId:   String(res.data.paymentId),
-      token:       res.data.paymentToken,
-      redirectUrl: res.data.payWithCard,
+      ok:                   true,
+      token,
+      storeId,
+      amount:               args.amountCents,
+      amountWithoutTax,
+      amountWithTax,
+      tax,
+      service:              0,
+      tip:                  0,
+      currency:             'USD',
+      clientTransactionId:  args.clientTransactionId,
+      reference:            args.reference,
+      responseUrl:          args.responseUrl,
+      stubMode:             false,
     };
   },
 
   /**
-   * Step 2 — confirm the sale once the user has returned. Idempotent;
-   * safe to call from both the redirect handler and a webhook.
+   * Step 8 — el frontend volvió a `/payment/return?id=X&clientTransactionId=Y`
+   * y nos pasa esos parámetros. Pegamos a PayPhone para confirmar.
    *
-   * In stub mode (`fakeOk=1`) we approve unconditionally so devs can
-   * exercise the post-payment flow.
+   * En stub mode aprobamos sin pegarle a la API.
+   *
+   * Importante: PayPhone tiene un reverso automático a los 5 minutos
+   * si NO confirmamos. Hay que llamar a esto rápido en el callback.
    */
   async confirmSale(
-    payphonePaymentId: string,
+    payphonePaymentId:   string,
     clientTransactionId: string,
     fakeOk = false,
   ): Promise<ConfirmSaleResult | ConfirmSaleError> {
     const { token } = await getConfig();
     if (!token || fakeOk) {
       return {
-        ok:          true,
-        status:      'Approved',
-        amountCents: 0, // caller should keep the original quoted amount
+        ok:            true,
+        status:        'Approved',
+        amountCents:   0,
         transactionId: payphonePaymentId,
-        cardBrand:   'STUB',
-        cardLast4:   '0000',
+        cardBrand:     'STUB',
+        cardLast4:     '0000',
       };
     }
 
-    const res = await payphoneFetch<{
-      transactionStatus: 'Approved' | 'Rejected' | 'Cancelled' | 'Pending';
-      transactionId:     string;
-      amount:            number;
-      cardBrand?:        string;
-      lastDigits?:       string;
-    }>('/Sale/Confirm', {
-      id:                  Number(payphonePaymentId),
-      clientTxId:          clientTransactionId,
-      clientTransactionId,
-    });
-
-    if (!res.ok) return { ok: false, error: res.error };
-
-    return {
-      ok:            true,
-      status:        res.data.transactionStatus,
-      amountCents:   res.data.amount,
-      transactionId: res.data.transactionId,
-      cardBrand:     res.data.cardBrand,
-      cardLast4:     res.data.lastDigits,
+    // Endpoint OFICIAL de confirmación de la Cajita. Ojo: host es
+    // `paymentbox.payphonetodoesposible.com`, NO `pay.payphonetodoesposible.com`.
+    const url = `${CONFIRM_BASE_URL}/confirm`;
+    const body = {
+      id:         Number(payphonePaymentId),
+      clientTxId: clientTransactionId,
     };
+
+    // eslint-disable-next-line no-console
+    console.log(`[payphone] POST ${url}`, { body });
+
+    try {
+      const res = await fetch(url, {
+        method:  'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      // eslint-disable-next-line no-console
+      console.log(`[payphone] ← ${res.status} ${url}`, {
+        contentType: res.headers.get('content-type'),
+        bodyPreview: text.slice(0, 2000),
+      });
+
+      if (!res.ok) {
+        return { ok: false, error: `PayPhone ${res.status}: ${text.slice(0, 300)}` };
+      }
+      const data = JSON.parse(text) as {
+        statusCode?:        number;
+        transactionStatus?: string;
+        transactionId?:     number | string;
+        amount?:            number;
+        cardBrand?:         string;
+        lastDigits?:        string;
+        message?:           string;
+      };
+      // PayPhone responde sin transactionStatus cuando hay error de validación.
+      // En ese caso `message` trae la descripción.
+      if (!data.transactionStatus) {
+        return { ok: false, error: data.message ?? 'PayPhone no devolvió estado de la transacción' };
+      }
+
+      return {
+        ok:            true,
+        status:        data.transactionStatus as ConfirmSaleResult['status'],
+        amountCents:   data.amount ?? 0,
+        transactionId: data.transactionId ? String(data.transactionId) : undefined,
+        cardBrand:     data.cardBrand,
+        cardLast4:     data.lastDigits,
+      };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[payphone] confirm error:`, err);
+      return { ok: false, error: (err as Error).message };
+    }
   },
 
   /**
-   * Step 3 (optional) — issue a refund. PayPhone returns the full amount
-   * to the original card; partial refunds are not supported in this
-   * endpoint (use a separate /CashOut call if needed in the future).
+   * Step opcional — reverso/cancelación. PayPhone solo permite el
+   * mismo día y antes de las 20:00. La implementación se hace via la
+   * sección "Reverso" del panel comercial (no hay API pública abierta
+   * para esto en la Cajita). Devolvemos stub OK en dev para que el
+   * resto del flow no se rompa.
    */
   async cancelSale(payphonePaymentId: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const { token } = await getConfig();
-    if (!token) {
-      // Stub: pretend refund succeeded
-      return { ok: true };
-    }
-    const res = await payphoneFetch<unknown>('/Sale/Cancel', {
-      id: Number(payphonePaymentId),
-    });
-    if (!res.ok) return { ok: false, error: res.error };
+    if (!token) return { ok: true };
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[payphone] cancelSale(${payphonePaymentId}): no hay endpoint público para reverso en la Cajita. ` +
+      `Hacelo desde Payphone Business → Reverso.`,
+    );
     return { ok: true };
   },
 };
@@ -264,9 +273,6 @@ export const payphone = {
  * Resolve the platform retention percentage. Defaults to 10% if the
  * setting/env is missing or unparseable. Clamped 0..100 to prevent
  * obvious mis-configuration from charging more than 100%.
- *
- * Async because the value lives in AppSettings (DB-first) so the
- * superadmin can change it from the panel.
  */
 export async function getPlatformFeePct(): Promise<number> {
   const n = await getSettingNumber('PLATFORM_FEE_PCT', 10);
@@ -274,6 +280,48 @@ export async function getPlatformFeePct(): Promise<number> {
   return Math.min(100, n);
 }
 
+/**
+ * Desglose canónico de un cobro en la plataforma.
+ *
+ *   • `baseAmount`  → el precio "publicado" (lo que el médico/plan vale).
+ *   • `platformFee` → la comisión por uso de plataforma, calculada como
+ *                     porcentaje sobre `baseAmount`.
+ *   • `totalAmount` → lo que el cliente paga = base + fee.
+ *
+ * Esta es la fuente de verdad: tanto el checkout de citas como el de
+ * suscripciones cobran `totalAmount` al cliente y guardan los tres
+ * componentes en `Payment.{amount, platformFee, doctorAmount}` así:
+ *
+ *   Payment.amount       = totalAmount   (lo cobrado al cliente)
+ *   Payment.platformFee  = platformFee   (lo retenido por MedicGet)
+ *   Payment.doctorAmount = baseAmount    (lo recibido por médico/plan)
+ *
+ * La invariante es: `Payment.amount === Payment.platformFee + Payment.doctorAmount`.
+ *
+ * Todos los montos están en USD con 2 decimales, redondeados al centavo.
+ */
+export interface PaymentBreakdown {
+  baseAmount:  number;
+  platformFee: number;
+  totalAmount: number;
+  feePct:      number;
+}
+
+export async function buildPaymentBreakdown(baseAmount: number): Promise<PaymentBreakdown> {
+  const pct = await getPlatformFeePct();
+  // Redondeamos al centavo. La fee siempre se calcula sobre la base,
+  // NO sobre el total (eso evita cargar IVA sobre IVA).
+  const platformFee = Math.round(baseAmount * pct) / 100;
+  const totalAmount = Math.round((baseAmount + platformFee) * 100) / 100;
+  return { baseAmount, platformFee, totalAmount, feePct: pct };
+}
+
+/**
+ * Legacy: descomposición de un monto YA cobrado (cuando `amount` es el
+ * total que pagó el cliente). Se mantiene por compat — los nuevos
+ * callers deben usar `buildPaymentBreakdown(base)` que es semánticamente
+ * más claro.
+ */
 export async function splitAmount(amount: number): Promise<{ platformFee: number; doctorAmount: number }> {
   const pct = await getPlatformFeePct();
   const platformFee = Math.round(amount * pct) / 100;

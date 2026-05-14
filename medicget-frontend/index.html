@@ -2,12 +2,20 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>medicget</title>
+    <!--
+      Referrer-Policy requerida por PayPhone Cajita.
+      Sin esta meta, el navegador puede enviar `strict-origin-when-cross-origin`
+      por default que oculta el path del referer, lo cual impide que PayPhone
+      verifique el origen y bloquea el render del modal de pago.
+      Doc oficial: https://opendoc.payphone.com → "Falta de identidad del sitio".
+    -->
+    <meta name="referrer" content="origin" />
+    <title>MedicGet</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="app-root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

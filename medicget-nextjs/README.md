@@ -261,3 +261,9 @@ medicget-frontend/.env.local:
 
 - `src/lib/api.ts` — Axios instance + JWT interceptors + typed domain API objects
 - `src/context/AuthContext.tsx` — real JWT login/logout + session bootstrap from stored token
+
+# Debit Card
+- Número:        4111 1111 1111 1111
+- Vencimiento:   12/30
+- CVV:           123
+- Titular:       Juan Pérez

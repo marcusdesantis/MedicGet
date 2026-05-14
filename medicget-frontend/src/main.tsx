@@ -6,7 +6,12 @@ import "react-phone-input-2/lib/style.css";
 import './index.css';
 import "leaflet/dist/leaflet.css";
 
-const container = document.getElementById('root');
+// `#app-root` en vez del clásico `#root` para evitar que el CSS de
+// PayPhone (`payphone-payment-box.css`) nos pinte reglas globales sobre
+// el contenedor raíz de la app — su stylesheet incluye selectores como
+// `#root { max-width: 100vw; padding: 2rem; }` que rompen el layout
+// cuando se carga el SDK.
+const container = document.getElementById('app-root');
 if (!container) throw new Error('Root container not found');
 
 createRoot(container).render(

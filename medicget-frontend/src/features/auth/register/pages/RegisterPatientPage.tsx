@@ -104,12 +104,16 @@ export const RegisterPatientPage = () => {
                     </p>
                 </div>
 
+                {/* Registro con Google — oculto por ahora hasta tener
+                    OAuth configurado en el backend. */}
+                {/*
                 <SocialButton
                     icon={<img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5" alt="Google" />}
                     text="Continuar con Google"
                 />
 
                 <Divider />
+                */}
 
                 {generalError && (
                     <div className="mb-4">

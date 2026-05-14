@@ -81,7 +81,7 @@ const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM
     PRO: {
       name:         'Pro',
       description:  'Atendé online, presencial y por chat con dashboard de pagos.',
-      monthlyPrice: 19.99,
+      monthlyPrice: 20,
       modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
       limits:       { maxAppointmentsPerMonth: 200 },
       sortOrder:    2,
@@ -89,7 +89,7 @@ const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM
     PREMIUM: {
       name:         'Premium',
       description:  'Todo lo de Pro + reportes, búsqueda priorizada y branding propio.',
-      monthlyPrice: 49.99,
+      monthlyPrice: 50,
       modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'PRIORITY_SEARCH', 'BRANDING'],
       limits:       { maxAppointmentsPerMonth: null },
       sortOrder:    3,
@@ -107,7 +107,7 @@ const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM
     PRO: {
       name:         'Pro',
       description:  'Multi-médico, todas las modalidades, dashboard de pagos.',
-      monthlyPrice: 49.99,
+      monthlyPrice: 50,
       modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
       limits:       { maxDoctors: 10, maxAppointmentsPerMonth: 1000 },
       sortOrder:    2,
@@ -115,7 +115,7 @@ const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM
     PREMIUM: {
       name:         'Premium',
       description:  'Sin límites de médicos, reportes avanzados, multi-sede y soporte prioritario.',
-      monthlyPrice: 129.99,
+      monthlyPrice: 130,
       modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'MULTI_LOCATION', 'PRIORITY_SUPPORT'],
       limits:       { maxDoctors: null, maxAppointmentsPerMonth: null },
       sortOrder:    3,
@@ -207,6 +207,31 @@ export async function bootstrapPlanFeatures(): Promise<void> {
         });
       }
     }
+
+    // ─── Migración de precios .99 → redondos ─────────────────────────
+    // El catálogo cambió de ($19.99, $49.99, $129.99) a ($20, $50, $130)
+    // para evitar la incoherencia "card dice $20 y checkout dice $19.99"
+    // (los cards usan toFixed(0)). Sólo actualizamos cuando el precio en
+    // DB coincide EXACTO con el valor antiguo — si el superadmin ya tocó
+    // el precio desde /admin/plans, lo respetamos.
+    const PRICE_MIGRATIONS: Array<{
+      audience: 'DOCTOR' | 'CLINIC';
+      code:     'PRO' | 'PREMIUM';
+      from:     number;
+      to:       number;
+    }> = [
+      { audience: 'DOCTOR', code: 'PRO',     from: 19.99,  to: 20  },
+      { audience: 'DOCTOR', code: 'PREMIUM', from: 49.99,  to: 50  },
+      { audience: 'CLINIC', code: 'PRO',     from: 49.99,  to: 50  },
+      { audience: 'CLINIC', code: 'PREMIUM', from: 129.99, to: 130 },
+    ];
+    for (const m of PRICE_MIGRATIONS) {
+      await prisma.plan.updateMany({
+        where: { audience: m.audience, code: m.code, monthlyPrice: m.from },
+        data:  { monthlyPrice: m.to },
+      });
+    }
+
     plansBootstrapped = true;
   } catch {
     // Silencioso — si la tabla todavía no existe (pre-migración) reintenta luego.

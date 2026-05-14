@@ -124,7 +124,7 @@ async function searchAdmin(q: string): Promise<SearchResult[]> {
       category: 'Planes',
       icon:     BadgeCheck,
       title:    `${p.name} · ${p.code}`,
-      subtitle: `${p.audience} · $${p.monthlyPrice}/mes`,
+      subtitle: `${p.audience} · $${p.monthlyPrice.toFixed(2)}/mes`,
       href:     '/admin/plans',
     })));
   }

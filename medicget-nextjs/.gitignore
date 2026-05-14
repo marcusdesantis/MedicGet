@@ -4,9 +4,11 @@ build/
 .next/
 coverage/
 
-# .env
-# .env.local
-# .env.*.local
+# Credenciales sensibles — no deben versionarse.
+.env
+.env.local
+.env.*.local
+!.env.example
 
 *.log
 *.tsbuildinfo

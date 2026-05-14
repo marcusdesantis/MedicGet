@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
-import { X, ChevronLeft, ChevronRight, Stethoscope } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useAppConfig } from '@/hooks/useAppConfig';
 
 export interface NavItem {
   label: string;
@@ -27,16 +28,17 @@ export function Sidebar({
   roleLabel,
   roleColor,
 }: SidebarProps) {
+  const appConfig = useAppConfig();
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Logo */}
+      {/* Logo + nombre desde /app.json */}
       <div className={`flex items-center gap-3 px-4 py-5 border-b border-slate-200 dark:border-slate-700 ${collapsed ? 'justify-center' : ''}`}>
-        <div className={`flex-shrink-0 w-9 h-9 rounded-xl ${roleColor} flex items-center justify-center shadow-sm`}>
-          <Stethoscope size={18} className="text-white" />
+        <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+          <img src={appConfig.logoUrl} alt={appConfig.name} className="w-full h-full object-contain" />
         </div>
         {!collapsed && (
-          <div>
-            <span className="font-bold text-slate-800 dark:text-white text-base leading-none">MedicGet</span>
+          <div className="min-w-0">
+            <span className="font-bold text-slate-800 dark:text-white text-base leading-none">{appConfig.name}</span>
             <p className="text-xs text-slate-400 mt-0.5">{roleLabel}</p>
           </div>
         )}
@@ -113,10 +115,10 @@ export function Sidebar({
       >
         <div className="flex items-center justify-between px-4 py-4 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-xl ${roleColor} flex items-center justify-center`}>
-              <Stethoscope size={16} className="text-white" />
+            <div className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 flex items-center justify-center overflow-hidden">
+              <img src={appConfig.logoUrl} alt={appConfig.name} className="w-full h-full object-contain" />
             </div>
-            <span className="font-bold text-slate-800 dark:text-white">MedicGet</span>
+            <span className="font-bold text-slate-800 dark:text-white">{appConfig.name}</span>
           </div>
           <button
             onClick={onMobileClose}

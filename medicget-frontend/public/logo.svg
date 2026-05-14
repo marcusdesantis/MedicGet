@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!--
+    MedicGet logo
+    Estetoscopio estilizado con checkmark en el cabezal,
+    combinando "salud" + "confirmar / agendar".
+    Colores: gradiente azul corporativo (blue-600 → teal-500).
+  -->
+  <defs>
+    <linearGradient id="mg-grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"  stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Disco de fondo, redondeado, con gradiente. -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#mg-grad)"/>
+
+  <!-- Estetoscopio: tubos en V + cabezal circular con check. -->
+  <g stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Tubo izquierdo bajando desde el oido. -->
+    <path d="M20 16 V32 C20 39 26 44 32 44"/>
+    <!-- Tubo derecho. -->
+    <path d="M44 16 V32 C44 39 38 44 32 44"/>
+    <!-- Pequeños tapones en los extremos superiores. -->
+    <circle cx="20" cy="14" r="2.2" fill="#ffffff"/>
+    <circle cx="44" cy="14" r="2.2" fill="#ffffff"/>
+  </g>
+
+  <!-- Cabezal del estetoscopio con checkmark dentro. -->
+  <circle cx="32" cy="48" r="9" fill="#ffffff"/>
+  <path
+    d="M27.5 48.5 L31 52 L37 45"
+    stroke="#0d9488"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>

@@ -202,6 +202,7 @@ services:
       #
       # Producción: pedile a PayPhone tu token Bearer y storeId numérico
       # desde su panel comercial (https://www.payphone.com).
+      # Cargadas desde .env (no versionado).
       PAYPHONE_TOKEN:    ${PAYPHONE_TOKEN:-}
       PAYPHONE_STORE_ID: ${PAYPHONE_STORE_ID:-}
       PAYPHONE_BASE_URL: ${PAYPHONE_BASE_URL:-https://pay.payphonetodoesposible.com/api}
@@ -261,6 +262,23 @@ services:
       JWT_EXPIRES_IN: 7d
       NODE_ENV:       production
       PORT:           "4008"
+      # svc-admin maneja el flow de SUSCRIPCIONES de planes (Pro/Premium)
+      # que también pasa por PayPhone Cajita. Necesita las mismas
+      # credenciales que svc-appointment (citas) — sino entra en stub mode
+      # y el frontend muestra "Modo desarrollo · sin credenciales".
+      PAYPHONE_TOKEN:    ${PAYPHONE_TOKEN:-}
+      PAYPHONE_STORE_ID: ${PAYPHONE_STORE_ID:-}
+      PAYPHONE_BASE_URL: ${PAYPHONE_BASE_URL:-https://pay.payphonetodoesposible.com/api}
+      # SMTP para mandar voucher de suscripción + reset password + etc.
+      # Las settings de DB (AppSettings) ganan sobre estas env vars; sirven
+      # como fallback en la primera instalación antes de que el superadmin
+      # entre a /admin/settings.
+      SMTP_HOST:    smtps.aruba.it
+      SMTP_PORT:    "465"
+      SMTP_SECURE:  "false"
+      SMTP_USER:    soportemedicget@abisoft.it
+      SMTP_PASS:    Ecuador7.
+      SMTP_FROM:    MedicGet <soportemedicget@abisoft.it>
     expose:
       - "4008"
     networks:

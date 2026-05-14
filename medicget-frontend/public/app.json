@@ -1,0 +1,12 @@
+{
+  "name": "MedicGet",
+  "shortName": "MedicGet",
+  "description": "Plataforma de agendamiento y atención médica online y presencial.",
+  "logoUrl": "/logo.svg",
+  "version": "1.0.0",
+  "support": {
+    "email":   "soportemedicget@abisoft.it",
+    "website": "https://medicget.com"
+  },
+  "company": "Abisoft"
+}

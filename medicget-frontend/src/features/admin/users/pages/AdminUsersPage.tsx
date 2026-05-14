@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Ban, Trash2, RotateCcw, Search, UserPlus, X, Copy, Check, Edit3 } from 'lucide-react';
+import { Loader2, Ban, Trash2, RotateCcw, Search, UserPlus, X, Copy, Check, Edit3, LogIn } from 'lucide-react';
 import { toast }         from 'sonner';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { SectionCard }   from '@/components/ui/SectionCard';
@@ -10,7 +10,7 @@ import { Input }         from '@/components/ui/Input';
 import { PhoneField }    from '@/components/ui/PhoneField';
 import { Button }        from '@/components/ui/Button';
 import { useApi }        from '@/hooks/useApi';
-import { adminApi, type UserDto, type PaginatedData, type AdminUserPatch } from '@/lib/api';
+import { adminApi, type UserDto, type PaginatedData, type AdminUserPatch, TOKEN_KEY } from '@/lib/api';
 
 const ROLE_LABEL: Record<string, string> = {
   PATIENT: 'Paciente', DOCTOR: 'Médico', CLINIC: 'Clínica', ADMIN: 'Admin',
@@ -47,6 +47,36 @@ export function AdminUsersPage() {
         ?.response?.data?.error?.message ?? 'Error al actualizar';
       toast.error(msg);
     } finally {
+      setActing(null);
+    }
+  };
+
+  /**
+   * Impersonar: reemplaza el JWT del admin actual por uno generado para
+   * el usuario target, y redirige al dashboard del rol target. Para
+   * volver al admin hay que cerrar sesión y loguearse de nuevo con
+   * `admin@gmail.com`.
+   */
+  const handleImpersonate = async (u: UserDto) => {
+    const name = `${u.profile?.firstName ?? ''} ${u.profile?.lastName ?? ''}`.trim() || u.email;
+    if (!confirm(
+      `¿Iniciar sesión como ${name} (${u.email})?\n\n` +
+      `Tu sesión de admin se reemplazará. Para volver, cerrá sesión y volvé a entrar como admin.`,
+    )) return;
+    setActing(u.id);
+    try {
+      const res = await adminApi.impersonate(u.id);
+      localStorage.setItem(TOKEN_KEY, res.data.token);
+      const targetRoute =
+        u.role === 'DOCTOR'  ? '/doctor'  :
+        u.role === 'CLINIC'  ? '/clinic'  :
+        u.role === 'PATIENT' ? '/patient' : '/';
+      // Hard reload — el AuthContext re-bootstrappea con el token nuevo.
+      window.location.replace(targetRoute);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'No se pudo impersonar al usuario.';
+      toast.error(msg);
       setActing(null);
     }
   };
@@ -160,6 +190,17 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center gap-1">
+                          {/* Impersonar — solo para usuarios no-admin y activos. */}
+                          {u.role !== 'ADMIN' && u.status !== 'DELETED' && u.status !== 'INACTIVE' && (
+                            <button
+                              onClick={() => handleImpersonate(u)}
+                              disabled={acting === u.id}
+                              className="inline-flex items-center gap-1 text-xs text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 px-2 py-1 rounded-lg transition disabled:opacity-50"
+                              title={`Iniciar sesión como ${u.email}`}
+                            >
+                              <LogIn size={12} /> Entrar
+                            </button>
+                          )}
                           <button
                             onClick={() => setEditing(u)}
                             disabled={acting === u.id}

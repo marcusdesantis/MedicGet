@@ -40,6 +40,7 @@ import { AdminDashboardPage }     from '@/features/admin/dashboard/pages/AdminDa
 import { AdminUsersPage }         from '@/features/admin/users/pages/AdminUsersPage';
 import { AdminPlansPage }         from '@/features/admin/plans/pages/AdminPlansPage';
 import { AdminSubscriptionsPage } from '@/features/admin/subscriptions/pages/AdminSubscriptionsPage';
+import { AdminPaymentsPage }      from '@/features/admin/payments/pages/AdminPaymentsPage';
 import { AdminSettingsPage }      from '@/features/admin/settings/pages/AdminSettingsPage';
 
 // Shared (chat + presencial detail + payment) pages
@@ -114,6 +115,7 @@ const adminNav: NavItem[] = [
   { label: 'Usuarios',       path: '/admin/users',         icon: Users },
   { label: 'Planes',         path: '/admin/plans',         icon: BadgeCheck },
   { label: 'Suscripciones',  path: '/admin/subscriptions', icon: ShieldCheck },
+  { label: 'Pagos',          path: '/admin/payments',      icon: CreditCard },
   { label: 'Configuración',  path: '/admin/settings',      icon: SettingsIcon },
 ];
 
@@ -214,6 +216,7 @@ export const router = createBrowserRouter([
       { path:  'users',              element: <AdminUsersPage /> },
       { path:  'plans',              element: <AdminPlansPage /> },
       { path:  'subscriptions',      element: <AdminSubscriptionsPage /> },
+      { path:  'payments',           element: <AdminPaymentsPage /> },
       { path:  'settings',           element: <AdminSettingsPage /> },
     ],
   },

@@ -4,7 +4,7 @@ import { apiOk, apiError } from '@medicget/shared/response';
 import { parseBody } from '@medicget/shared/validate';
 import { z } from 'zod';
 import { prisma } from '@medicget/shared/prisma';
-import { payphone, toCents } from '@medicget/shared/payphone';
+import { payphone, toCents, buildPaymentBreakdown } from '@medicget/shared/payphone';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,34 +52,47 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
     return apiOk({ subscriptionId: sub.id, redirectUrl: parsed.data.responseUrl + '?freeOk=1' });
   }
 
-  // Paid plan → PayPhone Sale
-  const reference = `MedicGet · ${plan.name}`;
-  const sale = await payphone.prepareSale({
-    amountCents:         toCents(plan.monthlyPrice),
-    amountWithTaxCents:  toCents(plan.monthlyPrice),
-    clientTransactionId: `sub-${user.id}-${Date.now()}`,
-    responseUrl:         parsed.data.responseUrl,
-    cancellationUrl:     parsed.data.cancellationUrl ?? parsed.data.responseUrl,
+  // Paid plan → PayPhone Cajita.
+  // El backend NO llama a PayPhone — solo arma los datos que el widget
+  // (PPaymentButtonBox) necesita para renderizar la pasarela del lado
+  // del frontend. Mismo cambio que hicimos en /appointments/checkout.
+  //
+  // El cliente paga `base + comisión por uso de plataforma`. La comisión
+  // se configura desde /admin/settings (PLATFORM_FEE_PCT, default 10%).
+  const breakdown = await buildPaymentBreakdown(plan.monthlyPrice);
+
+  const reference            = `MedicGet · ${plan.name}`;
+  const clientTransactionId  = `sub-${user.id}-${Date.now()}`;
+  const session = await payphone.buildCheckoutSession({
+    amountCents:        toCents(breakdown.totalAmount),
+    amountWithTaxCents: toCents(breakdown.totalAmount),
+    clientTransactionId,
+    responseUrl:        parsed.data.responseUrl,
     reference,
-    email:               user.email,
   });
-  if (!sale.ok) return apiError('BAD_GATEWAY', sale.error);
+  if (!session.ok) return apiError('BAD_GATEWAY', session.error);
 
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const sub = await prisma.subscription.create({
     data: {
-      userId:        user.id,
-      planId:        plan.id,
-      status:        'PENDING_PAYMENT',
-      startsAt:      now,
+      userId:    user.id,
+      planId:    plan.id,
+      status:    'PENDING_PAYMENT',
+      startsAt:  now,
       expiresAt,
-      lastPaymentId: sale.paymentId,
+      // lastPaymentId se setea cuando PayPhone redirige al callback con
+      // su id numérico (ver /api/v1/subscriptions/confirm). Hasta
+      // entonces queda null.
     },
   });
 
   return apiOk({
     subscriptionId: sub.id,
-    redirectUrl:    sale.redirectUrl,
-    payphonePaymentId: sale.paymentId,
+    // Desglose para que el frontend muestre "Plan + Comisión = Total"
+    // antes del widget.
+    breakdown,
+    // Devolvemos la sesión completa para que el frontend monte el
+    // widget en el navegador (flow Cajita).
+    ...session,
   });
 });

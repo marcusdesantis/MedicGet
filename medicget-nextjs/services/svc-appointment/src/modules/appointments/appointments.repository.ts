@@ -152,45 +152,13 @@ export const appointmentsRepository = {
         },
       });
 
-      // 4. Notificaciones in-app para AMBAS partes
-      const [doctor, patient] = await Promise.all([
-        tx.doctor.findUnique({
-          where: { id: apptData.doctorId },
-          select: { userId: true, user: { select: { profile: { select: { firstName: true } } } } },
-        }),
-        tx.patient.findUnique({
-          where: { id: apptData.patientId },
-          select: { userId: true, user: { select: { profile: { select: { firstName: true } } } } },
-        }),
-      ]);
-
-      const dateStr = new Date(apptData.date as string).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
-      const time    = apptData.time as string;
-
-      if (doctor) {
-        const patientName = patient?.user?.profile?.firstName ?? 'Un paciente';
-        await tx.notification.create({
-          data: {
-            userId:  doctor.userId,
-            type:    'APPOINTMENT_CONFIRMED',
-            title:   'Nueva cita',
-            message: `${patientName} reservó una cita para el ${dateStr} a las ${time}.`,
-            metadata: { appointmentId: appointment.id },
-          },
-        });
-      }
-      if (patient) {
-        const docFirst = doctor?.user?.profile?.firstName ?? '';
-        await tx.notification.create({
-          data: {
-            userId:  patient.userId,
-            type:    'APPOINTMENT_CONFIRMED',
-            title:   'Cita reservada',
-            message: `Tu cita con Dr. ${docFirst} está reservada para el ${dateStr} a las ${time}. Pendiente de pago.`,
-            metadata: { appointmentId: appointment.id },
-          },
-        });
-      }
+      // 4. NO notificaciones in-app acá — todas las notificaciones de
+      // "cita confirmada" (al médico + paciente, in-app y email) se
+      // generan cuando el pago es aprobado, en `paymentService.confirm`.
+      // Antes mandábamos un "Cita reservada · Pendiente de pago" pero
+      // confundía: el paciente recibía un email aunque la cita después
+      // se auto-cancelara por falta de pago. Ahora el paciente solo
+      // recibe comunicación cuando el dinero efectivamente entró.
 
       return appointment;
     });

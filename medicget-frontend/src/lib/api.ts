@@ -650,14 +650,100 @@ export const chatApi = {
  *                        flips the local Payment + Appointment state.
  *   refund(id)         → patient (>24h) or clinic-initiated refund.
  */
+/**
+ * Datos que el backend devuelve a `paymentApi.checkout`. Coinciden con
+ * lo que `PPaymentButtonBox` (widget Cajita de Pagos) necesita para
+ * renderizar el botón de pago en el navegador.
+ */
+/**
+ * Desglose del cobro. `baseAmount` es lo que recibe el médico/plan,
+ * `platformFee` la comisión por uso de plataforma, y `totalAmount` lo
+ * que efectivamente paga el cliente. `feePct` es el porcentaje vigente
+ * según AppSettings.
+ */
+export interface PaymentBreakdownDto {
+  baseAmount:  number;
+  platformFee: number;
+  totalAmount: number;
+  feePct:      number;
+}
+
+export interface CheckoutSessionDto {
+  token:                string;
+  storeId:              string;
+  amount:               number;
+  amountWithoutTax:     number;
+  amountWithTax:        number;
+  tax:                  number;
+  service:              number;
+  tip:                  number;
+  currency:             string;
+  clientTransactionId:  string;
+  reference:            string;
+  responseUrl:          string;
+  /** true cuando no hay credenciales — el frontend salta el widget. */
+  stubMode:             boolean;
+  /** Cuando expira la reserva si no se paga. */
+  expiresAt:            string;
+  /** Desglose: base + comisión por uso de plataforma = total cobrado. */
+  breakdown:            PaymentBreakdownDto;
+}
+
 export const paymentApi = {
-  checkout: (id: string, body: { responseUrl: string; cancellationUrl?: string }) =>
-    apiPost<{ redirectUrl: string; expiresAt: string }>(`/appointments/${id}/payment/checkout`, body),
-  confirm:  (id: string, body: { payphonePaymentId: string; fakeOk?: boolean }) =>
+  checkout: (id: string, body: { responseUrl: string }) =>
+    apiPost<CheckoutSessionDto>(`/appointments/${id}/payment/checkout`, body),
+  confirm:  (id: string, body: { payphoneId?: string; fakeOk?: boolean }) =>
     apiPost<{ status: 'PAID' | 'FAILED' | 'PENDING' }>(`/appointments/${id}/payment/confirm`, body),
   refund:   (id: string) =>
     apiPost<{ refunded: boolean; reason: string }>(`/appointments/${id}/payment/refund`, {}),
+  /**
+   * Historial de pagos. El backend filtra por rol automáticamente:
+   * admin ve todos, doctor ve los suyos, clinic los de su clínica,
+   * paciente los propios.
+   */
+  list: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<PaymentRowDto>>('/payments', params),
+  /** URL del recibo HTML imprimible — abre en nueva pestaña. */
+  receiptUrl: (paymentId: string): string => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    // GET con auth header no se puede via <a href>. Devolvemos URL y el
+    // caller puede usar fetch + Blob, o abrir con `window.open` agregando
+    // el token como query (no ideal pero suficiente para dev). En este
+    // proyecto usamos fetch + Blob para abrir en nueva pestaña, ver
+    // PaymentsHistoryTable.openReceipt().
+    void token;
+    return `${BASE_URL}/payments/${paymentId}/receipt`;
+  },
 };
+
+/**
+ * Fila del historial de pagos. Incluye el Payment + datos del
+ * Appointment para que la UI no tenga que hacer joins adicionales.
+ */
+export interface PaymentRowDto {
+  id:             string;
+  appointmentId:  string;
+  amount:         number;
+  platformFee?:   number | null;
+  doctorAmount?:  number | null;
+  method:         string;
+  status:         'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED';
+  paidAt?:        string | null;
+  refundedAt?:    string | null;
+  transactionId?: string | null;
+  notes?:         string | null;
+  createdAt:      string;
+  appointment: {
+    id:       string;
+    date:     string;
+    time:     string;
+    modality: string;
+    price:    number;
+    patient:  { id: string; user: { email: string; profile?: ProfileDto } };
+    doctor:   { id: string; specialty: string; user: { profile?: ProfileDto } };
+    clinic:   { id: string; name: string } | null;
+  };
+}
 
 /** svc-dashboard :4007 → /api/v1/dashboard/ */
 export const dashboardApi = {
@@ -768,12 +854,31 @@ export const plansApi = {
     apiGet<PlanDto[]>('/plans', audience ? { audience } : undefined),
 };
 
+/**
+ * Respuesta del POST /subscriptions/checkout. Para planes FREE solo
+ * trae `subscriptionId` (no hay sesión PayPhone). Para planes pagados
+ * trae todos los campos para montar el widget Cajita.
+ */
+export type SubscriptionCheckoutResponse =
+  & { subscriptionId: string; breakdown?: PaymentBreakdownDto }
+  & (
+    | { stubMode?: false; token: string; storeId: string; amount: number;
+        amountWithoutTax: number; amountWithTax: number; tax: number;
+        service: number; tip: number; currency: string;
+        clientTransactionId: string; reference: string; responseUrl: string }
+    | { stubMode: true;  token: string; storeId: string; amount: number;
+        amountWithoutTax: number; amountWithTax: number; tax: number;
+        service: number; tip: number; currency: string;
+        clientTransactionId: string; reference: string; responseUrl: string }
+    | Record<string, never>
+  );
+
 export const subscriptionsApi = {
   /** Returns the caller's current active subscription + the FREE fallback plan. */
   me: () => apiGet<{ subscription: SubscriptionDto | null; freePlan: PlanDto | null }>('/subscriptions/me'),
-  checkout: (body: { planId: string; responseUrl: string; cancellationUrl?: string }) =>
-    apiPost<{ subscriptionId: string; redirectUrl: string; payphonePaymentId?: string }>('/subscriptions/checkout', body),
-  confirm: (body: { subscriptionId: string; payphonePaymentId: string; fakeOk?: boolean }) =>
+  checkout: (body: { planId: string; responseUrl: string }) =>
+    apiPost<SubscriptionCheckoutResponse>('/subscriptions/checkout', body),
+  confirm: (body: { subscriptionId: string; payphoneId?: string; fakeOk?: boolean }) =>
     apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>('/subscriptions/confirm', body),
   /** Cancela el plan paga y vuelve a FREE inmediatamente. */
   cancel: () => apiPost<{ ok: true }>('/subscriptions/cancel', {}),
@@ -798,6 +903,16 @@ export const adminApi = {
   updateUserFull: (id: string, body: AdminUserPatch) =>
     apiPatch<UserDto>(`/admin/users/${id}`, body),
   deleteUser:   (id: string) => apiDelete<UserDto>(`/admin/users/${id}`),
+  /**
+   * Genera un token JWT con la identidad del usuario target. El admin
+   * lo usa para "entrar como" cualquier cuenta desde el panel. El
+   * backend rechaza si el target es admin o está inactivo.
+   */
+  impersonate: (id: string) =>
+    apiPost<{ token: string; user: { id: string; email: string; role: string } }>(
+      `/admin/users/${id}/impersonate`,
+      {},
+    ),
 
   listPlans:    () => apiGet<PlanDto[]>('/admin/plans'),
   createPlan:   (body: Partial<PlanDto>) => apiPost<PlanDto>('/admin/plans', body),

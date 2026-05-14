@@ -39,10 +39,30 @@ export function PaymentReturnPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
 
-  const apptId             = params.get('appt') ?? '';
+  // El backend usa `appointment.id` o `sub-<userId>-<timestamp>` como
+  // `clientTransactionId` cuando arma la sesión PayPhone. PayPhone nos
+  // lo devuelve en el callback como `?clientTransactionId=X`.
+  const clientTxId         = params.get('clientTransactionId') ?? '';
   const payphonePaymentId  = params.get('id') ?? '';
   const userCancelled      = params.get('cancel') === '1';
   const fakeOk             = params.get('fakeOk') === '1';
+
+  // Si el clientTransactionId empieza con `sub-` es una suscripción
+  // — redirigimos a /subscribe/return que sabe manejar ese flow.
+  // PayPhone usa una sola URL de respuesta configurada en el panel,
+  // por eso TODOS los pagos (citas + suscripciones) caen acá primero.
+  useEffect(() => {
+    if (clientTxId.startsWith('sub-')) {
+      const qs = new URLSearchParams();
+      if (payphonePaymentId) qs.set('id', payphonePaymentId);
+      qs.set('clientTransactionId', clientTxId);
+      if (userCancelled) qs.set('cancel', '1');
+      if (fakeOk)        qs.set('fakeOk', '1');
+      navigate(`/subscribe/return?${qs.toString()}`, { replace: true });
+    }
+  }, [clientTxId, payphonePaymentId, userCancelled, fakeOk, navigate]);
+
+  const apptId = params.get('appt') ?? clientTxId;
 
   const [s, setS] = useState<ReturnState>({ phase: 'confirming' });
 
@@ -60,7 +80,7 @@ export function PaymentReturnPage() {
       return;
     }
 
-    paymentApi.confirm(apptId, { payphonePaymentId, fakeOk })
+    paymentApi.confirm(apptId, { payphoneId: payphonePaymentId, fakeOk })
       .then((res) => {
         if (res.data.status === 'PAID')        setS({ phase: 'paid'    });
         else if (res.data.status === 'PENDING') setS({ phase: 'pending' });

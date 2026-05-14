@@ -91,7 +91,7 @@ export function AdminSubscriptionsPage() {
                       <p className="text-xs text-slate-400">{s.user?.email}</p>
                     </td>
                     <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
-                      {s.plan?.name} <span className="text-xs text-slate-400">${s.plan?.monthlyPrice}/mes</span>
+                      {s.plan?.name} <span className="text-xs text-slate-400">${(s.plan?.monthlyPrice ?? 0).toFixed(2)}/mes</span>
                     </td>
                     <td className="px-5 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS_PILL[s.status]}`}>
@@ -239,7 +239,7 @@ function ChangePlanModal({
                     </div>
                     <p className="font-bold text-slate-800 dark:text-white text-sm mt-1">{p.name}</p>
                     <p className="text-xl font-bold text-slate-800 dark:text-white mt-2">
-                      ${p.monthlyPrice.toFixed(0)}<span className="text-xs text-slate-400 font-normal">/mes</span>
+                      ${p.monthlyPrice.toFixed(2)}<span className="text-xs text-slate-400 font-normal">/mes</span>
                     </p>
                   </button>
                 );

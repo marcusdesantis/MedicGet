@@ -9,25 +9,19 @@
  * un upsell que lleva a /doctor/plan.
  */
 import { useMemo } from 'react';
-import { Loader2, DollarSign, TrendingUp, CreditCard, Lock } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { SectionCard }   from '@/components/ui/SectionCard';
 import { CardContainer } from '@/components/ui/CardContainer';
-import { StatusBadge }   from '@/components/ui/StatusBadge';
-import { Alert }         from '@/components/ui/Alert';
-import { EmptyState }    from '@/components/ui/EmptyState';
 import { useApi }        from '@/hooks/useApi';
-import { paymentStatusMap } from '@/lib/statusConfig';
+import { PaymentsHistoryTable } from '@/features/shared/payments/PaymentsHistoryTable';
 import {
   appointmentsApi, subscriptionsApi,
   type AppointmentDto, type PaginatedData,
 } from '@/lib/api';
 
 function fmtMoney(n: number) { return `$${n.toFixed(2)}`; }
-function fmtDate(iso?: string) {
-  return iso ? new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-}
 
 export function DoctorPaymentsPage() {
   const meSub = useApi(() => subscriptionsApi.me(), []);
@@ -93,56 +87,9 @@ export function DoctorPaymentsPage() {
             <Stat icon={CreditCard} color="amber"   label="Pendiente"         value={fmtMoney(stats.pending)} sub="esperando confirmación" />
           </div>
 
-          <SectionCard title="Movimientos recientes" subtitle={`${rows.length} cobros`} noPadding>
-            {appts.state.status === 'loading' && (
-              <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="animate-spin" size={20} /></div>
-            )}
-            {appts.state.status === 'error' && (
-              <div className="p-6"><Alert variant="error">{appts.state.error.message}</Alert></div>
-            )}
-            {appts.state.status === 'ready' && (
-              rows.length === 0 ? (
-                <EmptyState
-                  title="Sin pagos todavía"
-                  description="Cuando un paciente pague una cita aparecerá acá."
-                  icon={CreditCard}
-                />
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 uppercase tracking-wider">
-                      <tr>
-                        <th className="text-left px-5 py-3">Fecha</th>
-                        <th className="text-left px-5 py-3">Paciente</th>
-                        <th className="text-left px-5 py-3">Modalidad</th>
-                        <th className="text-right px-5 py-3">Bruto</th>
-                        <th className="text-right px-5 py-3">Comisión</th>
-                        <th className="text-right px-5 py-3">Mi neto</th>
-                        <th className="text-left px-5 py-3">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {rows.map((a) => {
-                        const status = (a.payment?.status ?? 'PENDING').toLowerCase();
-                        const pName  = `${a.patient?.user?.profile?.firstName ?? ''} ${a.patient?.user?.profile?.lastName ?? ''}`.trim();
-                        return (
-                          <tr key={a.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                            <td className="px-5 py-3 text-slate-500">{fmtDate(a.payment?.paidAt ?? a.createdAt)}</td>
-                            <td className="px-5 py-3 font-medium text-slate-800 dark:text-white">{pName || '—'}</td>
-                            <td className="px-5 py-3 text-slate-500 capitalize">{a.modality.toLowerCase()}</td>
-                            <td className="px-5 py-3 text-right font-bold text-slate-800 dark:text-white">{fmtMoney(a.payment?.amount ?? 0)}</td>
-                            <td className="px-5 py-3 text-right text-purple-600 font-medium">{a.payment?.platformFee ? `-${fmtMoney(a.payment.platformFee)}` : '—'}</td>
-                            <td className="px-5 py-3 text-right text-emerald-600 font-bold">{a.payment?.doctorAmount ? fmtMoney(a.payment.doctorAmount) : '—'}</td>
-                            <td className="px-5 py-3"><StatusBadge status={status} statusMap={paymentStatusMap} size="sm" /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            )}
-          </SectionCard>
+          {/* Historial — componente reutilizable. Mismo UI que /admin/payments
+              y /clinic/payments. Incluye filtro por estado + botón "Recibo". */}
+          <PaymentsHistoryTable />
         </>
       )}
     </div>
