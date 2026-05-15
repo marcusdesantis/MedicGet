@@ -82,6 +82,63 @@ function buildCheckoutHtml(session: CheckoutSessionDto): string {
     .error { background: #fee2e2; color: #991b1b; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
     #pp-button { min-height: 200px; }
   </style>
+  <script>
+    /* Interceptor de redirects. PayPhone, al terminar el pago, redirige
+       el navegador a \`responseUrl\`. En Android el handler nativo de RN
+       no siempre dispara para redirects programáticos — por eso lo
+       atrapamos acá mismo en JS antes de que el WebView intente
+       navegar. Postamos un mensaje al lado nativo con la URL completa
+       (que incluye los query params de PayPhone: id, clientTransactionId,
+       status...) y bloqueamos la navegación real. */
+    (function () {
+      function post(type, payload) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload || null }));
+        }
+      }
+      var SENTINEL = 'medicget-payment-return.invalid';
+      function isReturnUrl(u) {
+        return typeof u === 'string' && u.indexOf(SENTINEL) !== -1;
+      }
+      // Override window.location setter (href, replace, assign).
+      try {
+        var origAssign  = window.location.assign.bind(window.location);
+        var origReplace = window.location.replace.bind(window.location);
+        window.location.assign = function (u) {
+          if (isReturnUrl(u)) { post('return', u); return; }
+          origAssign(u);
+        };
+        window.location.replace = function (u) {
+          if (isReturnUrl(u)) { post('return', u); return; }
+          origReplace(u);
+        };
+        // El setter de href requiere defineProperty para sobreescribir.
+        var descriptor = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+        if (descriptor && descriptor.set) {
+          var origSet = descriptor.set;
+          Object.defineProperty(window.location, 'href', {
+            set: function (u) {
+              if (isReturnUrl(u)) { post('return', u); return; }
+              origSet.call(window.location, u);
+            },
+            get: function () { return descriptor.get.call(window.location); },
+          });
+        }
+      } catch (err) {
+        // Si el override falla por alguna razón del WebView, dejamos
+        // el flow por defecto — el handler nativo igual recoge el
+        // intento de navegación.
+      }
+      // Captura errores top-level para no quedar en pantalla blanca
+      // sin diagnóstico.
+      window.addEventListener('error', function (e) {
+        post('error', 'JS error: ' + (e && e.message ? e.message : 'desconocido'));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        post('error', 'JS rejection: ' + (e && e.reason ? String(e.reason) : 'desconocido'));
+      });
+    })();
+  </script>
 </head>
 <body>
   <div class="container">
@@ -308,13 +365,20 @@ export default function PaymentCheckout() {
 
   /**
    * El HTML embebido posta mensajes vía `window.ReactNativeWebView.postMessage`
-   * cuando carga el SDK o falla. Lo usamos para mostrar errores del
-   * widget en pantalla nativa.
+   * en tres casos:
+   *   - type: 'ready'   → el widget se montó OK
+   *   - type: 'error'   → falla al cargar el SDK o ejecutar JS
+   *   - type: 'return'  → PayPhone redirigió a la URL sentinel; el
+   *                       payload trae la URL completa con los query
+   *                       params. Lo usamos para navegar a la pantalla
+   *                       nativa de confirmación.
    */
   const handleMessage = (e: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data) as { type: string; payload?: string };
-      if (msg.type === 'error' && msg.payload) {
+      if (msg.type === 'return' && msg.payload) {
+        tryInterceptReturn(msg.payload);
+      } else if (msg.type === 'error' && msg.payload) {
         setError(msg.payload);
       }
     } catch {
@@ -521,25 +585,30 @@ export default function PaymentCheckout() {
               style={{ height: 480 }}>
               <WebView
                 originWhitelist={['*']}
-                // baseUrl da al HTML un "origin" HTTPS real para que la
-                // SDK de PayPhone resuelva CORS y URLs relativas
-                // correctamente. Sin esto, el documento queda en
-                // `about:blank` y la SDK puede fallar al hacer XHR.
-                source={{
-                  html: buildCheckoutHtml(session),
-                  baseUrl: 'https://cdn.payphonetodoesposible.com',
-                }}
+                source={{ html: buildCheckoutHtml(session) }}
                 onShouldStartLoadWithRequest={handleShouldStartLoad}
                 onNavigationStateChange={handleNavStateChange}
                 onMessage={handleMessage}
+                // Capturamos errores nativos del WebView para
+                // mostrarlos en pantalla en vez de la página default
+                // "Error loading page" de Android — así sabemos qué URL
+                // está fallando.
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  setError(
+                    `WebView error: ${nativeEvent.code ?? '?'} ${nativeEvent.description ?? ''} (url: ${nativeEvent.url ?? '?'})`,
+                  );
+                }}
+                onHttpError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  setError(
+                    `HTTP ${nativeEvent.statusCode} on ${nativeEvent.url}`,
+                  );
+                }}
                 javaScriptEnabled
                 domStorageEnabled
                 startInLoadingState
                 mixedContentMode="always"
-                // Evita que PayPhone abra un popup nuevo que el
-                // WebView no maneja — fuerza todo dentro del mismo
-                // contexto.
-                setSupportMultipleWindows={false}
                 renderLoading={() => (
                   <View className="absolute inset-0 items-center justify-center">
                     <ActivityIndicator size="large" color="#2563eb" />
