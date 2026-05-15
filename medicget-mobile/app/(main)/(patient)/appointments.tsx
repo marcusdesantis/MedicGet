@@ -19,9 +19,11 @@ import {
 } from 'react-native';
 import {
   Calendar as CalendarIcon,
+  CalendarDays,
   Clock,
   CreditCard,
   Eye,
+  List,
   MapPin,
   MessageSquare,
   Plus,
@@ -39,6 +41,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
+import { AppointmentCalendar } from '@/components/ui/AppointmentCalendar';
 import { ReviewModal } from '@/components/reviews/ReviewModal';
 import { useApi } from '@/hooks/useApi';
 import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
@@ -66,6 +69,7 @@ function doctorName(a: AppointmentDto): string {
 export default function PatientAppointments() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('Próximas');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<AppointmentDto | null>(null);
@@ -129,13 +133,55 @@ export default function PatientAppointments() {
         }
       />
 
-      <View className="mb-3">
-        <Tabs
-          tabs={[...TABS]}
-          active={activeTab}
-          onChange={(v) => setActiveTab(v as TabType)}
-        />
+      {/* Toggle Lista / Calendario */}
+      <View className="flex-row bg-slate-100 dark:bg-slate-800 rounded-xl p-1 mb-3">
+        <Pressable
+          onPress={() => setViewMode('list')}
+          className={`flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-lg ${
+            viewMode === 'list' ? 'bg-white dark:bg-slate-900' : ''
+          }`}>
+          <List
+            size={13}
+            color={viewMode === 'list' ? '#2563eb' : '#94a3b8'}
+          />
+          <Text
+            className={`text-xs font-medium ${
+              viewMode === 'list'
+                ? 'text-slate-900 dark:text-white'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}>
+            Lista
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setViewMode('calendar')}
+          className={`flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-lg ${
+            viewMode === 'calendar' ? 'bg-white dark:bg-slate-900' : ''
+          }`}>
+          <CalendarDays
+            size={13}
+            color={viewMode === 'calendar' ? '#2563eb' : '#94a3b8'}
+          />
+          <Text
+            className={`text-xs font-medium ${
+              viewMode === 'calendar'
+                ? 'text-slate-900 dark:text-white'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}>
+            Calendario
+          </Text>
+        </Pressable>
       </View>
+
+      {viewMode === 'list' ? (
+        <View className="mb-3">
+          <Tabs
+            tabs={[...TABS]}
+            active={activeTab}
+            onChange={(v) => setActiveTab(v as TabType)}
+          />
+        </View>
+      ) : null}
 
       {actionError ? (
         <View className="mb-3">
@@ -162,7 +208,17 @@ export default function PatientAppointments() {
         </Alert>
       )}
 
-      {state.status === 'ready' && (
+      {state.status === 'ready' && viewMode === 'calendar' && (
+        <AppointmentCalendar
+          appointments={state.data.data}
+          role="patient"
+          onAppointmentPress={(a) =>
+            router.push(`/(main)/(patient)/appointment/${a.id}` as never)
+          }
+        />
+      )}
+
+      {state.status === 'ready' && viewMode === 'list' && (
         <SectionCard noPadding>
           {visible.length === 0 ? (
             <EmptyState

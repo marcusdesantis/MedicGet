@@ -22,10 +22,12 @@ import {
 } from 'react-native';
 import {
   Calendar as CalendarIcon,
+  CalendarDays,
   Check,
   CheckCircle,
   Clock,
   Eye,
+  List,
   MapPin,
   MessageSquare,
   Video,
@@ -42,6 +44,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
+import { AppointmentCalendar } from '@/components/ui/AppointmentCalendar';
 import { useApi } from '@/hooks/useApi';
 import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { appointmentStatusMap } from '@/lib/statusConfig';
@@ -79,6 +82,7 @@ export default function DoctorAppointments() {
   const router = useRouter();
   const [tab, setTab] = useState<TabType>('Todas');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [actingId, setActingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -142,18 +146,62 @@ export default function DoctorAppointments() {
         subtitle="Gestiona tus consultas programadas"
       />
 
-      <View className="gap-3 mb-3">
-        <Tabs
-          tabs={[...TABS]}
-          active={tab}
-          onChange={(v) => setTab(v as TabType)}
-        />
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar paciente..."
-        />
+      {/* Toggle Lista / Calendario */}
+      <View className="flex-row bg-slate-100 dark:bg-slate-800 rounded-xl p-1 mb-3">
+        <Pressable
+          onPress={() => setViewMode('list')}
+          className={`flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-lg ${
+            viewMode === 'list' ? 'bg-white dark:bg-slate-900' : ''
+          }`}>
+          <List
+            size={13}
+            color={viewMode === 'list' ? '#0d9488' : '#94a3b8'}
+          />
+          <Text
+            className={`text-xs font-medium ${
+              viewMode === 'list'
+                ? 'text-slate-900 dark:text-white'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}>
+            Lista
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setViewMode('calendar')}
+          className={`flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-lg ${
+            viewMode === 'calendar' ? 'bg-white dark:bg-slate-900' : ''
+          }`}>
+          <CalendarDays
+            size={13}
+            color={viewMode === 'calendar' ? '#0d9488' : '#94a3b8'}
+          />
+          <Text
+            className={`text-xs font-medium ${
+              viewMode === 'calendar'
+                ? 'text-slate-900 dark:text-white'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}>
+            Calendario
+          </Text>
+        </Pressable>
       </View>
+
+      {/* Solo en vista lista: tabs + búsqueda. El calendario muestra
+          siempre todo el mes, sin filtros. */}
+      {viewMode === 'list' ? (
+        <View className="gap-3 mb-3">
+          <Tabs
+            tabs={[...TABS]}
+            active={tab}
+            onChange={(v) => setTab(v as TabType)}
+          />
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar paciente..."
+          />
+        </View>
+      ) : null}
 
       {actionError ? (
         <View className="mb-3">
@@ -180,7 +228,17 @@ export default function DoctorAppointments() {
         </Alert>
       )}
 
-      {state.status === 'ready' && (
+      {state.status === 'ready' && viewMode === 'calendar' && (
+        <AppointmentCalendar
+          appointments={state.data.data}
+          role="doctor"
+          onAppointmentPress={(a) =>
+            router.push(`/(main)/(doctor)/appointment/${a.id}` as never)
+          }
+        />
+      )}
+
+      {state.status === 'ready' && viewMode === 'list' && (
         <SectionCard noPadding>
           {visible.length === 0 ? (
             <EmptyState
