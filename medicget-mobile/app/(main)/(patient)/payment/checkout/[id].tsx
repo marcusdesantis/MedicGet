@@ -22,15 +22,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert as RNAlert,
+  Modal as RNModal,
   Pressable,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   CheckCircle,
   Clock,
+  CreditCard,
   Loader2,
+  X,
   ShieldCheck,
 } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -83,6 +87,53 @@ function buildCheckoutHtml(session: CheckoutSessionDto): string {
     #pp-button { min-height: 200px; }
   </style>
   <script>
+    /* Shim para document.cookie. El SDK de PayPhone escribe cookies
+       (probablemente para tracking de sesión / anti-fraude). Si el
+       WebView corre el HTML inline sin un origen válido, el browser
+       lanza SecurityError al setear cookies — eso rompe la
+       inicialización del SDK. Acá interceptamos el set y guardamos
+       las cookies en memoria. Para el SDK es transparente: cuando
+       lee \`document.cookie\` recibe lo que escribió. */
+    (function () {
+      try {
+        // Si setear una cookie real funciona, no hacemos nada.
+        document.cookie = '__mg_probe=1';
+        if (document.cookie.indexOf('__mg_probe=1') !== -1) {
+          document.cookie = '__mg_probe=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+          return;
+        }
+      } catch (_) { /* falló, montamos el shim */ }
+      var jar = '';
+      try {
+        Object.defineProperty(document, 'cookie', {
+          configurable: true,
+          get: function () { return jar; },
+          set: function (v) {
+            var first = String(v).split(';')[0];
+            // Borrado: cookie con expires en el pasado.
+            if (/expires=.*1970|max-age=0/i.test(String(v))) {
+              var key = first.split('=')[0];
+              jar = jar.split('; ').filter(function (c) {
+                return c.split('=')[0] !== key;
+              }).join('; ');
+              return;
+            }
+            // Update o set: reemplazamos la cookie con la misma key.
+            var key2 = first.split('=')[0];
+            var rest = jar.split('; ').filter(function (c) {
+              return c && c.split('=')[0] !== key2;
+            });
+            rest.push(first);
+            jar = rest.join('; ');
+          },
+        });
+      } catch (_) {
+        // Algunos WebViews no permiten defineProperty sobre document.
+        // En ese caso aceptamos que las cookies no funcionen — el SDK
+        // hará su mejor esfuerzo y los errores quedan loggeados.
+      }
+    })();
+
     /* Interceptor de redirects. PayPhone, al terminar el pago, redirige
        el navegador a \`responseUrl\`. En Android el handler nativo de RN
        no siempre dispara para redirects programáticos — por eso lo
@@ -220,6 +271,7 @@ export default function PaymentCheckout() {
   );
 
   const [session, setSession] = useState<CheckoutSessionExt | null>(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [breakdown, setBreakdown] = useState<PaymentBreakdownDto | null>(null);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -333,6 +385,10 @@ export default function PaymentCheckout() {
       if (payphoneId) target.set('id', payphoneId);
       const ctx = params.get('clientTransactionId');
       if (ctx) target.set('clientTransactionId', ctx);
+      // Cerramos el modal del WebView antes de navegar — RN puede
+      // mostrar artefactos visuales si dejamos el modal abierto
+      // mientras navegamos.
+      setPaymentModalOpen(false);
       router.replace(
         `/(main)/(patient)/payment/return?${target.toString()}` as never,
       );
@@ -580,19 +636,77 @@ export default function PaymentCheckout() {
               </View>
             </SectionCard>
           ) : (
-            <View
-              className="rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden bg-white"
-              style={{ height: 480 }}>
+            <SectionCard>
+              <Text className="text-sm text-slate-700 dark:text-slate-300 mb-3">
+                Tocá el botón para abrir la pasarela de PayPhone en una
+                ventana flotante. Vas a poder ingresar los datos de la
+                tarjeta sin perder esta pantalla.
+              </Text>
+              <Button
+                onPress={() => setPaymentModalOpen(true)}
+                fullWidth>
+                <View className="flex-row items-center gap-2">
+                  <CreditCard size={16} color="#fff" />
+                  <Text className="text-white text-base font-semibold">
+                    Iniciar pago con PayPhone
+                  </Text>
+                </View>
+              </Button>
+            </SectionCard>
+          )}
+
+          <Pressable
+            onPress={handleCancelReservation}
+            className="flex-row items-center justify-center gap-1.5 py-3">
+            <Text className="text-sm text-rose-600 font-medium">
+              Cancelar reserva
+            </Text>
+          </Pressable>
+
+          <View className="flex-row items-center justify-center gap-1.5">
+            <ShieldCheck size={11} color="#94a3b8" />
+            <Text className="text-[10px] text-slate-400">
+              Pago procesado con cifrado TLS · No almacenamos datos de tu
+              tarjeta
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Modal del WebView de PayPhone — abre al tocar "Iniciar pago".
+          Cuando termina el pago, el JS interceptor del HTML embebido
+          detecta el redirect, posta al lado nativo y `tryInterceptReturn`
+          navega a /payment/return. */}
+      {session && !session.stubMode ? (
+        <RNModal
+          visible={paymentModalOpen}
+          animationType="slide"
+          onRequestClose={() => setPaymentModalOpen(false)}
+          presentationStyle="fullScreen">
+          <SafeAreaView
+            edges={['top', 'bottom']}
+            className="flex-1 bg-slate-50 dark:bg-slate-950">
+            <View className="flex-row items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+              <Text className="text-base font-semibold text-slate-800 dark:text-white">
+                PayPhone
+              </Text>
+              <Pressable
+                onPress={() => setPaymentModalOpen(false)}
+                hitSlop={8}
+                className="w-9 h-9 rounded-lg items-center justify-center">
+                <X size={18} color="#475569" />
+              </Pressable>
+            </View>
+            <View className="flex-1 bg-white">
               <WebView
                 originWhitelist={['*']}
-                source={{ html: buildCheckoutHtml(session) }}
+                source={{
+                  html: buildCheckoutHtml(session),
+                  baseUrl: 'https://pay.payphonetodoesposible.com',
+                }}
                 onShouldStartLoadWithRequest={handleShouldStartLoad}
                 onNavigationStateChange={handleNavStateChange}
                 onMessage={handleMessage}
-                // Capturamos errores nativos del WebView para
-                // mostrarlos en pantalla en vez de la página default
-                // "Error loading page" de Android — así sabemos qué URL
-                // está fallando.
                 onError={(syntheticEvent) => {
                   const { nativeEvent } = syntheticEvent;
                   setError(
@@ -616,25 +730,9 @@ export default function PaymentCheckout() {
                 )}
               />
             </View>
-          )}
-
-          <Pressable
-            onPress={handleCancelReservation}
-            className="flex-row items-center justify-center gap-1.5 py-3">
-            <Text className="text-sm text-rose-600 font-medium">
-              Cancelar reserva
-            </Text>
-          </Pressable>
-
-          <View className="flex-row items-center justify-center gap-1.5">
-            <ShieldCheck size={11} color="#94a3b8" />
-            <Text className="text-[10px] text-slate-400">
-              Pago procesado con cifrado TLS · No almacenamos datos de tu
-              tarjeta
-            </Text>
-          </View>
-        </View>
-      )}
+          </SafeAreaView>
+        </RNModal>
+      ) : null}
     </Screen>
   );
 }

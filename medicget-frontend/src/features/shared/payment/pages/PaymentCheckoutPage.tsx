@@ -177,6 +177,13 @@ export function PaymentCheckoutPage() {
   const [widgetMounted, setWidgetMounted] = useState(false);
   const [stubMode,      setStubMode]      = useState(false);
   const [stubConfirming, setStubConfirming] = useState(false);
+  /**
+   * El widget de PayPhone se monta una sola vez en `#pp-button` (el SDK
+   * pierde estado si lo reseteamos). Para mostrarlo como popup
+   * flotante, mantenemos el div siempre en el DOM dentro de un overlay
+   * fixed, y togglemos su visibilidad con CSS según este estado.
+   */
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   // `sessionExpiresAt` proviene de la respuesta DEL checkout — siempre
   // fresco. Usar `state.data.payment.expiresAt` da problemas porque ese
   // valor es del intento anterior y puede estar vencido aunque el nuevo
@@ -416,16 +423,9 @@ export function PaymentCheckoutPage() {
         </SectionCard>
       )}
 
-      {/* Widget oficial PayPhone — escondido. Nuestro botón abre el modal */}
+      {/* CTA principal — abre el modal con el widget */}
       {!alreadyPaid && !cancelled && !expired && (
         <SectionCard>
-          {!widgetReady && (
-            <div className="flex items-center justify-center py-8 text-slate-400 gap-2">
-              <Loader2 className="animate-spin" size={18} />
-              <span className="text-sm">Cargando pasarela de pago…</span>
-            </div>
-          )}
-
           {stubMode ? (
             <div className="space-y-3">
               <Alert variant="info">
@@ -443,27 +443,22 @@ export function PaymentCheckoutPage() {
               </button>
             </div>
           ) : (
-            <>
-              {/* Widget oficial PayPhone — modo "Cajita con DOM". El SDK
-                  renderiza el formulario de pago COMPLETO embebido dentro
-                  de `#pp-button` (no un botón que abra modal), así que lo
-                  dejamos visible para que el paciente lo use directamente.
-                  El SDK toma el control del UI y de la transacción. */}
-              {!widgetReady && (
-                <div className="flex items-center justify-center py-8 text-slate-400 gap-2">
-                  <Loader2 className="animate-spin" size={18} />
-                  <span className="text-sm">Cargando pasarela de pago…</span>
-                </div>
-              )}
-              <div
-                id="pp-button"
-                className="payphone-widget-wrapper"
-                style={{ display: widgetReady ? 'block' : 'none' }}
-              />
-              <p className="text-xs text-slate-400 text-center mt-3">
-                Pago procesado por PayPhone — completa los datos en el formulario para finalizar.
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Hacé clic para abrir la pasarela de PayPhone en una ventana
+                flotante. Podés cerrarla y reabrirla en cualquier momento
+                — la reserva sigue contando.
               </p>
-            </>
+              <button
+                onClick={() => setPaymentModalOpen(true)}
+                disabled={!widgetReady}
+                className="w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-4 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {!widgetReady
+                  ? <><Loader2 size={16} className="animate-spin" /> Cargando pasarela…</>
+                  : <><ShieldCheck size={16} /> Pagar con PayPhone</>}
+              </button>
+            </div>
           )}
         </SectionCard>
       )}
@@ -483,6 +478,55 @@ export function PaymentCheckoutPage() {
       <p className="text-center text-xs text-slate-400 flex items-center justify-center gap-1.5">
         <ShieldCheck size={12} /> Pago procesado con cifrado TLS · No almacenamos datos de tu tarjeta
       </p>
+
+      {/* Modal flotante con el widget de PayPhone — siempre montado en
+          el DOM (el SDK pierde estado si lo desmontamos). Lo
+          mostramos/ocultamos con display via CSS controlado por
+          `paymentModalOpen`. Sin esto, cerrar y reabrir requeriría
+          re-fetchear la sesión y re-inicializar la Cajita. */}
+      {!stubMode && (
+        <div
+          className={`fixed inset-0 z-50 ${
+            paymentModalOpen ? 'flex' : 'hidden'
+          } items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4`}
+          onClick={() => setPaymentModalOpen(false)}
+          aria-hidden={!paymentModalOpen}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
+              <h2 className="font-semibold text-slate-800 dark:text-white">
+                Pagar con PayPhone
+              </h2>
+              <button
+                onClick={() => setPaymentModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5">
+              {!widgetReady && (
+                <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                  <Loader2 className="animate-spin" size={18} />
+                  <span className="text-sm">Cargando pasarela…</span>
+                </div>
+              )}
+              <div
+                id="pp-button"
+                className="payphone-widget-wrapper"
+                style={{ display: widgetReady ? 'block' : 'none' }}
+              />
+              <p className="text-xs text-slate-400 text-center mt-3">
+                Completa los datos en el formulario para finalizar.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
