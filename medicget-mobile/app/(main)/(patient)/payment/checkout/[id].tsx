@@ -18,7 +18,7 @@
  * llama a `paymentApi.confirm({ fakeOk: true })`.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert as RNAlert,
@@ -169,8 +169,17 @@ export default function PaymentCheckout() {
   const [stubConfirming, setStubConfirming] = useState(false);
   const intercepted = useRef(false);
 
+  // PayPhone rechaza `responseUrl` que no sea HTTPS (es razonable —
+  // valida la URL antes de aceptar la transacción). Usamos un dominio
+  // sentinel HTTPS reservado (`.invalid` está garantizado por RFC 6761
+  // a no resolver nunca) que nunca contacta a un servidor real. El
+  // WebView intercepta la navegación a esa URL con
+  // `onShouldStartLoadWithRequest` antes de que falle el DNS, extrae
+  // los query params (`?id=...&clientTransactionId=...`) y navega a la
+  // pantalla nativa de confirmación.
   const responseUrl = useMemo(
-    () => `medicget://payment/return?appointmentId=${id}`,
+    () =>
+      `https://medicget-payment-return.invalid/return?appointmentId=${id}`,
     [id],
   );
 
@@ -231,20 +240,70 @@ export default function PaymentCheckout() {
   };
 
   /**
-   * Intercepta los navegaciones del WebView. Cuando PayPhone redirige a
-   * nuestro deep-link `medicget://payment/return?...`, lo detenemos
-   * acá y navegamos dentro de la app a la pantalla de confirmación.
+   * Detecta si el URL es el sentinel de retorno (sea por click del
+   * usuario o redirect programático de PayPhone) y, si lo es, navega
+   * a la pantalla nativa con los query params que trae PayPhone:
+   *   ?id=<payphoneId>&clientTransactionId=<appointmentId>&status=...
+   *
+   * Devuelve true cuando interceptó (para que el caller corte la
+   * navegación / ignore el evento siguiente).
+   */
+  const tryInterceptReturn = useCallback(
+    (url: string): boolean => {
+      if (intercepted.current) return true;
+      if (!url) return false;
+      // El sentinel es `https://medicget-payment-return.invalid/return?...`
+      if (!url.startsWith('https://medicget-payment-return.invalid')) {
+        return false;
+      }
+      intercepted.current = true;
+      // Extraemos los query params que PayPhone agregó (id=<payphoneId>,
+      // clientTransactionId=<appointmentId>, status=...).
+      const qIdx = url.indexOf('?');
+      const qs = qIdx >= 0 ? url.slice(qIdx + 1) : '';
+      const params = new Map<string, string>();
+      for (const pair of qs.split('&')) {
+        if (!pair) continue;
+        const eq = pair.indexOf('=');
+        const k = eq >= 0 ? decodeURIComponent(pair.slice(0, eq)) : pair;
+        const v = eq >= 0 ? decodeURIComponent(pair.slice(eq + 1)) : '';
+        params.set(k, v);
+      }
+      const target = new URLSearchParams();
+      const appointmentId = params.get('appointmentId') ?? id ?? '';
+      if (appointmentId) target.set('appointmentId', appointmentId);
+      const payphoneId = params.get('id');
+      if (payphoneId) target.set('id', payphoneId);
+      const ctx = params.get('clientTransactionId');
+      if (ctx) target.set('clientTransactionId', ctx);
+      router.replace(
+        `/(main)/(patient)/payment/return?${target.toString()}` as never,
+      );
+      return true;
+    },
+    [id, router],
+  );
+
+  /**
+   * iOS y Android modernos disparan este callback en cada intento de
+   * navegación, sea por click o por redirect programático. Devolvemos
+   * false para cortar la navegación a nuestro sentinel ANTES de que
+   * el WebView intente resolver el DNS (que fallaría con
+   * `.invalid`).
    */
   const handleShouldStartLoad = (req: { url: string }): boolean => {
-    if (intercepted.current) return false;
-    if (req.url.startsWith('medicget://')) {
-      intercepted.current = true;
-      // Reemplazamos en vez de push para que el back no vuelva al WebView.
-      const url = req.url.replace('medicget://', '/(main)/(patient)/');
-      router.replace(url as never);
-      return false;
-    }
+    if (tryInterceptReturn(req.url)) return false;
     return true;
+  };
+
+  /**
+   * Fallback para Android: en algunas versiones de react-native-webview,
+   * `onShouldStartLoadWithRequest` no dispara para redirects
+   * programáticos (window.location = ...). `onNavigationStateChange`
+   * sí ve toda navegación — interceptamos acá como red de seguridad.
+   */
+  const handleNavStateChange = (state: { url: string }) => {
+    tryInterceptReturn(state.url);
   };
 
   /**
@@ -462,13 +521,25 @@ export default function PaymentCheckout() {
               style={{ height: 480 }}>
               <WebView
                 originWhitelist={['*']}
-                source={{ html: buildCheckoutHtml(session) }}
+                // baseUrl da al HTML un "origin" HTTPS real para que la
+                // SDK de PayPhone resuelva CORS y URLs relativas
+                // correctamente. Sin esto, el documento queda en
+                // `about:blank` y la SDK puede fallar al hacer XHR.
+                source={{
+                  html: buildCheckoutHtml(session),
+                  baseUrl: 'https://cdn.payphonetodoesposible.com',
+                }}
                 onShouldStartLoadWithRequest={handleShouldStartLoad}
+                onNavigationStateChange={handleNavStateChange}
                 onMessage={handleMessage}
                 javaScriptEnabled
                 domStorageEnabled
                 startInLoadingState
                 mixedContentMode="always"
+                // Evita que PayPhone abra un popup nuevo que el
+                // WebView no maneja — fuerza todo dentro del mismo
+                // contexto.
+                setSupportMultipleWindows={false}
                 renderLoading={() => (
                   <View className="absolute inset-0 items-center justify-center">
                     <ActivityIndicator size="large" color="#2563eb" />
