@@ -41,6 +41,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { ReviewModal } from '@/components/reviews/ReviewModal';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { fmtMedDate, profileInitials } from '@/lib/format';
 import {
@@ -73,6 +74,9 @@ export default function PatientAppointments() {
     () => appointmentsApi.list({ pageSize: 100 }),
     [],
   );
+  // La tab queda montada en background — sin esto, volver de crear una
+  // cita no muestra la nueva porque `useApi` no se re-dispara.
+  useRefetchOnFocus(refetch);
 
   const visible = useMemo(() => {
     if (state.status !== 'ready') return [];

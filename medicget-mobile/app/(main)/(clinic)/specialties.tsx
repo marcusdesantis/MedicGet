@@ -19,6 +19,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import { clinicsApi, type DoctorDto } from '@/lib/api';
 
@@ -67,6 +68,7 @@ export default function ClinicSpecialties() {
     () => clinicsApi.getDoctors(clinicId!, { pageSize: 100 }),
     [clinicId],
   );
+  useRefetchOnFocus(refetch);
 
   const groups = useMemo(
     () => (state.status === 'ready' ? groupBySpecialty(state.data.data) : []),

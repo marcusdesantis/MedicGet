@@ -25,6 +25,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { adminApi, type PlanDto } from '@/lib/api';
 
 const KNOWN_MODULES: { key: string; label: string }[] = [
@@ -41,6 +42,7 @@ const KNOWN_MODULES: { key: string; label: string }[] = [
 
 export default function AdminPlans() {
   const { state, refetch } = useApi(() => adminApi.listPlans(), []);
+  useRefetchOnFocus(refetch);
   const [editing, setEditing] = useState<PlanDto | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 

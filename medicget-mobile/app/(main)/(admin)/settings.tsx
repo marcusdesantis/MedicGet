@@ -31,6 +31,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { adminApi, type AppSettingDto } from '@/lib/api';
 
 const CATEGORY_META: Record<
@@ -59,6 +60,7 @@ function categoryMeta(cat: string) {
 
 export default function AdminSettings() {
   const { state, refetch } = useApi(() => adminApi.settings(), []);
+  useRefetchOnFocus(refetch);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);

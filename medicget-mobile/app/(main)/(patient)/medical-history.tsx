@@ -44,6 +44,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import {
@@ -69,6 +70,8 @@ export default function MedicalHistory() {
     () => appointmentsApi.list({ status: 'COMPLETED', pageSize: 100 }),
     [],
   );
+  useRefetchOnFocus(patientState.refetch);
+  useRefetchOnFocus(apptsState.refetch);
 
   if (!patientId) {
     return (

@@ -22,6 +22,7 @@ import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { adminApi } from '@/lib/api';
 
 function fmtMoney(n: number): string {
@@ -31,6 +32,7 @@ function fmtMoney(n: number): string {
 export default function AdminHome() {
   const router = useRouter();
   const { state, refetch } = useApi(() => adminApi.stats(), []);
+  useRefetchOnFocus(refetch);
 
   return (
     <Screen>

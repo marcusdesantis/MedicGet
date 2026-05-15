@@ -43,6 +43,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { fmtShortDate, profileInitials } from '@/lib/format';
 import {
@@ -85,6 +86,7 @@ export default function DoctorAppointments() {
     () => appointmentsApi.list({ pageSize: 100 }),
     [],
   );
+  useRefetchOnFocus(refetch);
 
   const visible = useMemo(() => {
     if (state.status !== 'ready') return [];

@@ -18,6 +18,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { notificationsApi, type NotificationDto } from '@/lib/api';
 
 function timeAgo(iso: string): string {
@@ -41,6 +42,7 @@ export default function PatientNotifications() {
     () => notificationsApi.list({ limit: 50 }),
     [],
   );
+  useRefetchOnFocus(refetch);
 
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [markingAll, setMarkingAll] = useState(false);

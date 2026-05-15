@@ -30,6 +30,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { doctorsApi, type DoctorDto } from '@/lib/api';
 import { DEFAULT_SPECIALTIES } from '@/lib/specialties';
 import { profileInitials } from '@/lib/format';
@@ -66,6 +67,7 @@ export default function SearchDoctors() {
     () => doctorsApi.list(filters),
     [debouncedQuery, specialty, onlyAvailable],
   );
+  useRefetchOnFocus(refetch);
 
   return (
     <Screen>

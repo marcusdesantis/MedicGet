@@ -24,6 +24,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import { profileInitials } from '@/lib/format';
 import {
@@ -35,6 +36,7 @@ import {
 export default function DoctorHome() {
   const { user } = useAuth();
   const { state, refetch } = useApi(() => dashboardApi.doctor(), []);
+  useRefetchOnFocus(refetch);
 
   return (
     <Screen>

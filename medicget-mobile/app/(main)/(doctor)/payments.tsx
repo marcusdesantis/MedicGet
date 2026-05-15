@@ -17,6 +17,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { paymentApi, type PaymentRowDto } from '@/lib/api';
 import { fmtMedDate, profileInitials } from '@/lib/format';
 
@@ -26,6 +27,7 @@ export default function DoctorPayments() {
     () => paymentApi.list({ pageSize: 100 }),
     [],
   );
+  useRefetchOnFocus(refetch);
 
   const summary = useMemo(() => {
     if (state.status !== 'ready') return null;

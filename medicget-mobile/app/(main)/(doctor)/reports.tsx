@@ -29,6 +29,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import {
   appointmentsApi,
   type AppointmentDto,
@@ -64,6 +65,7 @@ export default function DoctorReports() {
     () => appointmentsApi.list({ pageSize: 500 }),
     [],
   );
+  useRefetchOnFocus(refetch);
 
   const data = useMemo(() => {
     if (state.status !== 'ready') return null;

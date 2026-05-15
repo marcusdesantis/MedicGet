@@ -43,6 +43,7 @@ import { Modal } from '@/components/ui/Modal';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { tokenStorage } from '@/lib/storage';
 import { setAuthToken } from '@/services/http';
 import { useAuth } from '@/context/AuthContext';
@@ -134,6 +135,7 @@ export default function AdminUsers() {
       }),
     [role, debounced],
   );
+  useRefetchOnFocus(refetch);
 
   const handleStatus = (id: string, status: 'ACTIVE' | 'INACTIVE' | 'DELETED') => {
     const confirmMsg =

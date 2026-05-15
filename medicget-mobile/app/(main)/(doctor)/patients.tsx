@@ -35,6 +35,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { combineDateTime, fmtMedDate } from '@/lib/format';
 import {
@@ -130,6 +131,7 @@ export default function DoctorPatients() {
     () => appointmentsApi.list({ pageSize: 200 }),
     [],
   );
+  useRefetchOnFocus(refetch);
 
   const patients = useMemo(
     () =>

@@ -26,6 +26,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import {
   adminApi,
   type PlanDto,
@@ -77,6 +78,7 @@ export default function AdminSubscriptions() {
     () => adminApi.subscriptions({ status, pageSize: 100 }),
     [status],
   );
+  useRefetchOnFocus(refetch);
 
   const plansQ = useApi(() => adminApi.listPlans(), []);
   const plans = plansQ.state.status === 'ready' ? plansQ.state.data : [];

@@ -22,6 +22,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import { patientsApi, type PatientDto } from '@/lib/api';
 import { calcAge, profileInitials } from '@/lib/format';
@@ -51,6 +52,7 @@ export default function ClinicPatients() {
       }),
     [clinicId, debounced],
   );
+  useRefetchOnFocus(refetch);
 
   if (!clinicId) {
     return (

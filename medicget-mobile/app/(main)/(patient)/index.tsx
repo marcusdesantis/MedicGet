@@ -26,6 +26,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { fmtShortDate, profileInitials } from '@/lib/format';
@@ -40,6 +41,7 @@ export default function PatientHome() {
   const { user } = useAuth();
   const firstName = user?.name.split(' ')[0] ?? 'Paciente';
   const { state, refetch } = useApi(() => dashboardApi.patient(), []);
+  useRefetchOnFocus(refetch);
 
   return (
     <Screen>

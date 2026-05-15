@@ -24,6 +24,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import {
   appointmentsApi,
   dashboardApi,
@@ -63,6 +64,8 @@ export default function ClinicReports() {
     () => appointmentsApi.list({ pageSize: 500 }),
     [],
   );
+  useRefetchOnFocus(dash.refetch);
+  useRefetchOnFocus(appts.refetch);
 
   const dashData =
     dash.state.status === 'ready'

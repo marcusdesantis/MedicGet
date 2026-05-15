@@ -30,6 +30,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import { doctorsApi, type AvailabilityDto } from '@/lib/api';
 
@@ -81,6 +82,7 @@ export default function DoctorCalendar() {
     () => doctorsApi.getAvailability(doctorId!),
     [doctorId],
   );
+  useRefetchOnFocus(refetch);
 
   useEffect(() => {
     if (state.status !== 'ready') return;

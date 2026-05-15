@@ -36,6 +36,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import {
   clinicsApi,
@@ -65,6 +66,7 @@ export default function ClinicDoctors() {
     () => clinicsApi.getDoctors(clinicId!, { pageSize: 100 }),
     [clinicId],
   );
+  useRefetchOnFocus(refetch);
 
   const visible = useMemo(() => {
     if (state.status !== 'ready') return [];
