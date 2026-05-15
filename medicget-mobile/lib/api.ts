@@ -50,7 +50,7 @@ export interface UserDto {
   patient?: { id: string } | null;
 }
 
-// ─── Doctor / Patient / Appointment (resumen) ────────────────────────────────
+// ─── Doctor / Patient / Appointment ──────────────────────────────────────────
 
 export type AppointmentModality = 'ONLINE' | 'PRESENCIAL' | 'CHAT';
 
@@ -71,6 +71,21 @@ export interface DoctorDto {
   clinic: { id: string; name: string } | null;
 }
 
+export interface AvailabilityDto {
+  id: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+}
+
+export interface SlotDto {
+  id: string;
+  date: string;
+  time: string;
+  isBooked: boolean;
+}
+
 export interface PatientDto {
   id: string;
   dateOfBirth?: string;
@@ -80,6 +95,98 @@ export interface PatientDto {
   medications: string[];
   notes?: string;
   user: { profile: ProfileDto; email: string };
+}
+
+export interface PaymentDto {
+  id: string;
+  amount: number;
+  platformFee: number;
+  doctorAmount: number;
+  method: string;
+  status: string;
+  transactionId?: string;
+  paymentUrl?: string | null;
+  payphonePaymentId?: string | null;
+  expiresAt?: string | null;
+  paidAt?: string;
+  refundedAt?: string;
+  notes?: string;
+}
+
+export interface ReviewDto {
+  id: string;
+  rating: number;
+  comment?: string;
+  isPublic: boolean;
+  createdAt: string;
+}
+
+export interface MedicalRecordDto {
+  id: string;
+  appointmentId: string;
+  patientId: string;
+  doctorId: string;
+  reason: string;
+  symptoms?: string;
+  existingConditions?: string;
+  diagnosis?: string;
+  treatment?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessageDto {
+  id: string;
+  appointmentId: string;
+  senderId: string;
+  content: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentMime?: string | null;
+  readAt?: string | null;
+  deletedAt?: string | null;
+  createdAt: string;
+}
+
+export interface ChatPeerDto {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string | null;
+  role: 'DOCTOR' | 'PATIENT';
+  specialty: string | null;
+}
+
+export interface ChatThreadDto {
+  appointment: {
+    id: string;
+    date: string;
+    time: string;
+    status: string;
+    modality: AppointmentModality;
+  };
+  peer: ChatPeerDto;
+  myUserId: string;
+  canSend: boolean;
+  messages: ChatMessageDto[];
+}
+
+export interface CheckoutSessionDto {
+  token: string;
+  storeId: string;
+  amount: number;
+  amountWithoutTax: number;
+  amountWithTax: number;
+  tax: number;
+  service: number;
+  tip: number;
+  currency: string;
+  clientTransactionId: string;
+  reference: string;
+  responseUrl: string;
+  stubMode: boolean;
+  expiresAt: string;
 }
 
 export interface AppointmentDto {
@@ -109,6 +216,8 @@ export interface AppointmentDto {
   doctorCheckedInAt?: string | null;
   doctorCompletedAt?: string | null;
   patientConfirmedAt?: string | null;
+  payment?: PaymentDto | null;
+  review?: ReviewDto | null;
 }
 
 export interface NotificationDto {
@@ -148,6 +257,41 @@ export interface DoctorDashboardDto {
   };
   todaySchedule: AppointmentDto[];
   weeklyChart: { label: string; value: number }[];
+  recentReviews: ReviewDto[];
+}
+
+export interface MedicalRecordInput {
+  reason: string;
+  symptoms?: string;
+  existingConditions?: string;
+  diagnosis?: string;
+  treatment?: string;
+  notes?: string;
+}
+
+export interface PaymentRowDto {
+  id: string;
+  appointmentId: string;
+  amount: number;
+  platformFee?: number | null;
+  doctorAmount?: number | null;
+  method: string;
+  status: 'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED';
+  paidAt?: string | null;
+  refundedAt?: string | null;
+  transactionId?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  appointment: {
+    id: string;
+    date: string;
+    time: string;
+    modality: string;
+    price: number;
+    patient: { id: string; user: { email: string; profile?: ProfileDto } };
+    doctor: { id: string; specialty: string; user: { profile?: ProfileDto } };
+    clinic: { id: string; name: string } | null;
+  };
 }
 
 export interface ClinicDto {
@@ -206,11 +350,28 @@ export interface RegisterBody {
   clinicEmail?: string;
   clinicWebsite?: string;
 
-  // DOCTOR (la app llena profesionales más adelante en setup)
+  // DOCTOR
   specialty?: string;
   licenseNumber?: string;
   experience?: number;
   pricePerConsult?: number;
+}
+
+export interface CreateAppointmentBody {
+  patientId: string;
+  doctorId: string;
+  clinicId?: string;
+  date: string;
+  time: string;
+  modality?: AppointmentModality;
+  price: number;
+  notes?: string;
+}
+
+export interface UpdateAppointmentBody {
+  status?: string;
+  notes?: string;
+  cancelReason?: string;
 }
 
 // ─── Auth API ────────────────────────────────────────────────────────────────
@@ -240,7 +401,7 @@ export const authApi = {
     apiPost<{ ok: true }>('/auth/resend-verification', { email }),
 };
 
-// ─── Domain APIs (consumidas por dashboards / pantallas autenticadas) ────────
+// ─── Domain APIs ──────────────────────────────────────────────────────────────
 
 export const dashboardApi = {
   clinic: () => apiGet<ClinicDashboardDto>('/dashboard/clinic'),
@@ -254,11 +415,119 @@ export const usersApi = {
     apiPatch<ProfileDto>(`/users/${id}/profile`, body),
 };
 
+export const doctorsApi = {
+  list: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<DoctorDto>>('/doctors', params),
+  getById: (id: string) => apiGet<DoctorDto>(`/doctors/${id}`),
+  update: (id: string, body: Partial<DoctorDto>) =>
+    apiPatch<DoctorDto>(`/doctors/${id}`, body),
+  getAvailability: (id: string) =>
+    apiGet<AvailabilityDto[]>(`/doctors/${id}/availability`),
+  upsertAvailability: (id: string, body: Partial<AvailabilityDto>) =>
+    apiPost<AvailabilityDto>(`/doctors/${id}/availability`, body),
+  deleteAvailability: (id: string, availId: string) =>
+    apiDelete(`/doctors/${id}/availability/${availId}`),
+  getSlots: (id: string, date: string) =>
+    apiGet<SlotDto[]>(`/doctors/${id}/slots`, { date }),
+  getReviews: (id: string, params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<ReviewDto>>(`/doctors/${id}/reviews`, params),
+};
+
+export const patientsApi = {
+  list: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<PatientDto>>('/patients', params),
+  getById: (id: string) => apiGet<PatientDto>(`/patients/${id}`),
+  update: (id: string, body: Partial<PatientDto>) =>
+    apiPatch<PatientDto>(`/patients/${id}`, body),
+};
+
+export const clinicsApi = {
+  list: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<ClinicDto>>('/clinics', params),
+  getById: (id: string) => apiGet<ClinicDto>(`/clinics/${id}`),
+  update: (id: string, body: Partial<ClinicDto>) =>
+    apiPatch<ClinicDto>(`/clinics/${id}`, body),
+  getDoctors: (id: string, params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<DoctorDto>>(`/clinics/${id}/doctors`, params),
+  /**
+   * Crea un médico nuevo asociado a la clínica con credenciales temporales.
+   * Devuelve { doctor, tempPassword } — el admin debe compartir tempPassword
+   * con el médico (también se le manda por email).
+   */
+  createDoctor: (
+    clinicId: string,
+    body: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      phone?: string;
+      specialty: string;
+      licenseNumber?: string;
+      experience?: number;
+      pricePerConsult?: number;
+      bio?: string;
+      consultDuration?: number;
+      languages?: string[];
+    },
+  ) =>
+    apiPost<{ doctor: DoctorDto; tempPassword: string }>(
+      `/clinics/${clinicId}/doctors`,
+      body,
+    ),
+};
+
 export const appointmentsApi = {
   list: (params?: Record<string, unknown>) =>
     apiGet<PaginatedData<AppointmentDto>>('/appointments', params),
   getById: (id: string) => apiGet<AppointmentDto>(`/appointments/${id}`),
+  create: (body: CreateAppointmentBody) =>
+    apiPost<AppointmentDto>('/appointments', body),
+  update: (id: string, body: UpdateAppointmentBody) =>
+    apiPatch<AppointmentDto>(`/appointments/${id}`, body),
   cancel: (id: string) => apiDelete<AppointmentDto>(`/appointments/${id}`),
+  createReview: (id: string, body: { rating: number; comment?: string; isPublic?: boolean }) =>
+    apiPost<ReviewDto>(`/appointments/${id}/review`, body),
+  confirmCompletion: (id: string) =>
+    apiPost<AppointmentDto>(`/appointments/${id}/confirm-completion`, {}),
+  getMedicalRecord: (id: string) =>
+    apiGet<MedicalRecordDto>(`/appointments/${id}/medical-record`),
+  checkin: (id: string, event: 'arrived' | 'patient_received' | 'no_show' | 'undo') =>
+    apiPost<AppointmentDto>(`/appointments/${id}/checkin`, { event }),
+  getPayment: (id: string) =>
+    apiGet<PaymentDto>(`/appointments/${id}/payment`),
+  upsertMedicalRecord: (id: string, body: MedicalRecordInput) =>
+    apiPost<MedicalRecordDto>(`/appointments/${id}/medical-record`, body),
+};
+
+export const chatApi = {
+  list: (id: string, since?: string) =>
+    apiGet<ChatThreadDto>(
+      `/appointments/${id}/messages`,
+      since ? { since } : undefined,
+    ),
+  send: (
+    id: string,
+    body: {
+      content: string;
+      attachmentUrl?: string;
+      attachmentName?: string;
+      attachmentMime?: string;
+    },
+  ) => apiPost<ChatMessageDto>(`/appointments/${id}/messages`, body),
+  remove: (id: string, messageId: string) =>
+    apiDelete<ChatMessageDto>(`/appointments/${id}/messages/${messageId}`),
+};
+
+export const paymentApi = {
+  checkout: (id: string, body: { responseUrl: string }) =>
+    apiPost<CheckoutSessionDto>(`/appointments/${id}/payment/checkout`, body),
+  confirm: (id: string, body: { payphoneId?: string; fakeOk?: boolean }) =>
+    apiPost<{ status: 'PAID' | 'FAILED' | 'PENDING' }>(
+      `/appointments/${id}/payment/confirm`,
+      body,
+    ),
+  list: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<PaymentRowDto>>('/payments', params),
 };
 
 export const notificationsApi = {
@@ -269,4 +538,152 @@ export const notificationsApi = {
     ),
   markRead: (id: string) =>
     apiPatch<NotificationDto>(`/notifications/${id}/read`, {}),
+  markAllRead: () =>
+    apiPost<{ updated: number }>('/notifications/read-all', {}),
+};
+
+// ─── Admin / Superadmin ──────────────────────────────────────────────────────
+
+export type PlanCode = 'FREE' | 'PRO' | 'PREMIUM';
+export type PlanAudience = 'DOCTOR' | 'CLINIC';
+
+export interface PlanDto {
+  id: string;
+  code: PlanCode;
+  audience: PlanAudience;
+  name: string;
+  description: string | null;
+  monthlyPrice: number;
+  modules: string[];
+  limits: Record<string, unknown> | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface SubscriptionDto {
+  id: string;
+  userId: string;
+  planId: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_PAYMENT';
+  startsAt: string;
+  expiresAt: string;
+  lastPaymentId: string | null;
+  autoRenew: boolean;
+  cancelledAt: string | null;
+  plan?: PlanDto;
+  user?: UserDto;
+}
+
+export interface AppSettingDto {
+  id: string;
+  key: string;
+  value: string | null;
+  category: string;
+  isSecret: boolean;
+  updatedAt: string;
+}
+
+export interface AdminStatsDto {
+  users: { total: number; patients: number; doctors: number; clinics: number };
+  appointments: { total: number };
+  revenue: { gross: number; platformFees: number; paidCount: number };
+  subscriptions: { active: number };
+}
+
+export interface AdminUserPatch {
+  email?: string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'DELETED' | 'PENDING_VERIFICATION';
+  profile?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    province?: string;
+    country?: string;
+    avatarUrl?: string;
+  };
+  clinic?: {
+    name?: string;
+    description?: string;
+    address?: string;
+    city?: string;
+    province?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    logoUrl?: string;
+  };
+  doctor?: {
+    specialty?: string;
+    licenseNumber?: string;
+    experience?: number;
+    pricePerConsult?: number;
+    bio?: string;
+    consultDuration?: number;
+    languages?: string[];
+    modalities?: ('ONLINE' | 'PRESENCIAL' | 'CHAT')[];
+    available?: boolean;
+  };
+  patient?: {
+    dateOfBirth?: string;
+    bloodType?: string;
+    allergies?: string[];
+    conditions?: string[];
+    medications?: string[];
+    notes?: string;
+  };
+}
+
+export const adminApi = {
+  stats: () => apiGet<AdminStatsDto>('/admin/stats'),
+  users: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<UserDto>>('/admin/users', params),
+  setUserStatus: (
+    id: string,
+    status: 'ACTIVE' | 'INACTIVE' | 'DELETED' | 'PENDING_VERIFICATION',
+  ) => apiPatch<UserDto>(`/admin/users/${id}`, { status }),
+  updateUserFull: (id: string, body: AdminUserPatch) =>
+    apiPatch<UserDto>(`/admin/users/${id}`, body),
+  deleteUser: (id: string) => apiDelete<UserDto>(`/admin/users/${id}`),
+  impersonate: (id: string) =>
+    apiPost<{ token: string; user: { id: string; email: string; role: string } }>(
+      `/admin/users/${id}/impersonate`,
+      {},
+    ),
+  createUser: (body: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    role: 'PATIENT' | 'DOCTOR' | 'CLINIC' | 'ADMIN';
+    clinicName?: string;
+    specialty?: string;
+  }) =>
+    apiPost<{ user: UserDto; tempPassword: string }>(
+      '/admin/users/create',
+      body,
+    ),
+
+  listPlans: () => apiGet<PlanDto[]>('/admin/plans'),
+  createPlan: (body: Partial<PlanDto>) =>
+    apiPost<PlanDto>('/admin/plans', body),
+  updatePlan: (id: string, body: Partial<PlanDto>) =>
+    apiPatch<PlanDto>(`/admin/plans/${id}`, body),
+  deletePlan: (id: string) => apiDelete<PlanDto>(`/admin/plans/${id}`),
+
+  subscriptions: (params?: Record<string, unknown>) =>
+    apiGet<PaginatedData<SubscriptionDto>>('/admin/subscriptions', params),
+  extendSubscription: (id: string, days: number) =>
+    apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/extend`, { days }),
+  changeSubscriptionPlan: (id: string, planId: string) =>
+    apiPost<SubscriptionDto>(
+      `/admin/subscriptions/${id}/change-plan`,
+      { planId },
+    ),
+
+  settings: () => apiGet<AppSettingDto[]>('/admin/settings'),
+  saveSettings: (values: Record<string, string | null>) =>
+    apiPatch<AppSettingDto[]>('/admin/settings', { values }),
 };
