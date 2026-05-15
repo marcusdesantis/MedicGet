@@ -13,6 +13,12 @@
  *   pantalla vuelve a tener foco. Saltea el primer foco (que coincide
  *   con el mount inicial, donde `useApi` ya hace su fetch) para evitar
  *   pedir el mismo recurso dos veces de entrada.
+ *
+ * Estabilidad:
+ *   Mantenemos `refetch` en una ref para que la callback de
+ *   `useFocusEffect` tenga identidad estable. Si el caller pasa un
+ *   `refetch` no-memoizado (que cambia en cada render), igual
+ *   funcionamos sin loopear — la callback no se invalida.
  */
 
 import { useCallback, useRef } from 'react';
@@ -20,6 +26,11 @@ import { useFocusEffect } from 'expo-router';
 
 export function useRefetchOnFocus(refetch: () => void): void {
   const skipFirst = useRef(true);
+  // Mantenemos el último `refetch` en una ref. Así la callback que le
+  // pasamos a `useFocusEffect` no depende de `refetch` y nunca se
+  // invalida — invocamos al refetch vigente a través de la ref.
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
 
   useFocusEffect(
     useCallback(() => {
@@ -27,7 +38,7 @@ export function useRefetchOnFocus(refetch: () => void): void {
         skipFirst.current = false;
         return;
       }
-      refetch();
-    }, [refetch]),
+      refetchRef.current();
+    }, []),
   );
 }

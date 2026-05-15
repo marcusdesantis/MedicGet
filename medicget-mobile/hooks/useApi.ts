@@ -3,7 +3,7 @@
  * Espejo simétrico del hook en el frontend web.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiOk } from '@/services/http';
 
 export interface ApiErrorInfo {
@@ -67,7 +67,12 @@ export function useApi<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
 
-  const refetch = () => setTick((n) => n + 1);
+  // `refetch` debe tener identidad estable entre renders. Si lo
+  // declaráramos como `() => setTick(...)` se recrearía en cada render
+  // y cualquier hook que lo use como dependencia (p. ej.
+  // `useRefetchOnFocus(refetch)`) se invalida en cada render y
+  // dispara un loop infinito ("maximum update depth exceeded").
+  const refetch = useCallback(() => setTick((n) => n + 1), []);
 
   return { state, refetch };
 }
