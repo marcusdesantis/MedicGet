@@ -13,7 +13,9 @@ import type {
   CreateReviewInput,
 } from './appointments.schemas';
 
-type ServiceResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string };
+type ServiceResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: string; message: string; details?: Record<string, unknown> };
 
 export const appointmentsService = {
   async list(
@@ -142,6 +144,13 @@ export const appointmentsService = {
       resolvedClinicId = doctor.clinicId;
     }
 
+    // Antes de chequear conflicto, corremos el sweep de PENDINGs
+    // expirados. Si el paciente intentó reservar antes, no pagó, y el
+    // sweep no había corrido aún, ese PENDING bloquea el slot
+    // indefinidamente. Acá lo limpiamos sincrónicamente para que el
+    // patient pueda re-reservar inmediatamente.
+    await paymentService.sweepExpired();
+
     // Check for conflicting appointment
     const existing = await prisma.appointment.findFirst({
       where: {
@@ -150,8 +159,35 @@ export const appointmentsService = {
         time: body.time,
         status: { notIn: ['CANCELLED'] },
       },
+      include: { patient: { select: { userId: true } } },
     });
-    if (existing) return { ok: false, code: 'CONFLICT', message: 'That slot is already booked' };
+    if (existing) {
+      // Si el conflicto es con una cita del MISMO paciente, devolvemos
+      // detalles (id, status) para que el frontend ofrezca acciones:
+      //   - "Pagar la cita pendiente" (si todavía está dentro del
+      //     plazo de 15 min)
+      //   - "Cancelar y reservar de nuevo" (si quedó stuck o el plazo
+      //     expiró antes del sweep)
+      // Si el conflicto es con otro paciente, devolvemos sólo el
+      // mensaje genérico — no exponemos info ajena.
+      const isSamePatient = existing.patient.userId === user.id;
+      return {
+        ok: false,
+        code: 'CONFLICT',
+        message: isSamePatient
+          ? 'Ya tenés una cita reservada para este horario.'
+          : 'Ese horario ya está reservado por otro paciente. Elegí otro.',
+        ...(isSamePatient
+          ? {
+              details: {
+                existingAppointmentId: existing.id,
+                existingStatus: existing.status,
+                ownedByCaller: true,
+              },
+            }
+          : {}),
+      } as { ok: false; code: string; message: string };
+    }
 
     // Find slot if available
     const slot = await prisma.appointmentSlot.findFirst({

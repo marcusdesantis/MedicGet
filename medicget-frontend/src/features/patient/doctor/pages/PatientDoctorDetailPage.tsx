@@ -110,6 +110,12 @@ export function PatientDoctorDetailPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
   const [notes,        setNotes]      = useState('');
+  // Cuando el backend devuelve CONFLICT por una cita previa del MISMO
+  // paciente (PENDING sin pagar), guardamos su id para ofrecer
+  // acciones inline. El backend manda `details.existingAppointmentId`
+  // junto con `details.ownedByCaller=true`.
+  const [conflict, setConflict] = useState<{ appointmentId: string; status: string } | null>(null);
+  const [cancellingConflict, setCancellingConflict] = useState(false);
   /**
    * Modalidad de la cita. Default ONLINE pero ajustamos al primer valor
    * aceptado por el doctor en cuanto carga el perfil — así nunca queda
@@ -169,6 +175,7 @@ export function PatientDoctorDetailPage() {
     if (!bookingSlot || !patientId) return;
     setSubmitting(true);
     setSubmitError(null);
+    setConflict(null);
     try {
       const res = await appointmentsApi.create({
         patientId,
@@ -185,12 +192,54 @@ export function PatientDoctorDetailPage() {
       });
       setConfirmedId(res.data.id);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ?? 'No se pudo crear la cita';
+      const errBody = (err as {
+        response?: {
+          data?: {
+            error?: {
+              code?:    string;
+              message?: string;
+              details?: {
+                existingAppointmentId?: string;
+                existingStatus?:        string;
+                ownedByCaller?:         boolean;
+              };
+            };
+          };
+        };
+      })?.response?.data?.error;
+      const msg = errBody?.message ?? 'No se pudo crear la cita';
+      // CONFLICT con cita propia del paciente → acciones inline.
+      if (
+        errBody?.code === 'CONFLICT' &&
+        errBody?.details?.ownedByCaller &&
+        errBody?.details?.existingAppointmentId
+      ) {
+        setConflict({
+          appointmentId: errBody.details.existingAppointmentId,
+          status:        errBody.details.existingStatus ?? 'PENDING',
+        });
+      }
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Cancela la cita conflictiva del paciente y limpia el banner.
+  const cancelConflict = async () => {
+    if (!conflict) return;
+    setCancellingConflict(true);
+    try {
+      await appointmentsApi.update(conflict.appointmentId, { status: 'CANCELLED' });
+      setConflict(null);
+      setSubmitError(null);
+      slotsState.refetch();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'No se pudo cancelar la cita anterior';
+      setSubmitError(msg);
+    } finally {
+      setCancellingConflict(false);
     }
   };
 
@@ -424,10 +473,37 @@ export function PatientDoctorDetailPage() {
                 </div>
               )}
 
+              {conflict && (
+                <div className="mt-3 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    Ya tenés una reserva en este horario
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    Tu reserva anterior quedó pendiente. Podés terminar el pago o cancelarla y reservar de nuevo.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                    <Link
+                      to={`/payment/checkout/${conflict.appointmentId}`}
+                      className="flex-1 inline-flex items-center justify-center bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded-lg"
+                    >
+                      Pagar la pendiente
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={cancelConflict}
+                      disabled={cancellingConflict}
+                      className="flex-1 inline-flex items-center justify-center bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 text-rose-600 text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50"
+                    >
+                      {cancellingConflict ? 'Cancelando…' : 'Cancelar y reintentar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-5 flex flex-col sm:flex-row gap-3">
                 <Button
                   onClick={handleBook}
-                  disabled={submitting || !patientId}
+                  disabled={submitting || !patientId || !!conflict}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? 'Reservando...' : 'Confirmar reserva'}

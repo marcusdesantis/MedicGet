@@ -115,6 +115,16 @@ export default function DoctorDetail() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
+  // Cuando el backend devuelve CONFLICT por una cita previa del MISMO
+  // paciente (PENDING sin pagar), guardamos su id para ofrecer
+  // acciones inline ("Pagar la pendiente" / "Cancelar y volver a
+  // intentar"). El backend manda `details.existingAppointmentId`
+  // junto con `details.ownedByCaller=true`.
+  const [conflict, setConflict] = useState<{
+    appointmentId: string;
+    status: string;
+  } | null>(null);
+  const [cancellingConflict, setCancellingConflict] = useState(false);
 
   useEffect(() => {
     setBookingSlot(null);
@@ -187,6 +197,7 @@ export default function DoctorDetail() {
     if (!bookingSlot || !patientId) return;
     setSubmitting(true);
     setSubmitError(null);
+    setConflict(null);
     try {
       const res = await appointmentsApi.create({
         patientId,
@@ -200,12 +211,63 @@ export default function DoctorDetail() {
       });
       setConfirmedId(res.data.id);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ?? 'No se pudo crear la cita';
+      const errBody = (err as {
+        response?: {
+          data?: {
+            error?: {
+              code?: string;
+              message?: string;
+              details?: {
+                existingAppointmentId?: string;
+                existingStatus?: string;
+                ownedByCaller?: boolean;
+              };
+            };
+          };
+        };
+      })?.response?.data?.error;
+      const msg = errBody?.message ?? 'No se pudo crear la cita';
+      // CONFLICT con cita propia del paciente → ofrecemos acciones
+      // inline (pagar / cancelar y reintentar).
+      if (
+        errBody?.code === 'CONFLICT' &&
+        errBody?.details?.ownedByCaller &&
+        errBody?.details?.existingAppointmentId
+      ) {
+        setConflict({
+          appointmentId: errBody.details.existingAppointmentId,
+          status: errBody.details.existingStatus ?? 'PENDING',
+        });
+      }
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /**
+   * Cancela la cita previa del paciente (la que está bloqueando el
+   * slot) y limpia el estado para que reintente la reserva.
+   */
+  const cancelConflict = async () => {
+    if (!conflict) return;
+    setCancellingConflict(true);
+    try {
+      await appointmentsApi.update(conflict.appointmentId, {
+        status: 'CANCELLED',
+      });
+      setConflict(null);
+      setSubmitError(null);
+      // Refrescamos los slots del día para reflejar el slot liberado.
+      slotsState.refetch();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ??
+        'No se pudo cancelar la cita anterior';
+      setSubmitError(msg);
+    } finally {
+      setCancellingConflict(false);
     }
   };
 
@@ -458,10 +520,43 @@ export default function DoctorDetail() {
               </View>
             ) : null}
 
+            {conflict ? (
+              <View className="mt-3 rounded-2xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+                <Text className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  Ya tenés una reserva en este horario
+                </Text>
+                <Text className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  Tu reserva anterior quedó pendiente. Podés terminar el
+                  pago o cancelarla y reservar de nuevo.
+                </Text>
+                <View className="flex-row gap-2 mt-3">
+                  <Pressable
+                    onPress={() =>
+                      router.push(
+                        `/(main)/(patient)/payment/checkout/${conflict.appointmentId}` as never,
+                      )
+                    }
+                    className="flex-1 bg-amber-600 active:bg-amber-700 py-2 rounded-lg items-center">
+                    <Text className="text-white text-sm font-semibold">
+                      Pagar la pendiente
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={cancelConflict}
+                    disabled={cancellingConflict}
+                    className="flex-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 py-2 rounded-lg items-center">
+                    <Text className="text-rose-600 text-sm font-semibold">
+                      {cancellingConflict ? 'Cancelando…' : 'Cancelar y reintentar'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+
             <View className="mt-4 gap-2">
               <Button
                 onPress={handleBook}
-                disabled={submitting || !patientId}
+                disabled={submitting || !patientId || !!conflict}
                 loading={submitting}
                 fullWidth>
                 Confirmar reserva

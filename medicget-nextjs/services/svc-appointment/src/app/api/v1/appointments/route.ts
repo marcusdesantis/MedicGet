@@ -28,6 +28,6 @@ export const POST = withRole(['PATIENT', 'CLINIC'], async (req: NextRequest, { u
   if ('error' in parsed) return parsed.error;
 
   const result = await appointmentsService.create(parsed.data, user);
-  if (!result.ok) return apiError(result.code, result.message);
+  if (!result.ok) return apiError(result.code, result.message, result.details);
   return apiOk(result.data, 'Appointment created', { status: 201 });
 });

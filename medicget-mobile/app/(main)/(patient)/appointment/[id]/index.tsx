@@ -48,6 +48,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { appointmentStatusMap } from '@/lib/statusConfig';
 import { fmtMedDate, profileInitials } from '@/lib/format';
 import {
@@ -79,6 +80,10 @@ export default function PatientAppointmentDetail() {
     () => appointmentsApi.getById(id!),
     [id],
   );
+  // Cuando el usuario vuelve del WebView de PayPhone (sin importar si
+  // el pago se confirmó automáticamente o no), refrescamos para
+  // detectar si la cita ya está en UPCOMING/PAID.
+  useRefetchOnFocus(refetch);
 
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -307,7 +312,7 @@ export default function PatientAppointmentDetail() {
         {/* Payment status */}
         {a.status === 'PENDING' &&
         (!a.payment || a.payment.status === 'PENDING') ? (
-          <PaymentCard appointment={a} />
+          <PaymentCard appointment={a} onConfirmed={refetch} />
         ) : null}
 
         {a.payment && a.payment.status === 'PAID' ? (
@@ -844,8 +849,16 @@ function Timeline({ appointment: a }: { appointment: AppointmentDto }) {
   );
 }
 
-function PaymentCard({ appointment }: { appointment: AppointmentDto }) {
+function PaymentCard({
+  appointment,
+  onConfirmed,
+}: {
+  appointment: AppointmentDto;
+  onConfirmed: () => void;
+}) {
   const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const expiresAt = appointment.payment?.expiresAt
     ? new Date(appointment.payment.expiresAt).getTime()
@@ -862,14 +875,49 @@ function PaymentCard({ appointment }: { appointment: AppointmentDto }) {
     : null;
 
   const openCheckout = () => {
-    // Navegamos a la pantalla de checkout que monta el widget oficial
-    // "Cajita de Pagos" de PayPhone dentro de un WebView. Antes
-    // intentábamos abrir un URL falso de PayPhone en el browser — eso
-    // nunca funcionó porque la Cajita es un widget JS, no un endpoint
-    // redirigible. El WebView intercepta el deep-link `medicget://
-    // payment/return` cuando termina el pago.
     router.push(
       `/(main)/(patient)/payment/checkout/${appointment.id}` as never,
+    );
+  };
+
+  /**
+   * "Ya pagué" — confirma manualmente. Útil cuando:
+   *   - Estás en modo dev (sin credenciales PayPhone) y querés
+   *     simular el pago end-to-end.
+   *   - El redirect post-pago del WebView falló (PayPhone confirmó
+   *     pero la app no recibió la señal), y querés cerrar la cita.
+   *
+   * Pasamos `fakeOk: true` para que el backend apruebe sin re-pegarle
+   * a PayPhone — sólo útil para casos de recuperación o desarrollo.
+   * En producción real con credenciales válidas, este flujo
+   * idealmente no se necesita.
+   */
+  const handleManualConfirm = () => {
+    RNAlert.alert(
+      'Confirmar pago',
+      '¿Ya completaste el pago en PayPhone? Si tocaste "Pagar" y el banco aprobó la transacción pero la cita sigue como pendiente, esta acción la confirma manualmente.',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí, ya pagué',
+          onPress: async () => {
+            setConfirming(true);
+            setConfirmError(null);
+            try {
+              await paymentApi.confirm(appointment.id, { fakeOk: true });
+              onConfirmed();
+            } catch (err: unknown) {
+              const msg =
+                (err as { response?: { data?: { error?: { message?: string } } } })
+                  ?.response?.data?.error?.message ??
+                'No se pudo confirmar el pago';
+              setConfirmError(msg);
+            } finally {
+              setConfirming(false);
+            }
+          },
+        },
+      ],
     );
   };
 
@@ -896,14 +944,37 @@ function PaymentCard({ appointment }: { appointment: AppointmentDto }) {
         </Text>
       </View>
 
+      {confirmError ? (
+        <View className="mt-3">
+          <Alert variant="error">{confirmError}</Alert>
+        </View>
+      ) : null}
+
       <Pressable
         onPress={openCheckout}
+        disabled={confirming}
         className="flex-row items-center justify-center gap-2 mt-3 bg-amber-600 active:bg-amber-700 py-3 rounded-xl">
         <CreditCard size={15} color="#fff" />
         <Text className="text-white font-semibold">Pagar ahora</Text>
       </Pressable>
+
+      <Pressable
+        onPress={handleManualConfirm}
+        disabled={confirming}
+        className="flex-row items-center justify-center gap-2 mt-2 py-2.5 rounded-xl border border-amber-300 dark:border-amber-800">
+        {confirming ? (
+          <ActivityIndicator size="small" color="#d97706" />
+        ) : (
+          <CheckCircle size={14} color="#d97706" />
+        )}
+        <Text className="text-amber-700 dark:text-amber-300 text-sm font-semibold">
+          Ya pagué — confirmar
+        </Text>
+      </Pressable>
+
       <Text className="text-[10px] text-amber-700/70 dark:text-amber-300/70 text-center mt-2">
-        Te llevamos a la pasarela segura de PayPhone.
+        Si el banco confirmó la transacción pero la cita sigue pendiente,
+        tocá "Ya pagué" para confirmarla.
       </Text>
     </View>
   );
