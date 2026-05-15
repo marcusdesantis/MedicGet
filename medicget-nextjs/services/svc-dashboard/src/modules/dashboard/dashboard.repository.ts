@@ -206,6 +206,12 @@ export async function getDoctorDashboard(doctorId: string) {
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
 
+  // El médico no debe ver citas PENDING (impagas) en el dashboard. Una
+  // cita está en PENDING mientras el paciente todavía no completó el
+  // pago — el sweeper la auto-cancela en 15 min si no paga. Las
+  // citas confirmadas pasan a UPCOMING al confirmar el pago.
+  const VISIBLE_STATUSES = ['UPCOMING', 'ONGOING', 'COMPLETED', 'NO_SHOW'];
+
   const [
     todayCount,
     weekCount,
@@ -218,15 +224,17 @@ export async function getDoctorDashboard(doctorId: string) {
     recentReviews,
   ] = await Promise.all([
     prisma.appointment.count({
-      where: { doctorId, date: { gte: todayStart, lte: todayEnd } },
+      where: { doctorId, date: { gte: todayStart, lte: todayEnd }, status: { in: VISIBLE_STATUSES as never } },
     }),
     prisma.appointment.count({
-      where: { doctorId, date: { gte: weekStart, lte: weekEnd } },
+      where: { doctorId, date: { gte: weekStart, lte: weekEnd }, status: { in: VISIBLE_STATUSES as never } },
     }),
     prisma.appointment.count({
-      where: { doctorId, date: { gte: monthStart, lte: monthEnd } },
+      where: { doctorId, date: { gte: monthStart, lte: monthEnd }, status: { in: VISIBLE_STATUSES as never } },
     }),
-    prisma.appointment.count({ where: { doctorId, status: 'PENDING' } }),
+    // `pendingCount` ahora cuenta UPCOMING (pendientes de atender) — antes
+    // contaba PENDING (pendientes de pago) que el médico ni siquiera ve.
+    prisma.appointment.count({ where: { doctorId, status: 'UPCOMING' } }),
     prisma.appointment.count({ where: { doctorId, status: 'COMPLETED' } }),
     prisma.review.aggregate({
       where: { doctorId },
@@ -240,7 +248,9 @@ export async function getDoctorDashboard(doctorId: string) {
       where: {
         doctorId,
         date: { gte: todayStart, lte: todayEnd },
-        status: { notIn: ['CANCELLED'] },
+        // Excluímos CANCELLED y PENDING — la agenda de hoy del médico
+        // sólo muestra citas pagadas y confirmadas.
+        status: { notIn: ['CANCELLED', 'PENDING'] },
       },
       include: {
         patient: { include: { user: { include: { profile: true } } } },

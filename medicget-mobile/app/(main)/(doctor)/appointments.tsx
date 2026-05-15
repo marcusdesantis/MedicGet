@@ -50,12 +50,16 @@ import {
   type AppointmentDto,
 } from '@/lib/api';
 
-const TABS = ['Todas', 'Pendientes', 'Próximas', 'Completadas', 'Canceladas'] as const;
+// El médico no ve citas PENDING (impagas) — el backend las filtra
+// porque mientras el paciente no completa el pago, la cita no se
+// considera confirmada. Por eso no hay tab "Pendientes" en la agenda
+// del médico (a diferencia del paciente, que sí necesita verlas para
+// completar el pago).
+const TABS = ['Todas', 'Próximas', 'Completadas', 'Canceladas'] as const;
 type TabType = (typeof TABS)[number];
 
 const TAB_STATUSES: Record<TabType, string[] | null> = {
   Todas: null,
-  Pendientes: ['PENDING'],
   Próximas: ['UPCOMING', 'ONGOING'],
   Completadas: ['COMPLETED'],
   Canceladas: ['CANCELLED', 'NO_SHOW'],

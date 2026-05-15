@@ -187,6 +187,17 @@ export interface CheckoutSessionDto {
   responseUrl: string;
   stubMode: boolean;
   expiresAt: string;
+  /** Desglose honorarios + comisión + total. El backend lo agrega a la
+   *  respuesta del checkout aunque no esté en el shape oficial de la
+   *  Cajita. */
+  breakdown?: PaymentBreakdownDto;
+}
+
+export interface PaymentBreakdownDto {
+  baseAmount: number;
+  platformFee: number;
+  totalAmount: number;
+  feePct: number;
 }
 
 export interface AppointmentDto {

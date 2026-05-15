@@ -4,12 +4,18 @@ import { toSkipTake } from '@medicget/shared/paginate';
 import type { Prisma } from '@prisma/client';
 
 export interface AppointmentFilters {
-  status?:   string;
-  dateFrom?: string;
-  dateTo?:   string;
-  doctorId?: string;
+  status?:    string;
+  /**
+   * Lista de status a EXCLUIR. Usado por el service para ocultar
+   * automáticamente citas PENDING (impagas) del listado del médico —
+   * no debería ver reservas hasta que el paciente complete el pago.
+   */
+  statusNotIn?: string[];
+  dateFrom?:  string;
+  dateTo?:    string;
+  doctorId?:  string;
   patientId?: string;
-  clinicId?: string;
+  clinicId?:  string;
 }
 
 /**
@@ -52,6 +58,12 @@ function buildWhere(filters: AppointmentFilters): Prisma.AppointmentWhereInput {
 
   if (filters.status) {
     where.status = filters.status as Prisma.EnumAppointmentStatusFilter;
+  } else if (filters.statusNotIn && filters.statusNotIn.length > 0) {
+    // Sólo aplica cuando NO hay filtro explícito de status — si el caller
+    // pidió un status concreto respetamos su intención.
+    where.status = {
+      notIn: filters.statusNotIn as Prisma.EnumAppointmentStatusFilter['notIn'],
+    } as Prisma.EnumAppointmentStatusFilter;
   }
   if (filters.doctorId) {
     where.doctorId = filters.doctorId;

@@ -845,8 +845,7 @@ function Timeline({ appointment: a }: { appointment: AppointmentDto }) {
 }
 
 function PaymentCard({ appointment }: { appointment: AppointmentDto }) {
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   const expiresAt = appointment.payment?.expiresAt
     ? new Date(appointment.payment.expiresAt).getTime()
@@ -862,32 +861,16 @@ function PaymentCard({ appointment }: { appointment: AppointmentDto }) {
     ? Math.max(0, Math.floor((expiresAt - now) / 60_000))
     : null;
 
-  const openCheckout = async () => {
-    setGenerating(true);
-    setError(null);
-    try {
-      // Solicitamos sesión de checkout al backend (PayPhone) y abrimos su
-      // página oficial — el deep-link de retorno cae en la web, que
-      // confirma el pago. El paciente vuelve a la app y la cita queda en
-      // estado UPCOMING/PAID al pull-to-refresh.
-      // Mandamos el appointmentId como query del deep-link para que la
-      // pantalla `payment/return` sepa qué cita confirmar al volver.
-      // expo-router resuelve `medicget://payment/return` al fichero
-      // `app/(main)/(patient)/payment/return.tsx` (los grupos en
-      // paréntesis son invisibles en la URL).
-      const responseUrl = `medicget://payment/return?appointmentId=${appointment.id}`;
-      const res = await paymentApi.checkout(appointment.id, { responseUrl });
-      const url = `https://pay.payphonetodoesposible.com/api/Sale?token=${res.data.token}&storeId=${res.data.storeId}`;
-      await Linking.openURL(url);
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ??
-        'No se pudo generar el enlace de pago';
-      setError(msg);
-    } finally {
-      setGenerating(false);
-    }
+  const openCheckout = () => {
+    // Navegamos a la pantalla de checkout que monta el widget oficial
+    // "Cajita de Pagos" de PayPhone dentro de un WebView. Antes
+    // intentábamos abrir un URL falso de PayPhone en el browser — eso
+    // nunca funcionó porque la Cajita es un widget JS, no un endpoint
+    // redirigible. El WebView intercepta el deep-link `medicget://
+    // payment/return` cuando termina el pago.
+    router.push(
+      `/(main)/(patient)/payment/checkout/${appointment.id}` as never,
+    );
   };
 
   return (
@@ -913,25 +896,11 @@ function PaymentCard({ appointment }: { appointment: AppointmentDto }) {
         </Text>
       </View>
 
-      {error ? (
-        <View className="mt-3">
-          <Alert variant="error">{error}</Alert>
-        </View>
-      ) : null}
-
       <Pressable
         onPress={openCheckout}
-        disabled={generating}
         className="flex-row items-center justify-center gap-2 mt-3 bg-amber-600 active:bg-amber-700 py-3 rounded-xl">
-        {generating ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <CreditCard size={15} color="#fff" />
-        )}
-        <Text className="text-white font-semibold">
-          {generating ? 'Generando enlace...' : 'Pagar ahora'}
-        </Text>
-        {!generating ? <ExternalLink size={13} color="#fff" /> : null}
+        <CreditCard size={15} color="#fff" />
+        <Text className="text-white font-semibold">Pagar ahora</Text>
       </Pressable>
       <Text className="text-[10px] text-amber-700/70 dark:text-amber-300/70 text-center mt-2">
         Te llevamos a la pasarela segura de PayPhone.

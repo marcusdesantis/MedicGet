@@ -96,6 +96,12 @@ export default function PatientLayout() {
             href: null,
           }}
         />
+        <Tabs.Screen
+          name="payment/checkout/[id]"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
     </ProtectedRoute>
   );

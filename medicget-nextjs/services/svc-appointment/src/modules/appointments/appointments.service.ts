@@ -62,6 +62,18 @@ export const appointmentsService = {
       if (rawFilters['patientId']) filters.patientId = rawFilters['patientId'];
     }
 
+    // El médico NO debe ver citas PENDING (impagas). Mientras el
+    // paciente no completa el pago, la cita reserva el slot pero no
+    // genera notificación ni email — el médico recibe la cita (UPCOMING
+    // + notificación) recién cuando `paymentService.confirm` aprueba
+    // el cobro. Si el paciente no paga en 15 min, el sweeper auto-cancela.
+    //
+    // Sólo aplicamos el filtro cuando NO pidió explícitamente un status
+    // — si necesita ver pendientes (auditoría) puede pasar `?status=PENDING`.
+    if (user.role === 'DOCTOR' && !rawFilters['status']) {
+      filters.statusNotIn = ['PENDING'];
+    }
+
     const { data, total } = await appointmentsRepository.findMany(filters, pagination);
     return { ok: true, data: paginate(data, total, pagination) };
   },
