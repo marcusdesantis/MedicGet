@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  useColorScheme,
   View,
 } from 'react-native';
 import { ReactNode } from 'react';
@@ -29,6 +30,11 @@ export function Screen({
   className = '',
   contentClassName = '',
 }: ScreenProps) {
+  const scheme = useColorScheme();
+  // En dark mode el texto/iconos de la barra de estado tienen que ser
+  // claros para contrastar con el fondo slate-950. Sin esto las horas
+  // y el reloj se ven negros sobre negro.
+  const statusBarStyle = scheme === 'dark' ? 'light-content' : 'dark-content';
   const Inner = scroll ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -52,7 +58,7 @@ export function Screen({
       className={['flex-1 bg-slate-50 dark:bg-slate-950', className]
         .filter(Boolean)
         .join(' ')}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle={statusBarStyle} />
       {avoidKeyboard ? (
         <KeyboardAvoidingView
           style={{ flex: 1 }}

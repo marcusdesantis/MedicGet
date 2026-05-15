@@ -14,17 +14,16 @@ import {
   Users,
 } from 'lucide-react-native';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { useTabBarStyle } from '@/components/layout/useTabBarStyle';
 
 export default function ClinicLayout() {
+  const tabBar = useTabBarStyle('#4f46e5');
   return (
     <ProtectedRoute allowedRole="clinic">
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#4f46e5',
-          tabBarInactiveTintColor: '#94a3b8',
-          tabBarStyle: { borderTopColor: '#e2e8f0' },
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+          ...tabBar,
         }}>
         <Tabs.Screen
           name="index"
