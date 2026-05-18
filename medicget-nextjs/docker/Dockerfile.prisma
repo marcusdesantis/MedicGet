@@ -1,0 +1,69 @@
+# =============================================================================
+# Dockerfile.prisma — imagen one-shot para correr comandos de Prisma sobre
+# la DB en producción (migrate deploy, db seed, studio).
+#
+# Build context : medicget-nextjs/  (mismo que Dockerfile.service)
+# Uso           : se invoca via `docker compose --profile tools run --rm prisma <script>`
+#                 donde <script> es uno de los `prisma:*` definidos en
+#                 packages/shared/package.json. Por default corre prisma:deploy.
+#
+# Ejemplos:
+#   docker compose --profile tools run --rm prisma                  # = prisma:deploy
+#   docker compose --profile tools run --rm prisma prisma:deploy    # idem
+#   docker compose --profile tools run --rm prisma prisma:seed      # corre el seed
+#   docker compose --profile tools run --rm prisma prisma:studio    # abre Studio
+# =============================================================================
+
+FROM node:20-alpine
+WORKDIR /app
+
+# OpenSSL es requisito de Prisma (detecta versión en `generate` y la usa en runtime).
+# ts-node necesita una toolchain de TS para correr seed.ts on-the-fly.
+RUN apk add --no-cache openssl ca-certificates
+
+# ── Manifests del workspace ──────────────────────────────────────────────────
+# Necesitamos TODOS los package.json para que npm resuelva el workspace,
+# incluso si solo vamos a usar @medicget/shared.
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY services/svc-auth/package.json        ./services/svc-auth/
+COPY services/svc-users/package.json       ./services/svc-users/
+COPY services/svc-clinic/package.json      ./services/svc-clinic/
+COPY services/svc-doctor/package.json      ./services/svc-doctor/
+COPY services/svc-patient/package.json     ./services/svc-patient/
+COPY services/svc-appointment/package.json ./services/svc-appointment/
+COPY services/svc-dashboard/package.json   ./services/svc-dashboard/
+COPY services/svc-admin/package.json       ./services/svc-admin/
+
+# Configurar npm con timeouts altos + reintentos para sobrevivir a cortes
+# de CDN cuando se baja el engine de Prisma o ts-node.
+RUN npm config set fetch-timeout 600000 && \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm install --no-audit --no-fund
+
+# ── Schema + migraciones + seed ─────────────────────────────────────────────
+# Copiamos el shared completo: incluye prisma/schema.prisma, prisma/migrations/
+# y prisma/seed.ts. Cualquier cambio acá invalida el build de este stage.
+COPY packages/shared/ ./packages/shared/
+
+# Generar el Prisma client (necesario para que el seed pueda hacer `new PrismaClient()`).
+# Wrap con retries por si el CDN binaries.prisma.sh tiene cortes pasajeros.
+WORKDIR /app/packages/shared
+RUN for i in 1 2 3 4 5; do \
+      npx prisma generate --schema=./prisma/schema.prisma && break; \
+      echo "[prisma] generate attempt $i failed — retrying in 15s..." >&2; \
+      sleep 15; \
+    done
+
+# El WORKDIR queda en packages/shared para que:
+#   1. `npm run prisma:*` encuentre los scripts del package.json local.
+#   2. `prisma db seed` lea el campo `prisma.seed` del package.json de shared.
+#   3. Las rutas `./prisma/schema.prisma` de los scripts resuelvan bien.
+
+# Por default corre el script de deploy (idempotente — aplica migraciones
+# pendientes, no rompe si la DB ya está al día). Los otros scripts se
+# invocan pasando su nombre como argumento.
+ENTRYPOINT ["npm", "run"]
+CMD ["prisma:deploy"]

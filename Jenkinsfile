@@ -61,6 +61,31 @@ pipeline {
       }
     }
 
+    stage('Run DB migrations') {
+      steps {
+        // Aplicar migraciones ANTES de levantar los servicios — sino el
+        // código nuevo puede intentar usar tablas que aún no existen y
+        // tirar errores en producción.
+        //
+        // `--profile tools` activa el servicio prisma (que está oculto por
+        // default). `run --rm` lo ejecuta one-shot y borra el container.
+        // `prisma:deploy` aplica solo migraciones pendientes — es
+        // idempotente, así que correrlo en cada deploy no rompe nada
+        // aunque no haya migraciones nuevas.
+        //
+        // Si el build de la imagen prisma falla (p. ej. cambios al schema
+        // que rompen la generación del client), el deploy aborta acá —
+        // queremos que sea así para no dejar la DB en un estado
+        // inconsistente con el código deployado.
+        dir("${DEPLOY_DIR}") {
+          sh '''
+            docker compose --profile tools build prisma
+            docker compose --profile tools run --rm prisma
+          '''
+        }
+      }
+    }
+
     stage('Build & deploy') {
       steps {
         // El docker-compose.yml vive en la raíz; lo ejecutamos desde

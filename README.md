@@ -80,3 +80,7 @@ npm run start
 ```
 
 Cada subproyecto tiene su propio README con detalles.
+
+## Deploy a producción
+
+Toda la guía para desplegar MedicGet en un VPS usando Jenkins (desde provisionar el servidor hasta correr migraciones) está en [`DEPLOYMENT.md`](./DEPLOYMENT.md).
