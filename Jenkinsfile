@@ -3,15 +3,15 @@
 //
 // Estrategia: build & deploy en el mismo host donde corre Jenkins.
 //   1. Checkout del repo (Jenkins lo trae a su workspace)
-//   2. Sincronizar el checkout a /srv/medicget (donde vive el .env de prod)
+//   2. Sincronizar el checkout a /proyectos/opt/medicget (donde vive el .env de prod)
 //   3. docker compose up -d --build → reconstruye lo que cambió y reemplaza contenedores
 //   4. Smoke test del endpoint de health
 //
 // Para que esto funcione necesitás:
 //   • Jenkins corriendo con acceso al docker.sock del host (ver guía).
-//   • /srv/medicget existe y contiene el .env con las vars de producción.
+//   • /proyectos/opt/medicget existe y contiene el .env con las vars de producción.
 //   • El usuario `jenkins` (UID 1000 dentro del container) puede escribir
-//     en /srv/medicget (ya lo dejaste con chown deploy:deploy y montaste
+//     en /proyectos/opt/medicget (ya lo dejaste con chown deploy:deploy y montaste
 //     el volumen; si tenés permission errors, ajustá ACLs).
 // =============================================================================
 
@@ -25,7 +25,7 @@ pipeline {
   }
 
   environment {
-    DEPLOY_DIR = '/srv/medicget'
+    DEPLOY_DIR = '/proyectos/opt/medicget'
     COMPOSE_PROJECT_NAME = 'medicget'
   }
 
@@ -45,10 +45,10 @@ pipeline {
       }
     }
 
-    stage('Sync sources to /srv/medicget') {
+    stage('Sync sources to /proyectos/opt/medicget') {
       steps {
         // Rsync del workspace a la carpeta de deploy. Preservamos el .env
-        // (no está en git pero sí en /srv/medicget). Por eso excluimos
+        // (no está en git pero sí en /proyectos/opt/medicget). Por eso excluimos
         // .env del rsync con --exclude.
         sh '''
           rsync -a --delete \
@@ -64,7 +64,7 @@ pipeline {
     stage('Build & deploy') {
       steps {
         // El docker-compose.yml vive en la raíz; lo ejecutamos desde
-        // /srv/medicget para que respete las rutas relativas y el .env.
+        // /proyectos/opt/medicget para que respete las rutas relativas y el .env.
         dir("${DEPLOY_DIR}") {
           sh '''
             docker compose pull --ignore-pull-failures || true
