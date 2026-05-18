@@ -10,8 +10,12 @@
  *   /api/v1/appointments/* → svc-appointment :4006
  *   /api/v1/dashboard/*    → svc-dashboard   :4007
  *
- * For local dev without Docker set VITE_API_URL in .env.local, e.g.:
- *   VITE_API_URL=http://localhost:4001/api/v1   (hit a single service directly)
+ * For local dev without Docker set VITE_API_BASE_URL in .env.local, e.g.:
+ *   VITE_API_BASE_URL=http://localhost:4001/api/v1   (hit a single service directly)
+ *
+ * En producción (docker / VPS), la variable se inyecta como --build-arg al
+ * `vite build` desde el docker-compose, y queda HARDCODEADA en el bundle JS.
+ * Cambiar la URL del backend requiere rebuild de la imagen del frontend.
  */
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
@@ -21,8 +25,11 @@ import { toast } from 'sonner';
 
 export const TOKEN_KEY = 'medicget_token';
 
-/** Single nginx gateway — all routes go through port 8080 */
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api/v1';
+/** Single nginx gateway — all routes go through port 8080.
+ *  Nombre alineado con `.env.example`, Dockerfile y `vite-env.d.ts`.
+ *  ADVERTENCIA: Vite resuelve `import.meta.env.VITE_*` en BUILD, no en runtime
+ *  — el valor queda embebido en el bundle final servido por nginx. */
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 
