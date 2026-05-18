@@ -1,0 +1,47 @@
+# =============================================================================
+# .dockerignore — qué NO copiar al build context del frontend.
+# Mantener mínimo lo que entra al docker daemon acelera mucho el build.
+# =============================================================================
+
+# Dependencias instaladas localmente — se reinstalan dentro del builder.
+node_modules
+.pnpm-store
+
+# Outputs de build local — los regeneramos en la imagen.
+dist
+dist-ssr
+.vite
+*.tsbuildinfo
+
+# Git + editores
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.swp
+
+# Logs y artefactos locales
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files locales — no quieres meter secretos al image. Las vars públicas
+# (VITE_*) se pasan como --build-arg en el docker compose.
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.*.local
+*.local
+
+# Documentación / archivos sueltos que no afectan al runtime
+README.md
+*.md
+.editorconfig
+
+# Docker mismos
+Dockerfile
+.dockerignore
+docker-compose*.yml

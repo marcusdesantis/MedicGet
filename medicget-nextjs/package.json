@@ -29,9 +29,9 @@
     "prisma:studio": "npm run prisma:studio   -w @medicget/shared",
     "prisma:reset": "npm run prisma:reset -w @medicget/shared",
     "prisma:seed": "npm run prisma:seed     -w @medicget/shared",
-    "compose:up": "docker compose up -d",
-    "compose:down": "docker compose down",
-    "compose:logs": "docker compose logs -f"
+    "compose:up": "docker compose -f ../docker-compose.yml up -d",
+    "compose:down": "docker compose -f ../docker-compose.yml down",
+    "compose:logs": "docker compose -f ../docker-compose.yml logs -f"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

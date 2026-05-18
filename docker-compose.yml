@@ -1,3 +1,22 @@
+# =============================================================================
+# docker-compose.yml — orquestación completa de la plataforma MedicGet.
+#
+# Levanta DB + 8 microservicios Next.js + nginx reverse proxy + frontend web.
+#
+# Comandos típicos (desde el ROOT del monorepo):
+#   docker compose up -d --build         # arranca todo
+#   docker compose up -d --build frontend # solo frontend
+#   docker compose down                  # apaga todo
+#   docker compose logs -f svc-auth      # tail de un servicio
+#
+# Variables opcionales (pueden ir en un `.env` al lado de este archivo):
+#   VITE_API_BASE_URL  URL pública del nginx (embebida en el bundle web)
+#   FRONTEND_URL       URL del frontend (usada en links de email)
+#   JITSI_BASE_URL     servidor de videollamada (default meet.jit.si)
+#   PAYPHONE_*         credenciales PayPhone (vacíos = stub mode)
+#   PLATFORM_FEE_PCT   comisión de plataforma (default 10)
+# =============================================================================
+
 services:
   # ── Database ──────────────────────────────────────────────────────────────────
   postgres:
@@ -26,7 +45,7 @@ services:
   # ── svc-auth  (4001) ──────────────────────────────────────────────────────────
   svc-auth:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-auth
@@ -65,7 +84,7 @@ services:
   # ── svc-users  (4002) ─────────────────────────────────────────────────────────
   svc-users:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-users
@@ -89,7 +108,7 @@ services:
   # ── svc-clinic  (4003) ────────────────────────────────────────────────────────
   svc-clinic:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-clinic
@@ -113,7 +132,7 @@ services:
   # ── svc-doctor  (4004) ────────────────────────────────────────────────────────
   svc-doctor:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-doctor
@@ -137,7 +156,7 @@ services:
   # ── svc-patient  (4005) ───────────────────────────────────────────────────────
   svc-patient:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-patient
@@ -161,7 +180,7 @@ services:
   # ── svc-appointment  (4006) ───────────────────────────────────────────────────
   svc-appointment:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-appointment
@@ -221,7 +240,7 @@ services:
   # ── svc-dashboard  (4007) ─────────────────────────────────────────────────────
   svc-dashboard:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-dashboard
@@ -249,7 +268,7 @@ services:
   # vars below are bootstrap fallbacks only.
   svc-admin:
     build:
-      context:    .
+      context:    ./medicget-nextjs
       dockerfile: docker/Dockerfile.service
       args:
         SERVICE_NAME: svc-admin
@@ -287,7 +306,38 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Frontend web (React + Vite)  (5173 → nginx static) ──────────────────────
+  # El context apunta a `./medicget-frontend`, hermana de `./medicget-nextjs`
+  # en el monorepo. Compose admite cualquier path relativo al ubicación del
+  # propio compose file. En tiempo de build, `VITE_API_BASE_URL` se embebe
+  # en el bundle JS porque Vite resuelve `import.meta.env.VITE_*` en build,
+  # no en runtime.
+  frontend:
+    build:
+      context:    ./medicget-frontend
+      dockerfile: Dockerfile
+      args:
+        # URL pública del nginx del backend. Como el navegador del usuario
+        # corre en el host (no dentro de docker), pega a localhost:8080.
+        # Si despliegas a producción cambia este valor en el build, no en
+        # runtime — para ese caso, considera un entrypoint que reescriba
+        # la URL en /index.html antes de servir.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api/v1}
+    container_name: medicget-frontend
+    restart: unless-stopped
+    ports:
+      # 5173 mantiene la paridad con `npm run dev` para que tu bookmark
+      # local siga funcionando: http://localhost:5173
+      - "5173:80"
+    networks:
+      - medicget-net
+    depends_on:
+      - nginx
+
   # ── Nginx reverse proxy  (8080 → services) ────────────────────────────────────
+  # Los configs viven dentro de `medicget-nextjs/nginx/` porque son parte de
+  # cómo el backend expone sus rutas. Los montamos read-only en el container
+  # nginx oficial.
   nginx:
     image: nginx:1.27-alpine
     container_name: medicget-nginx
@@ -295,8 +345,8 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/cors.conf:/etc/nginx/cors.conf:ro
+      - ./medicget-nextjs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./medicget-nextjs/nginx/cors.conf:/etc/nginx/cors.conf:ro
     networks:
       - medicget-net
     depends_on:
