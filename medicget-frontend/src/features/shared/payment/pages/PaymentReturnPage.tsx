@@ -67,6 +67,13 @@ export function PaymentReturnPage() {
   const [s, setS] = useState<ReturnState>({ phase: 'confirming' });
 
   useEffect(() => {
+    // GUARD: si es una suscripción (clientTransactionId empieza con `sub-`),
+    // el OTRO useEffect ya navegó a /subscribe/return. NO disparamos el
+    // confirm de citas porque ese clientTxId no es un appointment válido
+    // y el backend respondería 404 — generando el ruido del PaymentReturnPage
+    // antes de que el navigate se concrete.
+    if (clientTxId.startsWith('sub-')) return;
+
     if (!apptId) {
       setS({ phase: 'failed', reason: 'No se identificó la cita asociada al pago.' });
       return;
@@ -92,7 +99,7 @@ export function PaymentReturnPage() {
             ?.response?.data?.error?.message ?? 'No se pudo confirmar el pago.';
         setS({ phase: 'failed', reason: msg });
       });
-  }, [apptId, payphonePaymentId, userCancelled, fakeOk]);
+  }, [apptId, payphonePaymentId, userCancelled, fakeOk, clientTxId]);
 
   // Auto-redirect to my appointments on success after 3 seconds.
   useEffect(() => {
