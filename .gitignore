@@ -6,9 +6,15 @@ build/
 .expo-shared/
 coverage/
 
-# .env
-# .env.local
-# .env.*.local
+# Env files — NO se versionan. Cada entorno (local / VPS) tiene su
+# propio .env con credenciales (PayPhone, SMTP, JWT secrets, etc).
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+# Pero sí dejamos los .env.example como plantilla pública.
+!.env.example
 
 *.log
 npm-debug.log*

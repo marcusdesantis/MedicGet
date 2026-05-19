@@ -724,23 +724,33 @@ export const paymentApi = {
 };
 
 /**
- * Fila del historial de pagos. Incluye el Payment + datos del
- * Appointment para que la UI no tenga que hacer joins adicionales.
+ * Fila del historial de pagos.
+ *
+ * Un Payment representa o un pago de cita (paciente → médico/clínica) o
+ * un pago de suscripción (médico/clínica → MedicGet). Por eso ambos
+ * lados de la relación son opcionales y exactamente UNO va a estar
+ * presente en cada fila:
+ *
+ *   - `appointmentId` + `appointment` → pago de cita
+ *   - `subscriptionId` + `subscription` → pago de suscripción de plan
+ *
+ * El frontend decide qué columnas renderizar según cuál venga seteado.
  */
 export interface PaymentRowDto {
-  id:             string;
-  appointmentId:  string;
-  amount:         number;
-  platformFee?:   number | null;
-  doctorAmount?:  number | null;
-  method:         string;
-  status:         'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED';
-  paidAt?:        string | null;
-  refundedAt?:    string | null;
-  transactionId?: string | null;
-  notes?:         string | null;
-  createdAt:      string;
-  appointment: {
+  id:              string;
+  appointmentId?:  string | null;
+  subscriptionId?: string | null;
+  amount:          number;
+  platformFee?:    number | null;
+  doctorAmount?:   number | null;
+  method:          string;
+  status:          'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED';
+  paidAt?:         string | null;
+  refundedAt?:     string | null;
+  transactionId?:  string | null;
+  notes?:          string | null;
+  createdAt:       string;
+  appointment?: {
     id:       string;
     date:     string;
     time:     string;
@@ -749,7 +759,21 @@ export interface PaymentRowDto {
     patient:  { id: string; user: { email: string; profile?: ProfileDto } };
     doctor:   { id: string; specialty: string; user: { profile?: ProfileDto } };
     clinic:   { id: string; name: string } | null;
-  };
+  } | null;
+  subscription?: {
+    id:        string;
+    status:    string;
+    startsAt:  string;
+    expiresAt: string;
+    plan: {
+      id:           string;
+      code:         string;
+      name:         string;
+      audience:     'DOCTOR' | 'CLINIC';
+      monthlyPrice: number;
+    };
+    user: { id: string; email: string; profile?: ProfileDto };
+  } | null;
 }
 
 /** svc-dashboard :4007 → /api/v1/dashboard/ */
@@ -885,7 +909,17 @@ export const subscriptionsApi = {
   me: () => apiGet<{ subscription: SubscriptionDto | null; freePlan: PlanDto | null }>('/subscriptions/me'),
   checkout: (body: { planId: string; responseUrl: string }) =>
     apiPost<SubscriptionCheckoutResponse>('/subscriptions/checkout', body),
-  confirm: (body: { subscriptionId: string; payphoneId?: string; fakeOk?: boolean }) =>
+  confirm: (body: {
+    subscriptionId:       string;
+    payphoneId?:          string;
+    /**
+     * clientTransactionId ORIGINAL del checkout (sub-<userId>-<ts>).
+     * PayPhone exige el mismo string al confirmar — sin esto, responde
+     * 404 "La transacción no existe". Lo recibimos en el URL de retorno.
+     */
+    clientTransactionId?: string;
+    fakeOk?:              boolean;
+  }) =>
     apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>('/subscriptions/confirm', body),
   /** Cancela el plan paga y vuelve a FREE inmediatamente. */
   cancel: () => apiPost<{ ok: true }>('/subscriptions/cancel', {}),

@@ -15,6 +15,15 @@ const confirmSchema = z.object({
   /** Aceptamos ambos nombres por compatibilidad. */
   payphoneId:        z.string().min(1).optional(),
   payphonePaymentId: z.string().min(1).optional(),
+  /**
+   * El `clientTransactionId` ORIGINAL que se generó en /checkout
+   * (formato `sub-<userId>-<timestamp>`). PayPhone REQUIERE que se le
+   * mande exactamente este string al confirmar; si le mandamos otro
+   * (por ejemplo el subscription.id puro) responde 404 "La transacción
+   * no existe". El frontend lo recibe en el URL de retorno como
+   * `?clientTransactionId=sub-...` y nos lo pasa de vuelta acá.
+   */
+  clientTransactionId: z.string().min(1).optional(),
   fakeOk:            z.boolean().optional(),
 });
 
@@ -41,9 +50,16 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
     return apiError('BAD_REQUEST', 'Falta el id de la transacción de PayPhone.');
   }
 
+  // El clientTransactionId que mandamos a confirmar TIENE que ser el
+  // mismo string que se usó al armar la sesión (sub-<userId>-<ts>). Si
+  // el frontend nos lo pasa de vuelta (lo recibe en el URL de retorno
+  // de PayPhone), usamos ese. Si no, caemos al subscriptionId — eso
+  // sólo funciona para citas, no para suscripciones, pero mantiene la
+  // compat de stubs/fakeOk donde el id real no importa.
+  const clientTxId = parsed.data.clientTransactionId ?? parsed.data.subscriptionId;
   const result = await payphone.confirmSale(
     payphoneId ?? 'stub',
-    parsed.data.subscriptionId,
+    clientTxId,
     parsed.data.fakeOk === true,
   );
   if (!result.ok) return apiError('BAD_GATEWAY', result.error);
@@ -52,6 +68,18 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
     // Activamos la nueva Y cancelamos cualquier OTRA suscripción activa
     // del mismo usuario en una transacción. Esto es lo que convierte el
     // "checkout" en un "cambio de plan" sin endpoints adicionales.
+    //
+    // ADEMÁS, en la misma transacción creamos (o actualizamos, si por
+    // algún motivo ya existe) la fila de Payment correspondiente. Esto
+    // alimenta el panel de pagos del superadmin (tab "Especialistas"
+    // o "Clínicas") y permite llevar el historial de cobros de planes
+    // como ya se hace con los cobros de citas.
+    //
+    // Para suscripciones, el desglose es: el cliente paga `base + fee`,
+    // doctorAmount=0 (todo va a MedicGet), platformFee = fee de plataforma.
+    const subBreakdown = await buildPaymentBreakdown(sub.plan.monthlyPrice);
+    const paymentTxId  = result.transactionId ?? payphoneId ?? null;
+
     const [, updated] = await prisma.$transaction([
       prisma.subscription.updateMany({
         where: {
@@ -63,7 +91,32 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
       }),
       prisma.subscription.update({
         where: { id: sub.id },
-        data:  { status: 'ACTIVE', lastPaymentId: result.transactionId ?? payphoneId ?? null },
+        data:  { status: 'ACTIVE', lastPaymentId: paymentTxId },
+      }),
+      prisma.payment.upsert({
+        where:  { subscriptionId: sub.id },
+        update: {
+          status:            'PAID',
+          paidAt:            new Date(),
+          transactionId:     paymentTxId,
+          payphonePaymentId: payphoneId ?? null,
+          amount:            subBreakdown.totalAmount,
+          platformFee:       subBreakdown.totalAmount,  // todo va a MedicGet
+          doctorAmount:      0,
+          method:            'CARD',
+        },
+        create: {
+          subscriptionId:    sub.id,
+          status:            'PAID',
+          paidAt:            new Date(),
+          transactionId:     paymentTxId,
+          payphonePaymentId: payphoneId ?? null,
+          amount:            subBreakdown.totalAmount,
+          platformFee:       subBreakdown.totalAmount,  // todo va a MedicGet
+          doctorAmount:      0,
+          method:            'CARD',
+          notes:             `Suscripción · Plan ${sub.plan.name}`,
+        },
       }),
     ]);
 

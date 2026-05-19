@@ -255,8 +255,11 @@ export function SubscribePage() {
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">¡Plan {plan.name} activado!</h2>
             <p className="text-sm text-slate-500 mb-6">Tu plan gratuito está listo para usar.</p>
-            <Link to="/" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl">
-              Ir al panel <ArrowRight size={14} />
+            <Link
+              to={user.role === 'clinic' ? '/clinic/plan' : '/doctor/plan'}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl"
+            >
+              Ir a mi plan <ArrowRight size={14} />
             </Link>
           </div>
         </SectionCard>
@@ -374,12 +377,29 @@ export function SubscribePage() {
  */
 export function SubscribeReturnPage() {
   const [params] = useSearchParams();
-  // El backend usa `subscriptionId` como `clientTransactionId` — viene de
-  // vuelta por PayPhone. Si por algún motivo no llega, recuperamos desde
-  // sessionStorage.
-  const payphoneId = params.get('id') ?? '';
+  const { user } = useAuth();
+  // PayPhone nos devuelve dos cosas al hacer el redirect:
+  //   - `id`                  → su propio identificador numérico
+  //   - `clientTransactionId` → el string ORIGINAL que nosotros le
+  //                              mandamos al armar la sesión
+  //                              (formato `sub-<userId>-<timestamp>`).
+  // El backend lo necesita TAL CUAL al pegarle a `/confirm` — si le
+  // mandamos otra cosa, PayPhone responde 404. Por eso lo capturamos
+  // acá y se lo reenviamos.
+  const payphoneId         = params.get('id') ?? '';
+  const clientTransactionId = params.get('clientTransactionId') ?? '';
   const cancelled  = params.get('cancel') === '1';
   const fakeOk     = params.get('fakeOk') === '1';
+
+  // Destino del botón "Ir al panel" después de pagar exitosamente.
+  // Mandamos al usuario directo a la página de gestión de su plan
+  // (`/doctor/plan` o `/clinic/plan`) para que vea el plan recién
+  // activado. Si por algún motivo el rol no está cargado (p. ej.
+  // sesión expirada), caemos al login que ya redirige al panel.
+  const planPageUrl =
+    user?.role === 'clinic' ? '/clinic/plan'
+    : user?.role === 'doctor' ? '/doctor/plan'
+    : '/login';
 
   const [phase, setPhase] = useState<'confirming' | 'ok' | 'fail'>(
     cancelled ? 'fail' : 'confirming',
@@ -409,7 +429,11 @@ export function SubscribeReturnPage() {
 
         const conf = await subscriptionsApi.confirm({
           subscriptionId,
-          payphoneId: payphoneId || undefined,
+          payphoneId:          payphoneId || undefined,
+          // Reenviamos el clientTransactionId tal cual nos lo devolvió
+          // PayPhone — el backend lo necesita para que el POST /confirm
+          // contra PayPhone coincida con la sesión original.
+          clientTransactionId: clientTransactionId || undefined,
           fakeOk,
         });
         sessionStorage.removeItem('medicget_pending_sub');
@@ -422,7 +446,7 @@ export function SubscribeReturnPage() {
         setReason(msg);
       }
     })();
-  }, [payphoneId, fakeOk, phase]);
+  }, [payphoneId, clientTransactionId, fakeOk, phase]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center px-4">
@@ -444,8 +468,8 @@ export function SubscribeReturnPage() {
               <p className="text-sm text-slate-500 mb-6">
                 Tu plan ya está activo. Te enviamos el comprobante de pago por correo.
               </p>
-              <Link to="/" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl">
-                Ir al panel <ArrowRight size={14} />
+              <Link to={planPageUrl} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl">
+                Ir a mi plan <ArrowRight size={14} />
               </Link>
             </>
           )}

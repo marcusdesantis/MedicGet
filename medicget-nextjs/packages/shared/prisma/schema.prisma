@@ -385,13 +385,23 @@ model Review {
 
 model Payment {
   id            String        @id @default(cuid())
-  appointmentId String        @unique
+  // ─── Tipo de pago (polimórfico) ────────────────────────────────────
+  // Una fila de Payment representa O un pago de cita (paciente → médico/clínica)
+  // O un pago de suscripción (médico/clínica → MedicGet). Exactamente
+  // UNO de estos dos campos debe estar seteado:
+  //   - appointmentId  → pago de cita
+  //   - subscriptionId → pago de suscripción de plan
+  // (Antes Payment.appointmentId era requerido y único; ahora ambos son
+  // opcionales para soportar ambos casos sin duplicar tablas.)
+  appointmentId  String? @unique
+  subscriptionId String? @unique
   amount        Float
   // ─── Platform fee split ────────────────────────────────────────────
   // `platformFee`  → what MedicGet retains. Calculated on confirm using
   //                   PLATFORM_FEE_PCT env var (default 10%).
   // `doctorAmount` → what gets credited to the doctor/clinic.
   //                   Always equals `amount - platformFee`.
+  // En pagos de suscripción, doctorAmount = 0 (todo va a MedicGet).
   platformFee   Float         @default(0)
   doctorAmount  Float         @default(0)
   method        PaymentMethod @default(PENDING)
@@ -418,11 +428,13 @@ model Payment {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  appointment  Appointment?  @relation(fields: [appointmentId],  references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
 
   @@index([status])
   @@index([method])
   @@index([expiresAt])
+  @@index([subscriptionId])
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -621,6 +633,12 @@ model Subscription {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan Plan @relation(fields: [planId], references: [id])
+
+  // Relación 1:1 con Payment para suscripciones cobradas. Cada
+  // Subscription confirmada tiene su Payment correspondiente (creado
+  // en /api/v1/subscriptions/confirm cuando PayPhone aprueba). Las
+  // suscripciones FREE o PENDING_PAYMENT no tienen Payment asociado.
+  payment Payment?
 
   @@index([userId])
   @@index([planId])

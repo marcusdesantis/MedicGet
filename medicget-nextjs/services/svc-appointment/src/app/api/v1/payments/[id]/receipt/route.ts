@@ -9,11 +9,16 @@ export const dynamic = 'force-dynamic';
  * GET /api/v1/payments/:id/receipt
  *
  * Devuelve un HTML imprimible (vía `window.print()` o "Guardar como PDF"
- * del browser) con el detalle del pago. Mismo template para superadmin,
- * médico y clínica — el contenido depende solo del Payment, no del rol.
+ * del browser) con el detalle del pago.
  *
- * Auth: el caller debe ser el paciente, médico o clínica de la cita, o
- * ADMIN. Cualquier otro rol o usuario externo → 403.
+ * Soporta DOS tipos de pago:
+ *   1. Pago de cita        → Payment.appointmentId  (paciente → médico/clínica)
+ *   2. Pago de suscripción → Payment.subscriptionId (médico/clínica → MedicGet)
+ *
+ * Para cada tipo se renderiza un template distinto. La autorización
+ * también difiere:
+ *   - Cita        → caller debe ser paciente/médico/clínica de la cita, o ADMIN.
+ *   - Suscripción → caller debe ser el dueño de la suscripción, o ADMIN.
  */
 export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, params }) => {
   const { id } = params;
@@ -27,43 +32,55 @@ export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, pa
           clinic:  true,
         },
       },
+      subscription: {
+        include: {
+          plan: true,
+          user: { include: { profile: true } },
+        },
+      },
     },
   });
   if (!payment) return apiError('NOT_FOUND', 'Pago no encontrado.');
 
-  // Authorisation. ADMIN bypass, los demás deben ser parte de la cita.
-  const a = payment.appointment;
+  // ─── Authorisation ──────────────────────────────────────────────────
+  // ADMIN bypass para todo. Para los demás, el chequeo depende del tipo.
   if (user.role !== 'ADMIN') {
-    if (user.role === 'PATIENT') {
-      const p = await prisma.patient.findUnique({ where: { userId: user.id } });
-      if (!p || a.patientId !== p.id) return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
-    } else if (user.role === 'DOCTOR') {
-      const d = await prisma.doctor.findUnique({ where: { userId: user.id } });
-      if (!d || a.doctorId !== d.id) return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
-    } else if (user.role === 'CLINIC') {
-      const c = await prisma.clinic.findUnique({ where: { userId: user.id } });
-      if (!c || a.clinicId !== c.id) return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
+    if (payment.appointment) {
+      // Recibo de pago de CITA.
+      const a = payment.appointment;
+      if (user.role === 'PATIENT') {
+        const p = await prisma.patient.findUnique({ where: { userId: user.id } });
+        if (!p || a.patientId !== p.id) return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
+      } else if (user.role === 'DOCTOR') {
+        const d = await prisma.doctor.findUnique({ where: { userId: user.id } });
+        if (!d || a.doctorId !== d.id) return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
+      } else if (user.role === 'CLINIC') {
+        const c = await prisma.clinic.findUnique({ where: { userId: user.id } });
+        if (!c || a.clinicId !== c.id) return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
+      } else {
+        return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
+      }
+    } else if (payment.subscription) {
+      // Recibo de pago de SUSCRIPCIÓN: solo el dueño del plan puede verlo.
+      if (payment.subscription.userId !== user.id) {
+        return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
+      }
     } else {
+      // Pago huérfano (no debería existir). Bloqueamos.
       return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
     }
   }
 
-  // Datos derivados.
-  const patientName = `${a.patient.user.profile?.firstName ?? ''} ${a.patient.user.profile?.lastName ?? ''}`.trim();
-  const doctorName  = `${a.doctor.user.profile?.firstName ?? ''} ${a.doctor.user.profile?.lastName ?? ''}`.trim();
-  const dateLong    = new Date(a.date).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  const paidAtStr   = payment.paidAt ? new Date(payment.paidAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
-  const modality    = a.modality === 'ONLINE' ? 'Videollamada' : a.modality === 'PRESENCIAL' ? 'Presencial' : 'Chat en vivo';
-  const statusCopy  = payment.status === 'PAID' ? 'Pagado' : payment.status === 'REFUNDED' ? 'Reembolsado' : payment.status === 'FAILED' ? 'Fallido' : 'Pendiente';
+  const paidAtStr  = payment.paidAt
+    ? new Date(payment.paidAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '—';
+  const statusCopy = payment.status === 'PAID'      ? 'Pagado'
+                   : payment.status === 'REFUNDED'  ? 'Reembolsado'
+                   : payment.status === 'FAILED'    ? 'Fallido'
+                                                    : 'Pendiente';
 
-  // Recibo en HTML — el browser lo renderiza, y el usuario puede "Imprimir → Guardar como PDF".
-  // Estilos inline para no depender del CSS de la app.
-  const html = `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>Recibo de pago #${payment.id.slice(-8).toUpperCase()} · MedicGet</title>
-  <style>
+  // Estilos compartidos por ambos templates.
+  const sharedStyles = `
     @page { size: A4; margin: 18mm; }
     * { box-sizing: border-box; }
     body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: #fff; }
@@ -92,7 +109,25 @@ export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, pa
     .actions { text-align: center; margin: 24px 0; }
     .actions button { background: #2563eb; color: #fff; border: 0; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
     @media print { .actions { display: none; } }
-  </style>
+  `;
+
+  // ─── Template según tipo de pago ────────────────────────────────────
+  let html: string;
+
+  if (payment.appointment) {
+    // ─── Recibo de cita ──────────────────────────────────────────────
+    const a = payment.appointment;
+    const patientName = `${a.patient.user.profile?.firstName ?? ''} ${a.patient.user.profile?.lastName ?? ''}`.trim();
+    const doctorName  = `${a.doctor.user.profile?.firstName ?? ''} ${a.doctor.user.profile?.lastName ?? ''}`.trim();
+    const dateLong    = new Date(a.date).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const modality    = a.modality === 'ONLINE' ? 'Videollamada' : a.modality === 'PRESENCIAL' ? 'Presencial' : 'Chat en vivo';
+
+    html = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Recibo de pago #${payment.id.slice(-8).toUpperCase()} · MedicGet</title>
+  <style>${sharedStyles}</style>
 </head>
 <body>
   <div class="receipt">
@@ -150,6 +185,78 @@ export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, pa
   </div>
 </body>
 </html>`;
+  } else if (payment.subscription) {
+    // ─── Recibo de suscripción ───────────────────────────────────────
+    const s         = payment.subscription;
+    const subscriberName = `${s.user.profile?.firstName ?? ''} ${s.user.profile?.lastName ?? ''}`.trim();
+    const audience  = s.plan.audience === 'CLINIC' ? 'Clínica' : 'Especialista';
+    const startsAt  = new Date(s.startsAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+    const expiresAt = new Date(s.expiresAt).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
+    html = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Recibo de suscripción #${payment.id.slice(-8).toUpperCase()} · MedicGet</title>
+  <style>${sharedStyles}</style>
+</head>
+<body>
+  <div class="receipt">
+    <div class="header">
+      <div class="brand">
+        <h1>MedicGet</h1>
+        <p>Comprobante de pago de suscripción</p>
+      </div>
+      <div class="meta">
+        Recibo Nº <span class="num">${payment.id.slice(-8).toUpperCase()}</span><br/>
+        Emitido el ${paidAtStr}<br/>
+        <span class="status ${payment.status.toLowerCase()}">${statusCopy}</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button onclick="window.print()">Imprimir / Guardar como PDF</button>
+    </div>
+
+    <h2>Detalle de la suscripción</h2>
+    <table>
+      <tr><td class="label">Titular</td><td class="value">${subscriberName || '—'}</td></tr>
+      <tr><td class="label">Email</td><td class="value" style="text-transform:none">${s.user.email}</td></tr>
+      <tr><td class="label">Tipo de cuenta</td><td class="value">${audience}</td></tr>
+      <tr><td class="label">Plan</td><td class="value">${s.plan.name} (${s.plan.code})</td></tr>
+      <tr><td class="label">Inicio del período</td><td class="value">${startsAt}</td></tr>
+      <tr><td class="label">Próxima renovación</td><td class="value">${expiresAt}</td></tr>
+    </table>
+
+    <div class="total-box">
+      <div class="label">Total cobrado</div>
+      <div class="amount">$${payment.amount.toFixed(2)} USD</div>
+      <div class="split">
+        <div><span>Período</span><strong>30 días</strong></div>
+        <div><span>Plan</span><strong>${s.plan.name}</strong></div>
+      </div>
+    </div>
+
+    <h2>Datos del pago</h2>
+    <table>
+      <tr><td class="label">Método</td><td class="value">${payment.method}</td></tr>
+      ${payment.transactionId ? `<tr><td class="label">ID de transacción</td><td class="value" style="text-transform:none;font-family:monospace;font-size:12px">${payment.transactionId}</td></tr>` : ''}
+      ${payment.notes ? `<tr><td class="label">Notas</td><td class="value" style="text-transform:none">${payment.notes}</td></tr>` : ''}
+      ${payment.paidAt ? `<tr><td class="label">Pagado el</td><td class="value">${paidAtStr}</td></tr>` : ''}
+      ${payment.refundedAt ? `<tr><td class="label">Reembolsado el</td><td class="value">${new Date(payment.refundedAt).toLocaleDateString('es-ES')}</td></tr>` : ''}
+    </table>
+
+    <div class="footer">
+      Procesado por PayPhone. Este recibo es un comprobante automático sin valor fiscal.<br/>
+      MedicGet · ${new Date().getFullYear()}
+    </div>
+  </div>
+</body>
+</html>`;
+  } else {
+    // Pago huérfano — no debería existir. Devolvemos 404 lógico.
+    return apiError('NOT_FOUND', 'Pago sin cita ni suscripción asociada.');
+  }
 
   return new NextResponse(html, {
     headers: {

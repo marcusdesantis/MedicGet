@@ -323,10 +323,14 @@ export const paymentService = {
   async sweepExpired(): Promise<number> {
     const { prisma } = await import('@medicget/shared/prisma');
     const now = new Date();
+    // OJO: solo hacemos sweep de pagos DE CITA (los que tienen
+    // appointmentId). Los pagos de suscripción usan otro flow y no
+    // expiran con esta lógica — los maneja el endpoint de confirm.
     const expired = await prisma.payment.findMany({
       where: {
-        status:    'PENDING',
-        expiresAt: { lt: now },
+        status:        'PENDING',
+        expiresAt:     { lt: now },
+        appointmentId: { not: null },
       },
       select: { id: true, appointmentId: true },
       take:   100,
@@ -335,11 +339,16 @@ export const paymentService = {
     if (expired.length === 0) return 0;
 
     for (const p of expired) {
+      // El filtro ya garantiza appointmentId != null; este guard sólo
+      // satisface al type-checker estricto (Payment.appointmentId es
+      // nullable a nivel de schema).
+      if (!p.appointmentId) continue;
+      const apptId = p.appointmentId;
       try {
         // Flip Appointment + Payment + Slot in a transaction.
         await prisma.$transaction([
           prisma.appointment.update({
-            where: { id: p.appointmentId },
+            where: { id: apptId },
             data:  { status: 'CANCELLED', cancelReason: 'Pago no completado a tiempo.' },
           }),
           prisma.payment.update({
@@ -347,7 +356,7 @@ export const paymentService = {
             data:  { status: 'FAILED' },
           }),
           prisma.appointmentSlot.updateMany({
-            where: { appointmentId: p.appointmentId },
+            where: { appointmentId: apptId },
             data:  { isBooked: false, appointmentId: null },
           }),
         ]);

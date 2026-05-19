@@ -1,14 +1,17 @@
 /**
- * PaymentsHistoryTable — tabla reutilizable de historial de pagos.
+ * SubscriptionPaymentsTable — historial de pagos de SUSCRIPCIÓN.
  *
- * Se monta en /admin/payments, /doctor/payments y /clinic/payments.
- * El backend devuelve los pagos filtrados según el JWT del caller
- * (admin = todos, doctor = los suyos, etc.), por lo que la UI es la
- * misma — el componente solo renderiza lo que recibe.
+ * Versión gemela de PaymentsHistoryTable pero para pagos de planes
+ * (médico o clínica → MedicGet). Las columnas son distintas porque
+ * acá no hay paciente ni cita: el "pagador" es el propio usuario que
+ * se suscribió, y lo relevante es qué plan compró.
  *
- *   <PaymentsHistoryTable />
+ *   <SubscriptionPaymentsTable audience="DOCTOR" />
+ *   <SubscriptionPaymentsTable audience="CLINIC" />
  *
- * Soporta filtro por estado y descarga de recibo individual.
+ * Solo se usa en /admin/payments — los médicos y clínicas no ven sus
+ * propios pagos de suscripción acá (los ven en /doctor/plan y
+ * /clinic/plan).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -38,8 +41,9 @@ const STATUS_MAP = {
 };
 
 /**
- * Abre el recibo HTML en una pestaña nueva. Usa fetch + Blob para
- * preservar el Authorization header (un `<a href>` directo no lo manda).
+ * Abre el recibo HTML en una pestaña nueva. Mismo helper que en
+ * PaymentsHistoryTable — el endpoint /payments/:id/receipt funciona
+ * para ambos tipos de Payment.
  */
 async function openReceipt(paymentId: string): Promise<void> {
   try {
@@ -52,7 +56,6 @@ async function openReceipt(paymentId: string): Promise<void> {
     const blob = new Blob([html], { type: 'text/html' });
     const url  = URL.createObjectURL(blob);
     window.open(url, '_blank', 'noopener');
-    // Liberar la URL después de unos segundos (ya cargó el contenido).
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -61,21 +64,14 @@ async function openReceipt(paymentId: string): Promise<void> {
   }
 }
 
-interface PaymentsHistoryTableProps {
-  /**
-   * Solo aplica para superadmin. Pasa `?audience=` al backend para
-   * filtrar entre pagos de citas (PATIENT) y pagos de suscripción
-   * (DOCTOR / CLINIC). Cuando no se setea, se devuelven todos los pagos
-   * mezclados (que es el comportamiento default para doctores y clínicas
-   * mirando sus propios pagos, donde el backend ya hace el scope).
-   */
-  audience?: 'PATIENT' | 'DOCTOR' | 'CLINIC';
+interface SubscriptionPaymentsTableProps {
+  /** Filtro requerido: DOCTOR para pagos de planes de médico, CLINIC para clínicas. */
+  audience: 'DOCTOR' | 'CLINIC';
 }
 
-export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {}) {
+export function SubscriptionPaymentsTable({ audience }: SubscriptionPaymentsTableProps) {
   const [status, setStatus]   = useState<string>('');
   const [search, setSearch]   = useState<string>('');
-  // Debounce del input — evita disparar refetch en cada tecla.
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search), 250);
@@ -85,38 +81,30 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
   const { state, refetch } = useApi<PaginatedData<PaymentRowDto>>(
     () => paymentApi.list({
       status:   status || undefined,
-      audience: audience || undefined,
+      audience,
       pageSize: 200,
     }),
     [status, audience],
   );
 
   /**
-   * Esta tabla muestra ÚNICAMENTE pagos de cita — los pagos de
-   * suscripción se renderizan en `SubscriptionPaymentsTable`. Como el
-   * backend puede devolver filas sin `appointment` (cuando son
-   * suscripciones), las filtramos defensivamente por si el caller no
-   * pasó `audience='PATIENT'`.
-   *
-   * Después del filtro por tipo aplicamos el search en cliente.
+   * Filtramos defensivamente: solo filas que tienen `subscription`
+   * (deberían ser todas, porque el backend ya filtró por audience,
+   * pero es barato chequear). Después aplicamos search en cliente.
    */
   const rows = useMemo(() => {
     if (state.status !== 'ready') return [];
-    const all = state.data.data.filter((p) => p.appointment != null);
+    const all = state.data.data.filter((p) => p.subscription != null);
     if (!debouncedSearch.trim()) return all;
     return all.filter((p) => {
-      const appt = p.appointment!;
-      const pat  = appt.patient;
-      const doc  = appt.doctor;
+      const sub = p.subscription!;
       return matchesSearch(
         debouncedSearch,
-        pat.user.email,
-        pat.user.profile?.firstName,
-        pat.user.profile?.lastName,
-        doc.user.profile?.firstName,
-        doc.user.profile?.lastName,
-        doc.specialty,
-        appt.clinic?.name,
+        sub.user.email,
+        sub.user.profile?.firstName,
+        sub.user.profile?.lastName,
+        sub.plan.name,
+        sub.plan.code,
         p.transactionId,
       );
     });
@@ -125,17 +113,18 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
   const totalShown = rows.length;
   const totalAll   = state.status === 'ready' ? state.data.meta.total : 0;
 
+  const audienceLabel = audience === 'CLINIC' ? 'clínica' : 'especialista';
+
   return (
     <SectionCard noPadding>
       {/* Filtros + buscador */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
-        {/* Buscador por paciente / médico / clínica / transacción */}
         <div className="relative flex-1 max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar paciente, médico, clínica o transacción…"
+            placeholder={`Buscar ${audienceLabel}, plan o transacción…`}
             className="w-full pl-9 pr-3 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -178,13 +167,13 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
       )}
       {state.status === 'ready' && rows.length === 0 && (
         <EmptyState
-          title={debouncedSearch.trim() || status ? 'Sin coincidencias' : 'Sin pagos para mostrar'}
+          title={debouncedSearch.trim() || status ? 'Sin coincidencias' : 'Sin pagos de suscripción para mostrar'}
           description={
             debouncedSearch.trim()
               ? `No encontramos pagos para "${debouncedSearch}". Probá con otro término.`
               : status
                 ? 'Probá cambiar el filtro de estado.'
-                : 'Cuando los pacientes paguen sus citas, los registros aparecerán acá.'
+                : `Cuando ${audience === 'CLINIC' ? 'las clínicas' : 'los especialistas'} paguen su plan, los registros aparecerán acá.`
           }
           icon={Receipt}
         />
@@ -196,9 +185,9 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
             <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 uppercase tracking-wider">
               <tr>
                 <th className="text-left px-5 py-3">Fecha pago</th>
-                <th className="text-left px-5 py-3">Paciente</th>
-                <th className="text-left px-5 py-3">Médico</th>
-                <th className="text-left px-5 py-3">Cita</th>
+                <th className="text-left px-5 py-3">{audience === 'CLINIC' ? 'Clínica' : 'Especialista'}</th>
+                <th className="text-left px-5 py-3">Plan</th>
+                <th className="text-left px-5 py-3">Vigencia</th>
                 <th className="text-right px-5 py-3">Monto</th>
                 <th className="text-left px-5 py-3">Estado</th>
                 <th className="text-right px-5 py-3">Recibo</th>
@@ -206,15 +195,15 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {rows.map((p) => {
-                // El filtro de arriba garantiza que appointment != null acá.
-                const appt    = p.appointment!;
-                const patient = appt.patient.user.profile;
-                const doctor  = appt.doctor.user.profile;
-                const initials = ((patient?.firstName?.[0] ?? '') + (patient?.lastName?.[0] ?? '')).toUpperCase() || '··';
+                const sub  = p.subscription!;
+                const prof = sub.user.profile;
+                const initials = ((prof?.firstName?.[0] ?? '') + (prof?.lastName?.[0] ?? '')).toUpperCase() || '··';
                 const paidAt = p.paidAt
                   ? new Date(p.paidAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
                   : '—';
-                const apptDate = new Date(appt.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+                const expiresAt = new Date(sub.expiresAt).toLocaleDateString('es-ES', {
+                  day: '2-digit', month: 'short', year: 'numeric',
+                });
                 return (
                   <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
                     <td className="px-5 py-3 text-slate-700 dark:text-slate-200 whitespace-nowrap">{paidAt}</td>
@@ -223,26 +212,22 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
                         <Avatar initials={initials} size="sm" variant="auto" />
                         <div className="min-w-0">
                           <p className="font-medium text-slate-800 dark:text-white truncate">
-                            {patient?.firstName} {patient?.lastName}
+                            {prof?.firstName} {prof?.lastName}
                           </p>
-                          <p className="text-[11px] text-slate-400 truncate">{appt.patient.user.email}</p>
+                          <p className="text-[11px] text-slate-400 truncate">{sub.user.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
-                      Dr. {doctor?.firstName} {doctor?.lastName}
-                      <p className="text-[11px] text-slate-400">{appt.doctor.specialty}</p>
+                      <p className="font-medium">{sub.plan.name}</p>
+                      <p className="text-[11px] text-slate-400">{sub.plan.code}</p>
                     </td>
                     <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {apptDate} · {appt.time}
+                      hasta {expiresAt}
                     </td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
                       <span className="font-semibold text-slate-800 dark:text-white">${p.amount.toFixed(2)}</span>
-                      {p.platformFee != null && (
-                        <p className="text-[11px] text-slate-400">
-                          comisión ${p.platformFee.toFixed(2)}
-                        </p>
-                      )}
+                      <p className="text-[11px] text-slate-400">cada 30 días</p>
                     </td>
                     <td className="px-5 py-3">
                       <StatusBadge
