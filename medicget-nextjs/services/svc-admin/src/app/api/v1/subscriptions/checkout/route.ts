@@ -72,6 +72,17 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
   });
   if (!session.ok) return apiError('BAD_GATEWAY', session.error);
 
+  // Antes de crear la nueva PENDING_PAYMENT, marcamos como CANCELLED
+  // cualquier PENDING_PAYMENT previa del mismo usuario. Si no, cada
+  // visita a /subscribe/<plan> dejaba una fila extra en la DB que
+  // luego el endpoint /subscriptions/me podía devolver como "tu plan"
+  // engañando al usuario. Ahora solo puede haber UNA pending viva por
+  // user a la vez — la última iniciada.
+  await prisma.subscription.updateMany({
+    where:  { userId: user.id, status: 'PENDING_PAYMENT' },
+    data:   { status: 'CANCELLED', cancelledAt: new Date() },
+  });
+
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const sub = await prisma.subscription.create({
     data: {
