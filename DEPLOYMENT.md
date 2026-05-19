@@ -692,3 +692,7 @@ Para no andar haciendo `docker compose logs -f` a mano:
 # Comando para migraciones
 
 docker compose --profile tools run --rm prisma prisma:seed
+
+# Reiniciar nginx
+
+docker compose restart nginx

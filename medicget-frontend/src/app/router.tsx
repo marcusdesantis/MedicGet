@@ -137,6 +137,16 @@ export const router = createBrowserRouter([
   { path: '/subscribe/:planId',  element: <SubscribePage /> },
   { path: '/subscribe/return',   element: <SubscribeReturnPage /> },
 
+  // ── Payment return (callback de PayPhone, accesible para cualquier rol) ──
+  // Doctores y clínicas compran suscripciones, así que PayPhone los redirige
+  // acá pero ANTES estaba dentro de un ProtectedRoute con allowedRole="patient"
+  // y se les bloqueaba la página → la subscripción quedaba en PENDING_PAYMENT
+  // para siempre porque nunca se ejecutaba el confirm. Acá la sacamos del
+  // shell del paciente y la dejamos sin role guard. La página misma detecta
+  // si es una suscripción (clientTransactionId comienza con "sub-") y
+  // re-dirige internamente a /subscribe/return.
+  { path: '/payment/return', element: <PaymentReturnPage /> },
+
   // ── Public directory ──
   { path: '/medicos',      element: <PublicDoctorsDirectoryPage /> },
   { path: '/medicos/:id',  element: <PublicDoctorDetailPage /> },
@@ -166,8 +176,10 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // ── Payment routes (PayPhone) ─────────────────────────────────────────
-  // Checkout lives inside the patient shell so the side nav stays visible.
+  // ── Payment checkout (PayPhone) ──────────────────────────────────────
+  // Solo el paciente inicia un checkout de cita (los doctores/clínicas no
+  // pagan citas). El /payment/return en cambio está afuera de este bloque
+  // (ver arriba) para no bloquear el callback cuando es una suscripción.
   {
     path: '/payment',
     element: (
@@ -177,7 +189,6 @@ export const router = createBrowserRouter([
     ),
     children: [
       { path: 'checkout/:id', element: <PaymentCheckoutPage /> },
-      { path: 'return',       element: <PaymentReturnPage /> },
     ],
   },
 
