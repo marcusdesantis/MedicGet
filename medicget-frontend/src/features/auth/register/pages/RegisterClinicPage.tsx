@@ -15,10 +15,12 @@ export const RegisterClinicPage = () => {
   const navigate = useNavigate();
   const [draft, setDraft] = useRegistrationDraft("clinic");
 
+  // `city` se valida en el step 2 (RegisterClinicDetailsPage) como parte
+  // del LocationPicker. En este step solo pedimos los datos básicos de
+  // la clínica que NO dependen de la ubicación geográfica.
   const errors = useMemo(() => ({
     clinicName:  validateRequired(draft.clinicName,  "El nombre de la clínica"),
     specialists: validateRequired(draft.specialists, "El número de especialistas"),
-    city:        validateRequired(draft.city,        "La ciudad"),
   }), [draft]);
 
   const canContinue = isClean(errors);

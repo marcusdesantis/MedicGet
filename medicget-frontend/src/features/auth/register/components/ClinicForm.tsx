@@ -44,16 +44,9 @@ export const ClinicForm = ({ form, setForm, errors }: Props) => {
         )}
       </FormField>
 
-      <FormField label="Ciudad *">
-        <Input
-          value={form.city}
-          onChange={(e) => setForm({ city: e.target.value })}
-          aria-invalid={!!errors.city}
-        />
-        {errors.city && form.city !== "" && (
-          <p className="text-xs text-rose-600 mt-1">{errors.city}</p>
-        )}
-      </FormField>
+      {/* "Ciudad" se captura en el step 2 dentro del LocationPicker (junto
+          con país, provincia, mapa y dirección). No la pedimos acá para
+          no duplicar el campo. */}
 
     </div>
   );

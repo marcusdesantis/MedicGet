@@ -1,14 +1,15 @@
 /**
  * LocationPicker — selector de ubicación con país + provincia + mapa
- * con marker arrastrable.
+ * con marker arrastrable. Plus un input de búsqueda libre de direcciones
+ * filtrado por el país elegido (Ecuador por default) que mueve el marker.
  *
  *  ┌─────────────────────────────────────────────────────────┐
- *  │ País             ▾    Provincia          ▾   📍 Mi ubicación │
+ *  │ País             ▾    Provincia          ▾   📍 Mi ubic. │
  *  ├─────────────────────────────────────────────────────────┤
- *  │                                                         │
+ *  │ 🔎 Buscá una dirección, barrio o ciudad…                │
+ *  ├─────────────────────────────────────────────────────────┤
  *  │              [ MAPA OPENSTREETMAP ]                     │
  *  │                       📍                                │
- *  │                                                         │
  *  ├─────────────────────────────────────────────────────────┤
  *  │ Dirección: Av. Amazonas 123                             │
  *  │ Ciudad:    Quito                                        │
@@ -18,20 +19,21 @@
  * Comportamiento:
  *   • Cambiar país → centra mapa en country.center, limpia provincia.
  *   • Cambiar provincia → centra mapa en province.lat/lng, zoom 11.
- *   • Click o drag del marker → guarda lat/lng + intenta reverse
- *     geocoding con Nominatim para autocompletar address y city.
- *   • Botón "📍 Usar mi ubicación" → navigator.geolocation +
- *     reverse geocoding para preseleccionar país + provincia + marker.
+ *   • Buscar texto → llama a Nominatim filtrado por countrycode del país
+ *     actual (Ecuador por default). Debounced 400ms. Top 5 resultados.
+ *   • Seleccionar resultado del search → mueve marker + popula
+ *     address/city/province automáticamente.
+ *   • Click o drag del marker → guarda lat/lng + reverse geocoding.
+ *   • Botón "📍 Usar mi ubicación" → geolocation + reverse geocoding.
  *
- * Sin dependencias externas más allá de Leaflet (que ya está
- * instalado).
+ * Sin dependencias externas más allá de Leaflet (que ya está instalado).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { Locate, Loader2, MapPin } from 'lucide-react';
-import { COUNTRIES, findCountry, findProvince, type Country } from '@/lib/locations';
+import { Locate, Loader2, MapPin, Search, X } from 'lucide-react';
+import { COUNTRIES, findCountry, findProvince } from '@/lib/locations';
 import { toast } from 'sonner';
 
 // Fix por el clásico bug de Leaflet con Vite donde el ícono del marker
@@ -62,13 +64,19 @@ interface LocationPickerProps {
   required?: boolean;
 }
 
+/** País default para el filtro del search cuando el usuario aún no eligió. */
+const DEFAULT_COUNTRY_CODE = 'EC';
+
 export function LocationPicker({ value, onChange }: LocationPickerProps) {
   const country  = findCountry(value.country);
   const province = findProvince(country, value.province);
   const [locating, setLocating] = useState(false);
   const [reversing, setReversing] = useState(false);
 
-  // Centro y zoom del mapa derivados del país/provincia
+  // countrycode usado por el search de Nominatim. EC por default.
+  const searchCountryCode = (country?.code ?? DEFAULT_COUNTRY_CODE).toLowerCase();
+
+  // Centro y zoom del mapa derivados del país/provincia.
   const center: [number, number] = useMemo(() => {
     if (value.latitude && value.longitude) return [value.latitude, value.longitude];
     if (province) return [province.lat, province.lng];
@@ -105,7 +113,6 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
           });
           toast.success('Ubicación detectada');
         } catch {
-          // Sin reverse → al menos guardamos coords
           onChange({ ...value, latitude: lat, longitude: lng });
           toast.info('Ubicación detectada (sin dirección)');
         } finally {
@@ -124,7 +131,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
     );
   };
 
-  // Click en el mapa → mover marker + reverse geocoding
+  // Click en el mapa o drag del marker → mover marker + reverse geocoding.
   const handleMapClick = async (lat: number, lng: number) => {
     onChange({ ...value, latitude: lat, longitude: lng });
     setReversing(true);
@@ -140,16 +147,36 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
         address:  r.address  ?? value.address,
       });
     } catch {
-      /* swallow — el usuario al menos ya tiene el marker */
+      /* swallow */
     } finally {
       setReversing(false);
     }
   };
 
+  // Selección de un resultado del search → mover mapa + popular fields.
+  const handleSearchSelect = (r: NominatimResult) => {
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lon);
+    const a   = r.address ?? {};
+    const province = a.state ?? a.region;
+    const city     = a.city ?? a.town ?? a.village;
+    const address  = [a.road, a.house_number].filter(Boolean).join(' ');
+    onChange({
+      ...value,
+      latitude:  lat,
+      longitude: lng,
+      country:  a.country  ?? value.country,
+      province: province   ?? value.province,
+      city:     city       ?? value.city,
+      address:  address || value.address,
+    });
+  };
+
   return (
-    <div className="space-y-3">
-      {/* Selectores de país/provincia + botón Mi ubicación */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div className="space-y-4">
+      {/* SELECTORES de país/provincia (2 columnas — más espacio para que no
+          se aplaste el label de "Provincia / Estado") */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Selector
           label="País"
           value={country?.code ?? ''}
@@ -177,9 +204,10 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
             onChange({
               ...value,
               province:  p?.name,
-              // Auto-centro: el marker se mueve al centro de la provincia
-              // cuando todavía no hay coords explícitas.
-              ...(!value.latitude && p && { latitude: p.lat, longitude: p.lng }),
+              // Mover el marker al centro de la provincia recién elegida —
+              // siempre, no solo cuando no hay coords. Si el usuario
+              // cambia de provincia es porque quiere ver esa zona.
+              ...(p && { latitude: p.lat, longitude: p.lng }),
             });
           }}
           options={[
@@ -187,18 +215,28 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
             ...(country?.provinces.map((p) => ({ value: p.code, label: p.name })) ?? []),
           ]}
         />
+      </div>
+
+      {/* INPUT DE BÚSQUEDA + BOTÓN "Usar mi ubicación" en la misma fila.
+          El search ocupa el espacio disponible, el botón es ancho fijo. */}
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+        <SearchAutocomplete
+          countryCode={searchCountryCode}
+          onSelect={handleSearchSelect}
+        />
         <button
           type="button"
           onClick={useMyLocation}
           disabled={locating}
-          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/30 transition disabled:opacity-50 self-end"
+          className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/30 transition disabled:opacity-50 whitespace-nowrap"
         >
           {locating ? <Loader2 size={14} className="animate-spin" /> : <Locate size={14} />}
           Usar mi ubicación
         </button>
       </div>
 
-      {/* Mapa */}
+
+      {/* MAPA ──────────────────────────────────────────────── */}
       <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
         <MapContainer
           key={`${center[0]}-${center[1]}-${zoom}`}
@@ -238,7 +276,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
         </p>
       </div>
 
-      {/* Inputs de dirección + ciudad — readable, editables manualmente */}
+      {/* DIRECCIÓN + CIUDAD ───────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Dirección</label>
@@ -269,7 +307,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
   );
 }
 
-/* ─── Helpers internos ─── */
+/* ───────────────────────── Helpers internos ───────────────────────── */
 
 function Selector({
   label, value, onChange, options, disabled,
@@ -297,9 +335,7 @@ function Selector({
   );
 }
 
-/** Re-centra el mapa cuando el `center` cambia desde afuera (ej: al elegir
- *  una provincia distinta). Sin esto, Leaflet ignora el cambio porque
- *  `center` es propiedad inicial. */
+/** Re-centra el mapa cuando el `center` cambia desde afuera. */
 function RecenterOnChange({ center, zoom }: { center: [number, number]; zoom: number }) {
   const map = useMap();
   useEffect(() => {
@@ -318,15 +354,163 @@ function ClickableMap({ onClick }: { onClick: (lat: number, lng: number) => void
   return null;
 }
 
-/* ─── Reverse geocoding via Nominatim (OSM) ───
+/* ─── Search autocomplete (Nominatim) ───────────────────────────────
  *
- * Endpoint público gratuito sin API key. Tiene rate limit (1 req/seg)
- * pero para uso normal de UI no llegamos cerca. Si en el futuro queremos
- * más volumen, conviene auto-hospedar un Nominatim o pasar a una alt
- * tipo Mapbox geocoding.
+ * Input de búsqueda libre con dropdown de resultados. Filtra por país
+ * via `countrycodes` — por default Ecuador.
  *
- * Devuelve sólo los campos que nos interesan.
+ * Debounced 400ms para no abusar del endpoint público de Nominatim
+ * (rate limit 1 req/seg). Cancela requests anteriores con AbortController.
+ *
+ * Cierra el dropdown al hacer click afuera o al elegir un resultado.
  */
+interface NominatimAddress {
+  country?:      string;
+  state?:        string;
+  region?:       string;
+  city?:         string;
+  town?:         string;
+  village?:      string;
+  road?:         string;
+  house_number?: string;
+}
+
+interface NominatimResult {
+  place_id:     number;
+  display_name: string;
+  lat:          string;
+  lon:          string;
+  address?:     NominatimAddress;
+  type?:        string;
+}
+
+function SearchAutocomplete({
+  countryCode,
+  onSelect,
+}: {
+  countryCode: string;
+  onSelect:    (r: NominatimResult) => void;
+}) {
+  const [query, setQuery]       = useState('');
+  const [results, setResults]   = useState<NominatimResult[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [open, setOpen]         = useState(false);
+  const wrapRef                  = useRef<HTMLDivElement | null>(null);
+  const abortRef                 = useRef<AbortController | null>(null);
+
+  // Cerrar el dropdown al click afuera.
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  // Debounced fetch a Nominatim.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      try {
+        const url = new URL('https://nominatim.openstreetmap.org/search');
+        url.searchParams.set('format', 'jsonv2');
+        url.searchParams.set('q', q);
+        url.searchParams.set('countrycodes', countryCode);
+        url.searchParams.set('limit', '5');
+        url.searchParams.set('addressdetails', '1');
+        url.searchParams.set('accept-language', 'es');
+        const res = await fetch(url.toString(), {
+          headers: { 'Accept': 'application/json' },
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error('search failed');
+        const data = (await res.json()) as NominatimResult[];
+        setResults(data);
+        setOpen(data.length > 0);
+      } catch (err) {
+        if ((err as { name?: string })?.name !== 'AbortError') {
+          setResults([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [query, countryCode]);
+
+  const clear = () => {
+    setQuery('');
+    setResults([]);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+        Ubicación (búsqueda)
+      </label>
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          placeholder="Buscá una dirección, barrio o ciudad…"
+          className="w-full h-10 pl-9 pr-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {loading ? (
+          <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />
+        ) : query ? (
+          <button
+            type="button"
+            onClick={clear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+          >
+            <X size={14} />
+          </button>
+        ) : null}
+      </div>
+
+      {open && results.length > 0 && (
+        <ul className="absolute z-[1100] mt-1 w-full max-h-72 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
+          {results.map((r) => (
+            <li key={r.place_id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(r);
+                  clear();
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 flex items-start gap-2"
+              >
+                <MapPin size={14} className="mt-0.5 text-slate-400 shrink-0" />
+                <span className="text-slate-700 dark:text-slate-200 leading-snug">
+                  {r.display_name}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[10px] text-slate-400 mt-1">
+        Opcional · resultados filtrados por el país seleccionado arriba
+      </p>
+    </div>
+  );
+}
+
+/* ─── Reverse geocoding via Nominatim ─── */
 interface ReverseResult {
   country?:  string;
   province?: string;

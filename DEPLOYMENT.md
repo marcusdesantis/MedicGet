@@ -687,3 +687,8 @@ Para no andar haciendo `docker compose logs -f` a mano:
 | Ver el password inicial de Jenkins    | `docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword` |
 | Liberar disco (capas huérfanas)       | `docker image prune -f`                                            |
 | Liberar disco (TODO lo no usado)      | `docker system prune -a -f --volumes` (⚠ borra volúmenes también)  |
+
+
+# Comando para migraciones
+
+docker compose --profile tools run --rm prisma prisma:seed

@@ -1,6 +1,5 @@
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
-import { AddressAutocomplete } from "./AddressAutocomplete";
 import { SpecialtyCombobox } from "@/components/ui/SpecialtyCombobox";
 import PhoneInput from "react-phone-input-2";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -64,9 +63,8 @@ export const ProfessionalForm = ({ form, setForm, errors }: Props) => {
                 </p>
             </FormField>
 
-            <FormField label="Ubicación de tu consulta">
-                <AddressAutocomplete form={form} setForm={setForm} />
-            </FormField>
+            {/* La ubicación se captura en el step 2 (RegisterAddressPage) con
+                el LocationPicker. No la pedimos acá para no duplicarla. */}
 
             <FormField label="Teléfono móvil *">
                 <div className="phone-input-wrapper">
