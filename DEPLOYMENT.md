@@ -696,3 +696,6 @@ docker compose --profile tools run --rm prisma prisma:seed
 # Reiniciar nginx
 
 docker compose restart nginx
+
+# Reconstruir el frontend
+

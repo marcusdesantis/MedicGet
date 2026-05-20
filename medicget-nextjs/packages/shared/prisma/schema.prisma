@@ -37,6 +37,10 @@ enum SubscriptionStatus {
   EXPIRED
   CANCELLED
   PENDING_PAYMENT
+  /// El plan personal de un médico cuando se une a una clínica. No se
+  /// renueva ni cobra. Se reactiva si el médico se desvincula y el plan
+  /// no había expirado.
+  PAUSED
 }
 
 enum UserStatus {
@@ -599,6 +603,12 @@ model Plan {
   monthlyPrice     Float         @default(0)
   modules          String[]      @default([])
   limits           Json?
+  /// Cupo máximo de médicos cubiertos por el plan. Sólo se interpreta
+  /// para planes de audiencia CLINIC. NULL = sin límite (planes
+  /// enterprise futuros). Los médicos por encima del cupo se "soft-pause"
+  /// (no aparecen en directorio) hasta que la clínica suba de plan o
+  /// desvincule médicos manualmente.
+  maxDoctors       Int?
   isActive         Boolean       @default(true)
   /// Display order in pricing UI. Lower = first.
   sortOrder        Int           @default(0)

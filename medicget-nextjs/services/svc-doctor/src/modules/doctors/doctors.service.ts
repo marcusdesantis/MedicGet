@@ -59,24 +59,47 @@ function sanitize<T extends { user?: { email?: unknown; passwordHash?: unknown }
  * Hace una sola query a Subscription por todos los userIds, así no
  * disparamos N+1 al listar.
  */
-async function applyPlanGating<T extends { id: string; userId: string; modalities: string[] }>(
+async function applyPlanGating<T extends { id: string; userId: string; clinicId?: string | null; clinic?: { userId: string } | null; modalities: string[]; rating: number }>(
   doctors: T[],
 ): Promise<T[]> {
   if (doctors.length === 0) return doctors;
   const { prisma } = await import('@medicget/shared/prisma');
+
+  // El plan efectivo vive en el user del médico (independiente) o en el
+  // user de la clínica (empleado). Recolectamos ambos sets de userIds.
+  const planUserIds = new Set<string>();
+  for (const d of doctors) {
+    planUserIds.add(d.clinic?.userId ?? d.userId);
+  }
   const subs = await prisma.subscription.findMany({
-    where:   { userId: { in: doctors.map((d) => d.userId) }, status: 'ACTIVE' },
+    where:   { userId: { in: [...planUserIds] }, status: 'ACTIVE' },
     include: { plan: true },
     orderBy: { expiresAt: 'desc' },
   });
   // Map userId → plan.modules. El primer match (más reciente) gana.
-  const map = new Map<string, string[]>();
-  for (const s of subs) if (!map.has(s.userId)) map.set(s.userId, s.plan.modules);
+  const moduleMap = new Map<string, string[]>();
+  for (const s of subs) if (!moduleMap.has(s.userId)) moduleMap.set(s.userId, s.plan.modules);
 
-  return doctors.map((d) => ({
-    ...d,
-    modalities: intersectModalities(d.modalities, map.get(d.userId) ?? ['ONLINE']),
-  }));
+  // Mapeamos cada doctor a sus modules efectivos (clinica → doctor).
+  const enriched = doctors.map((d) => {
+    const ownerUserId = d.clinic?.userId ?? d.userId;
+    const modules = moduleMap.get(ownerUserId) ?? ['ONLINE'];
+    return {
+      doctor:   { ...d, modalities: intersectModalities(d.modalities, modules) },
+      priority: modules.includes('PRIORITY_SEARCH'),
+    };
+  });
+
+  // Ordenamos: primero los que tienen PRIORITY_SEARCH (boost del plan
+  // Premium), después por rating descendente — preservando el orden
+  // original de cada grupo. Como `Array.prototype.sort` es estable a
+  // partir de ES2019, no necesitamos un sort manual.
+  enriched.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority ? -1 : 1;
+    return b.doctor.rating - a.doctor.rating;
+  });
+
+  return enriched.map((e) => e.doctor);
 }
 
 export const doctorsService = {
@@ -218,6 +241,10 @@ export const doctorsService = {
       input.startTime,
       input.endTime,
     );
+    // Invalida los slots cacheados a futuro para que se regeneren desde
+    // el nuevo horario. Sin esto el paciente seguiría viendo los slots
+    // generados con el horario anterior (típicamente 9-17h por default).
+    await doctorsRepository.clearFutureUnbookedSlots(doctorId);
     return { ok: true, data: result };
   },
 
@@ -251,6 +278,8 @@ export const doctorsService = {
     }
 
     await doctorsRepository.deleteAvailability(availId);
+    // Mismo motivo: regenerar los slots con la disponibilidad nueva.
+    await doctorsRepository.clearFutureUnbookedSlots(doctorId);
     return { ok: true, data: { deleted: true } };
   },
 

@@ -97,11 +97,11 @@ export const RegisterClinicDetailsPage = () => {
         return merged;
     }, [clientErrors, submitError]);
 
-    // Step 1 must also be complete.
+    // Step 1 must also be complete. Sólo pedimos clinicName y specialists —
+    // la ciudad pasó al LocationPicker del paso 2 (`cityLocation`).
     const stepOneValid =
         draft.clinicName.trim().length > 0 &&
-        draft.specialists.trim().length > 0 &&
-        draft.city.trim().length        > 0;
+        draft.specialists.trim().length > 0;
 
     const personalValid = isClean(clientErrors);
     const locationValid = isClean(locationErrors);

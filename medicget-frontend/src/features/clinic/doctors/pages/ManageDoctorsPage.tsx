@@ -442,9 +442,20 @@ function CreateTab({
       });
       setCreated(res.data);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: { message?: string } } } })
-        ?.response?.data?.error?.message ?? 'No se pudo crear el médico';
-      setErr(msg);
+      // Si el backend devuelve PLAN_LIMIT_REACHED (cupo de médicos
+      // excedido), formateamos el mensaje con CTA al upgrade. El resto
+      // de errores (CONFLICT por email duplicado, etc.) caen al texto
+      // del backend tal cual.
+      const apiErr = e as {
+        response?: { data?: { error?: { code?: string; message?: string } } };
+      };
+      const code = apiErr?.response?.data?.error?.code;
+      const msg  = apiErr?.response?.data?.error?.message ?? 'No se pudo crear el médico';
+      if (code === 'PLAN_LIMIT_REACHED') {
+        setErr(`${msg} → Mejorá el plan desde "Mi plan".`);
+      } else {
+        setErr(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -680,3 +691,4 @@ function CreatedSuccess({
     </div>
   );
 }
+

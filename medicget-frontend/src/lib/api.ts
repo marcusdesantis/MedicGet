@@ -101,7 +101,16 @@ api.interceptors.response.use(
     // server/network problems the form can't visually represent.
     const url = error.config?.url ?? '';
     const isAuthForm = url.includes('/auth/login') || url.includes('/auth/register');
-    if (!isAuthForm || status >= 500) {
+
+    // 404 silencioso para endpoints "puede o no existir" (medical-record es
+    // el caso típico — el formulario quedará vacío y NO es un error real).
+    // Los callers ya tienen un try/catch para esos casos; el toast global
+    // sólo confundía al usuario haciéndole pensar que hubo un fallo.
+    const isExpectable404 =
+      status === 404 &&
+      (url.includes('/medical-record') || url.includes('/payment') || url.includes('/reviews'));
+
+    if ((!isAuthForm && !isExpectable404) || status >= 500) {
       toast.error(message);
     }
     return Promise.reject(error);
@@ -151,7 +160,7 @@ export interface UserDto {
   updatedAt: string;
   profile:   ProfileDto | null;
   clinic?:   { id: string; name: string } | null;
-  doctor?:   { id: string; specialty: string } | null;
+  doctor?:   { id: string; specialty: string; clinicId?: string | null } | null;
   patient?:  { id: string } | null;
 }
 
@@ -845,6 +854,8 @@ export interface PlanDto {
   monthlyPrice: number;
   modules:      string[];
   limits:       Record<string, unknown> | null;
+  /** Cupo máximo de médicos para planes CLINIC. null = sin límite. */
+  maxDoctors:   number | null;
   isActive:     boolean;
   sortOrder:    number;
 }
@@ -906,7 +917,7 @@ export type SubscriptionCheckoutResponse =
 
 export const subscriptionsApi = {
   /** Returns the caller's current active subscription + the FREE fallback plan. */
-  me: () => apiGet<{ subscription: SubscriptionDto | null; freePlan: PlanDto | null }>('/subscriptions/me'),
+  me: () => apiGet<{ subscription: SubscriptionDto | null; freePlan: PlanDto | null; inherited?: boolean }>('/subscriptions/me'),
   checkout: (body: { planId: string; responseUrl: string }) =>
     apiPost<SubscriptionCheckoutResponse>('/subscriptions/checkout', body),
   confirm: (body: {

@@ -325,9 +325,17 @@ export const adminService = {
 
   /* ─────────────── Subscriptions ─────────────── */
 
-  async listSubscriptions(params: { page: number; pageSize: number; status?: string }) {
+  async listSubscriptions(params: {
+    page:     number;
+    pageSize: number;
+    status?:  string;
+    /** Filtra por audiencia del plan (DOCTOR | CLINIC). El admin lo usa
+     *  para tener tabs separadas "Especialistas" vs "Clínicas". */
+    audience?: 'DOCTOR' | 'CLINIC';
+  }) {
     const where: Record<string, unknown> = {};
-    if (params.status) where.status = params.status;
+    if (params.status)   where.status = params.status;
+    if (params.audience) where.plan   = { audience: params.audience };
     const [data, total] = await Promise.all([
       prisma.subscription.findMany({
         where,

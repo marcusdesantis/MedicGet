@@ -3,7 +3,7 @@ import type { AuthUser } from '@medicget/shared/auth';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { paginate } from '@medicget/shared/paginate';
 import { sendEmail } from '@medicget/shared/email';
-import { ensureFreeSubscription } from '@medicget/shared/subscription';
+import { countActiveDoctorsInClinic, getEffectivePlan } from '@medicget/shared/subscription';
 import * as repo from './clinics.repository';
 import type { CreateClinicData, UpdateClinicData } from './clinics.repository';
 
@@ -162,6 +162,24 @@ export async function createDoctorForClinic(
     return { ok: false, code: 'FORBIDDEN', message: 'Esta clínica no te pertenece.' };
   }
 
+  // ─── Cupo de médicos del plan ─────────────────────────────────────────
+  // Resolvemos el plan efectivo de la clínica (el plan ACTIVE de su
+  // user). El cupo vive en `Plan.maxDoctors` (null = sin límite).
+  // Si la clínica ya tiene ≥ maxDoctors médicos ACTIVE, no la dejamos
+  // crear uno nuevo y devolvemos PLAN_LIMIT_REACHED con CTA al upgrade.
+  const effective = await getEffectivePlan(caller.id);
+  const cupoLibre = effective?.plan
+    ? (effective.plan.maxDoctors == null ? Infinity : effective.plan.maxDoctors)
+    : 3; // fallback al cupo de FREE-CLINIC si no hay sub registrada
+  const yaTiene = await countActiveDoctorsInClinic(clinicId);
+  if (yaTiene >= cupoLibre) {
+    return {
+      ok:    false,
+      code:  'PLAN_LIMIT_REACHED',
+      message: `Tu plan permite hasta ${cupoLibre} médicos y ya tenés ${yaTiene}. Subí de plan para agregar más.`,
+    };
+  }
+
   const { prisma } = await import('@medicget/shared/prisma');
 
   // Email collision check — User.email is unique
@@ -215,8 +233,8 @@ export async function createDoctorForClinic(
     return doctor;
   });
 
-  // Asignar plan FREE al médico recién creado.
-  await ensureFreeSubscription(created.userId, 'DOCTOR').catch(() => {/* swallow */});
+  // El médico hereda el plan de la clínica (no creamos suscripción personal).
+  // `getEffectivePlan(doctor.userId)` resolverá el plan vía clinic.userId.
 
   // Best-effort welcome email with credentials. The clinic admin also
   // sees them in the response, so this is just a convenience for the

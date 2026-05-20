@@ -163,6 +163,25 @@ export const doctorsRepository = {
     });
   },
 
+  /**
+   * Borra todos los slots NO reservados desde hoy hacia adelante. Se llama
+   * cuando el médico cambia su disponibilidad para que `getSlots` los
+   * regenere a partir del nuevo horario en la próxima consulta del paciente.
+   * No tocamos slots ya reservados (isBooked=true) — esos corresponden a
+   * citas existentes que tienen que sobrevivir el cambio de horario.
+   */
+  async clearFutureUnbookedSlots(doctorId: string) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    return prisma.appointmentSlot.deleteMany({
+      where: {
+        doctorId,
+        isBooked: false,
+        date: { gte: today },
+      },
+    });
+  },
+
   async dashboardStats(doctorId: string) {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

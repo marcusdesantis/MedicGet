@@ -34,10 +34,7 @@ const KNOWN_MODULES: { key: string; label: string }[] = [
   { key: 'CHAT', label: 'Chat en vivo' },
   { key: 'REPORTS', label: 'Reportes avanzados' },
   { key: 'PRIORITY_SEARCH', label: 'Prioridad en búsqueda' },
-  { key: 'BRANDING', label: 'Branding propio' },
   { key: 'PAYMENTS_DASHBOARD', label: 'Panel de pagos (clínica)' },
-  { key: 'MULTI_LOCATION', label: 'Multi-sede (clínica)' },
-  { key: 'PRIORITY_SUPPORT', label: 'Soporte prioritario' },
 ];
 
 export default function AdminPlans() {

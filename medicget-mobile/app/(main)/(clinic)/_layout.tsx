@@ -70,6 +70,7 @@ export default function ClinicLayout() {
         <Tabs.Screen name="reports" options={{ href: null }} />
         <Tabs.Screen name="notifications" options={{ href: null }} />
         <Tabs.Screen name="specialties" options={{ href: null }} />
+        <Tabs.Screen name="plan" options={{ href: null }} />
       </Tabs>
     </ProtectedRoute>
   );

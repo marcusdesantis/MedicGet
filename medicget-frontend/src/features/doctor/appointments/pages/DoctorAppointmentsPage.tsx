@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Clock, Loader2, Check, X, CheckCircle, List, CalendarDays, Video, MessageSquare, MapPin, Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { Calendar, Clock, Loader2, Check, X, CheckCircle, List, CalendarDays, Video, MessageSquare, MapPin, Eye, Hourglass } from 'lucide-react';
 import { PageHeader }     from '@/components/ui/PageHeader';
 import { Tabs }           from '@/components/ui/Tabs';
 import { SearchInput }    from '@/components/ui/SearchInput';
@@ -79,6 +80,12 @@ export function DoctorAppointmentsPage() {
     setActionError(null);
     try {
       await appointmentsApi.update(id, { status: newStatus });
+      // Feedback explícito al doctor: cuando marca COMPLETED, el backend
+      // convierte a ONGOING + doctorCompletedAt y queda esperando que el
+      // paciente confirme. Sin esto parecía que el botón no hacía nada.
+      if (newStatus === 'COMPLETED') {
+        toast.success('Cita marcada como atendida. Esperando confirmación del paciente.');
+      }
       refetch();
     } catch (err: unknown) {
       const msg =
@@ -228,7 +235,12 @@ export function DoctorAppointmentsPage() {
                           </button>
                         </>
                       )}
-                      {(a.status === 'UPCOMING' || a.status === 'ONGOING') && (
+                      {/* Si el médico ya marcó atendida (doctorCompletedAt set),
+                          mostramos "Esperando paciente" para evitar que
+                          parezca que el botón "no hizo nada". El backend pasa
+                          la cita a ONGOING y se cierra automáticamente cuando
+                          el paciente confirma o pasan 24 h. */}
+                      {(a.status === 'UPCOMING' || a.status === 'ONGOING') && !a.doctorCompletedAt && (
                         <button
                           onClick={() => updateStatus(a.id, 'COMPLETED')}
                           disabled={isActing}
@@ -238,6 +250,15 @@ export function DoctorAppointmentsPage() {
                           {isActing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
                           <span className="hidden md:inline">Atender</span>
                         </button>
+                      )}
+                      {a.status === 'ONGOING' && a.doctorCompletedAt && (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 rounded-lg"
+                          title="Marcada como atendida — esperando la confirmación del paciente (se cierra automáticamente en 24 h)."
+                        >
+                          <Hourglass size={14} />
+                          <span className="hidden md:inline">Esperando paciente</span>
+                        </span>
                       )}
                     </div>
                   </div>

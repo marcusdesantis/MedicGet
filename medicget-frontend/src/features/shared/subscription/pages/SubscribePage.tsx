@@ -322,7 +322,7 @@ export function SubscribePage() {
 
           <h3 className="font-semibold text-slate-800 dark:text-white mt-6 mb-2">Incluye</h3>
           <ul className="space-y-1.5 text-sm">
-            {plan.modules.map((m) => (
+            {plan.modules.filter((m) => moduleLabel(m)).map((m) => (
               <li key={m} className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                 <CheckCircle2 size={14} className="text-emerald-500" /> {moduleLabel(m)}
               </li>
@@ -498,10 +498,7 @@ function moduleLabel(code: string): string {
     CHAT:               'Chat en vivo con pacientes',
     REPORTS:            'Reportes avanzados',
     PRIORITY_SEARCH:    'Prioridad en los resultados de búsqueda',
-    BRANDING:           'Branding personalizado',
     PAYMENTS_DASHBOARD: 'Panel completo de pagos',
-    MULTI_LOCATION:     'Multi-sede',
-    PRIORITY_SUPPORT:   'Soporte prioritario',
   };
-  return m[code] ?? code;
+  return m[code] ?? '';
 }

@@ -46,7 +46,10 @@ export interface UserDto {
   updatedAt: string;
   profile: ProfileDto | null;
   clinic?: { id: string; name: string } | null;
-  doctor?: { id: string; specialty: string } | null;
+  /** El backend devuelve `clinicId` cuando el medico pertenece a una
+   *  clinica. La UI lo usa para mostrar "Plan heredado" y ocultar
+   *  acciones de compra. */
+  doctor?: { id: string; specialty: string; clinicId?: string | null } | null;
   patient?: { id: string } | null;
 }
 
@@ -541,6 +544,61 @@ export const paymentApi = {
     apiGet<PaginatedData<PaymentRowDto>>('/payments', params),
 };
 
+/**
+ * Response del POST /subscriptions/checkout. Tiene la misma shape que
+ * CheckoutSessionDto para citas, pero ademas trae `subscriptionId` y un
+ * `breakdown` opcional con la comision de la plataforma. Para planes FREE
+ * el backend solo devuelve { subscriptionId }; para stubMode { subscriptionId,
+ * stubMode: true }.
+ */
+export interface SubscriptionCheckoutResponse {
+  subscriptionId:      string;
+  breakdown?:          PaymentBreakdownDto;
+  stubMode?:           boolean;
+  token?:              string;
+  storeId?:            string;
+  amount?:             number;
+  amountWithoutTax?:   number;
+  amountWithTax?:      number;
+  tax?:                number;
+  service?:            string;
+  tip?:                number;
+  currency?:           string;
+  clientTransactionId?: string;
+  reference?:          string;
+}
+
+export const plansApi = {
+  /** Listado publico de planes. Si pasas audience filtra a DOCTOR o CLINIC. */
+  list: (audience?: PlanAudience) =>
+    apiGet<PlanDto[]>('/plans', audience ? { audience } : undefined),
+};
+
+export const subscriptionsApi = {
+  /** Devuelve la suscripcion EFECTIVA del usuario + plan FREE como fallback.
+   *  Para medicos de clinica, devuelve la suscripcion de la clinica con
+   *  `inherited: true`. */
+  me: () =>
+    apiGet<{
+      subscription: SubscriptionDto | null;
+      freePlan:     PlanDto | null;
+      inherited?:   boolean;
+    }>('/subscriptions/me'),
+  checkout: (body: { planId: string; responseUrl: string }) =>
+    apiPost<SubscriptionCheckoutResponse>('/subscriptions/checkout', body),
+  confirm: (body: {
+    subscriptionId:       string;
+    payphoneId?:          string;
+    clientTransactionId?: string;
+    fakeOk?:              boolean;
+  }) =>
+    apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>(
+      '/subscriptions/confirm',
+      body,
+    ),
+  cancel: () => apiPost<{ ok: true }>('/subscriptions/cancel', {}),
+};
+
 export const notificationsApi = {
   list: (params?: { limit?: number; onlyUnread?: 0 | 1 }) =>
     apiGet<{ items: NotificationDto[]; unreadCount: number }>(
@@ -567,6 +625,9 @@ export interface PlanDto {
   monthlyPrice: number;
   modules: string[];
   limits: Record<string, unknown> | null;
+  /** Solo planes CLINIC. null = sin limite (enterprise). undefined = el
+   *  backend todavia no lo tipa para este plan. */
+  maxDoctors?: number | null;
   isActive: boolean;
   sortOrder: number;
 }
@@ -693,8 +754,4 @@ export const adminApi = {
       `/admin/subscriptions/${id}/change-plan`,
       { planId },
     ),
-
-  settings: () => apiGet<AppSettingDto[]>('/admin/settings'),
-  saveSettings: (values: Record<string, string | null>) =>
-    apiPatch<AppSettingDto[]>('/admin/settings', { values }),
 };

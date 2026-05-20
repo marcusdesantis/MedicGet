@@ -65,10 +65,15 @@ interface PlanSpec {
   monthlyPrice: number;
   modules:      string[];
   limits:       Record<string, unknown>;
+  /** Cupo de médicos para planes de audiencia CLINIC. null = sin límite. */
+  maxDoctors?:  number | null;
   sortOrder:    number;
 }
 
 const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM', PlanSpec>> = {
+  // Planes para médicos INDEPENDIENTES (sin clínica asociada). Los médicos
+  // que pertenecen a una clínica heredan el plan de su clínica y no ven
+  // este catálogo.
   DOCTOR: {
     FREE: {
       name:         'Free',
@@ -88,54 +93,92 @@ const PLAN_CATALOG: Record<'DOCTOR' | 'CLINIC', Record<'FREE' | 'PRO' | 'PREMIUM
     },
     PREMIUM: {
       name:         'Premium',
-      description:  'Todo lo de Pro + reportes, búsqueda priorizada y branding propio.',
+      description:  'Todo lo de Pro + reportes avanzados y prioridad en el directorio.',
       monthlyPrice: 50,
-      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'PRIORITY_SEARCH', 'BRANDING'],
+      // BRANDING quitado del catálogo — era feature fantasma sin
+      // implementación. Si en el futuro habilitamos logo/colores
+      // custom en el perfil público, se vuelve a agregar acá.
+      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'PRIORITY_SEARCH'],
       limits:       { maxAppointmentsPerMonth: null },
       sortOrder:    3,
     },
   },
+  // Planes para clínicas. El cupo `maxDoctors` cubre a todos sus médicos
+  // y los features se heredan a cada uno. MULTI_LOCATION fue removido —
+  // el dominio no modela sedes secundarias, era una feature fantasma.
   CLINIC: {
     FREE: {
       name:         'Free',
-      description:  'Una clínica con un médico, modalidad online.',
+      description:  'Hasta 3 médicos en modalidad online. Ideal para empezar.',
       monthlyPrice: 0,
       modules:      ['ONLINE'],
-      limits:       { maxDoctors: 1, maxAppointmentsPerMonth: 50 },
+      limits:       { maxAppointmentsPerMonth: 50 },
+      maxDoctors:   3,
       sortOrder:    1,
     },
     PRO: {
       name:         'Pro',
-      description:  'Multi-médico, todas las modalidades, dashboard de pagos.',
+      description:  'Hasta 15 médicos con online, presencial y chat. Panel de pagos.',
       monthlyPrice: 50,
       modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD'],
-      limits:       { maxDoctors: 10, maxAppointmentsPerMonth: 1000 },
+      limits:       { maxAppointmentsPerMonth: 1000 },
+      maxDoctors:   15,
       sortOrder:    2,
     },
     PREMIUM: {
       name:         'Premium',
-      description:  'Sin límites de médicos, reportes avanzados, multi-sede y soporte prioritario.',
+      description:  'Hasta 50 médicos. Reportes avanzados y prioridad en el directorio.',
       monthlyPrice: 130,
-      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'MULTI_LOCATION', 'PRIORITY_SUPPORT'],
-      limits:       { maxDoctors: null, maxAppointmentsPerMonth: null },
+      // PRIORITY_SUPPORT quitado — no tenemos sistema de tickets ni
+      // queue diferenciada, así que era una promesa sin sustento.
+      modules:      ['ONLINE', 'PRESENCIAL', 'CHAT', 'PAYMENTS_DASHBOARD', 'REPORTS', 'PRIORITY_SEARCH'],
+      limits:       { maxAppointmentsPerMonth: null },
+      maxDoctors:   50,
       sortOrder:    3,
     },
   },
 };
 
-// Compat con código existente que importa CANONICAL_MODULES.
-const CANONICAL_MODULES: Record<string, Record<string, string[]>> = {
-  DOCTOR: {
-    FREE:    PLAN_CATALOG.DOCTOR.FREE.modules,
-    PRO:     PLAN_CATALOG.DOCTOR.PRO.modules,
-    PREMIUM: PLAN_CATALOG.DOCTOR.PREMIUM.modules,
-  },
-  CLINIC: {
-    FREE:    PLAN_CATALOG.CLINIC.FREE.modules,
-    PRO:     PLAN_CATALOG.CLINIC.PRO.modules,
-    PREMIUM: PLAN_CATALOG.CLINIC.PREMIUM.modules,
-  },
-};
+/**
+ * Devuelve el plan EFECTIVO de un usuario, considerando la herencia
+ * clínica → médicos asociados.
+ *
+ * - Si el user es DOCTOR y tiene `clinicId`, devuelve la suscripción
+ *   ACTIVE de la clínica (con su plan).
+ * - En cualquier otro caso devuelve la suscripción ACTIVE del propio
+ *   user.
+ * - Si no hay ninguna suscripción ACTIVE, devuelve null (el caller
+ *   debería caer al plan FREE de su audiencia como fallback).
+ *
+ * Esta función es la fuente de verdad para gating de features. Reemplaza
+ * el patrón antiguo de "lee `Subscription` directo del userId" que
+ * dejaba a los médicos empleados estancados en FREE aunque su clínica
+ * tuviera Premium.
+ */
+export async function getEffectivePlan(userId: string) {
+  // Buscamos primero al doctor para saber si pertenece a una clínica.
+  const doctor = await prisma.doctor.findUnique({
+    where:  { userId },
+    select: { clinicId: true, clinic: { select: { userId: true } } },
+  });
+
+  // Médico empleado: el plan vive en el user de la clínica.
+  if (doctor?.clinicId && doctor.clinic?.userId) {
+    const clinicSub = await prisma.subscription.findFirst({
+      where:   { userId: doctor.clinic.userId, status: 'ACTIVE' },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (clinicSub) return clinicSub;
+  }
+
+  // Caso default: la suscripción propia del usuario.
+  return prisma.subscription.findFirst({
+    where:   { userId, status: 'ACTIVE' },
+    include: { plan: true },
+    orderBy: { createdAt: 'desc' },
+  });
+}
 
 /**
  * Modalidades válidas en el dominio. Filtramos las strings del array
@@ -156,11 +199,10 @@ export type Modality = typeof VALID_MODALITIES[number];
  * efectivamente puede usar.
  */
 export async function getAllowedModalities(userId: string): Promise<Modality[]> {
-  const sub = await prisma.subscription.findFirst({
-    where:   { userId, status: 'ACTIVE' },
-    include: { plan: true },
-    orderBy: { expiresAt: 'desc' },
-  });
+  // Si el user es DOCTOR con clinicId, el plan efectivo es el de la
+  // clínica — el médico hereda automáticamente las modalidades que la
+  // clínica paga, sin tener que comprar su propio plan.
+  const sub = await getEffectivePlan(userId);
   const modules = sub?.plan.modules ?? ['ONLINE'];
   return VALID_MODALITIES.filter((m) => modules.includes(m));
 }
@@ -196,14 +238,16 @@ let plansBootstrapped = false;
 export async function bootstrapPlanFeatures(): Promise<void> {
   if (plansBootstrapped) return;
   try {
-    for (const [audience, planCodes] of Object.entries(CANONICAL_MODULES)) {
-      for (const [code, modules] of Object.entries(planCodes)) {
+    // 1) Re-aplicar módulos canónicos + cupo de médicos por plan.
+    for (const audience of ['DOCTOR', 'CLINIC'] as const) {
+      for (const code of ['FREE', 'PRO', 'PREMIUM'] as const) {
+        const spec = PLAN_CATALOG[audience][code];
         await prisma.plan.updateMany({
-          where: {
-            audience: audience as 'DOCTOR' | 'CLINIC',
-            code:     code as 'FREE' | 'PRO' | 'PREMIUM',
+          where: { audience, code },
+          data:  {
+            modules:    spec.modules,
+            maxDoctors: audience === 'CLINIC' ? (spec.maxDoctors ?? null) : null,
           },
-          data: { modules },
         });
       }
     }
@@ -236,6 +280,57 @@ export async function bootstrapPlanFeatures(): Promise<void> {
   } catch {
     // Silencioso — si la tabla todavía no existe (pre-migración) reintenta luego.
   }
+}
+
+/**
+ * Pausa la suscripción personal de un médico cuando se une a una
+ * clínica. La suscripción pasa a `PAUSED` (no se cobra ni renueva); la
+ * `expiresAt` se preserva por si más adelante se desvincula y queremos
+ * reanudarla con el saldo de tiempo que aún tenía.
+ *
+ * Idempotente — si no hay nada que pausar (el médico no tenía sub o ya
+ * estaba PAUSED), no hace nada.
+ */
+export async function pausePersonalSubscriptionForDoctor(userId: string): Promise<void> {
+  await prisma.subscription.updateMany({
+    where: { userId, status: 'ACTIVE' },
+    data:  { status: 'PAUSED' },
+  });
+}
+
+/**
+ * Re-activa la suscripción personal de un médico que se desvincula de
+ * una clínica. Sólo reactiva si todavía no expiró; si ya expiró o el
+ * médico nunca tuvo plan propio, dejamos que `ensureFreeSubscription`
+ * lo ponga en FREE como fallback.
+ */
+export async function resumePersonalSubscriptionForDoctor(userId: string): Promise<void> {
+  const paused = await prisma.subscription.findFirst({
+    where:   { userId, status: 'PAUSED' },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (paused && paused.expiresAt.getTime() > Date.now()) {
+    await prisma.subscription.update({
+      where: { id: paused.id },
+      data:  { status: 'ACTIVE' },
+    });
+  } else {
+    // Cae a FREE si no hay pausada vigente.
+    await ensureFreeSubscription(userId, 'DOCTOR');
+  }
+}
+
+/**
+ * Cuenta cuántos médicos ACTIVE (User.status='ACTIVE') tiene una clínica.
+ * Usado por la validación de cupo cuando se intenta agregar uno nuevo.
+ */
+export async function countActiveDoctorsInClinic(clinicId: string): Promise<number> {
+  return prisma.doctor.count({
+    where: {
+      clinicId,
+      user: { status: 'ACTIVE' },
+    },
+  });
 }
 
 /**

@@ -946,7 +946,7 @@ function PricingCard({ plan, highlight }: { plan: PlanDto; highlight: boolean })
       </p>
 
       <ul className="mt-6 space-y-2">
-        {plan.modules.map((m) => (
+        {plan.modules.filter((m) => prettyModuleLabel(m)).map((m) => (
           <li key={m} className="flex items-center gap-2 text-sm">
             <CheckCircle2 size={14} className={highlight ? 'text-blue-200' : 'text-emerald-500'} />
             <span className={highlight ? 'text-white' : 'text-slate-600 dark:text-slate-300'}>
@@ -977,12 +977,9 @@ function prettyModuleLabel(code: string): string {
     CHAT:               'Chat en vivo',
     REPORTS:            'Reportes avanzados',
     PRIORITY_SEARCH:    'Prioridad en búsqueda',
-    BRANDING:           'Branding propio',
     PAYMENTS_DASHBOARD: 'Panel de pagos',
-    MULTI_LOCATION:     'Multi-sede',
-    PRIORITY_SUPPORT:   'Soporte prioritario',
   };
-  return m[code] ?? code;
+  return m[code] ?? '';
 }
 
 function FaqItem({ question, answer }: { question: string; answer: string }) {

@@ -13,6 +13,8 @@ const updateSchema = z.object({
   monthlyPrice: z.number().nonnegative().optional(),
   modules:      z.array(z.string()).optional(),
   limits:       z.record(z.unknown()).nullable().optional(),
+  /** Cupo de médicos — sólo se interpreta para planes CLINIC. null = sin límite. */
+  maxDoctors:   z.number().int().min(0).nullable().optional(),
   isActive:     z.boolean().optional(),
   sortOrder:    z.number().int().optional(),
 });

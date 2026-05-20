@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Loader2, Plus, Repeat, X } from 'lucide-react';
+import { Loader2, Plus, Repeat, X, Stethoscope, Building2 } from 'lucide-react';
 import { toast }       from 'sonner';
 import { PageHeader }  from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -13,22 +13,86 @@ const STATUS_PILL: Record<string, string> = {
   EXPIRED:         'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   CANCELLED:       'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   PENDING_PAYMENT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  PAUSED:          'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
 };
 
-export function AdminSubscriptionsPage() {
-  const [status, setStatus]   = useState<string>('');
-  const [extending, setExtending] = useState<string | null>(null);
-  const [changingSub, setChangingSub] = useState<SubscriptionDto | null>(null);
+type Audience = 'DOCTOR' | 'CLINIC';
 
-  const { state, refetch } = useApi<PaginatedData<SubscriptionDto>>(
-    () => adminApi.subscriptions({ status: status || undefined, pageSize: 100 }),
-    [status],
-  );
+const TABS: ReadonlyArray<{
+  key:      Audience;
+  label:    string;
+  subtitle: string;
+  icon:     typeof Stethoscope;
+}> = [
+  { key: 'DOCTOR', label: 'Especialistas', subtitle: 'Suscripciones de planes profesionales',   icon: Stethoscope },
+  { key: 'CLINIC', label: 'Clínicas',      subtitle: 'Suscripciones de planes para clínicas',   icon: Building2   },
+];
+
+export function AdminSubscriptionsPage() {
+  const [tab, setTab] = useState<Audience>('DOCTOR');
+  const current = TABS.find((t) => t.key === tab)!;
 
   // Cargo TODOS los planes una vez para el selector del modal — no es
   // pesado (6 filas) y evita un round-trip al abrir cada modal.
   const plansQ = useApi(() => adminApi.listPlans(), []);
   const plans  = plansQ.state.status === 'ready' ? plansQ.state.data : [];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Suscripciones" subtitle="Auditá pagos, extendé períodos y monitoreá renovaciones" />
+
+      {/* Tabs por audiencia */}
+      <div className="border-b border-slate-200 dark:border-slate-800">
+        <nav className="-mb-px flex gap-2 sm:gap-4 overflow-x-auto" role="tablist" aria-label="Tipo de suscripción">
+          {TABS.map((t) => {
+            const Icon   = t.icon;
+            const active = t.key === tab;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(t.key)}
+                className={
+                  'group inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition whitespace-nowrap ' +
+                  (active
+                    ? 'border-blue-600 text-blue-700 dark:text-blue-300'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300')
+                }
+              >
+                <Icon size={15} className={active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 group-hover:text-slate-500'} />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
+        <p className="text-xs text-slate-400 mt-2 mb-3">{current.subtitle}</p>
+      </div>
+
+      {/* Forzamos remount con `key` para que cada tab tenga su propio
+          estado de filtro de status y paginación. */}
+      <SubscriptionsTable key={tab} audience={tab} plans={plans} />
+    </div>
+  );
+}
+
+/* ─────────────── Tabla por audiencia ─────────────── */
+
+function SubscriptionsTable({
+  audience, plans,
+}: {
+  audience: Audience;
+  plans:    PlanDto[];
+}) {
+  const [status, setStatus]           = useState<string>('');
+  const [extending, setExtending]     = useState<string | null>(null);
+  const [changingSub, setChangingSub] = useState<SubscriptionDto | null>(null);
+
+  const { state, refetch } = useApi<PaginatedData<SubscriptionDto>>(
+    () => adminApi.subscriptions({ status: status || undefined, audience, pageSize: 100 }),
+    [status, audience],
+  );
 
   const extend = async (id: string) => {
     const days = Number(prompt('¿Cuántos días querés sumar?', '30'));
@@ -46,9 +110,7 @@ export function AdminSubscriptionsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Suscripciones" subtitle="Auditá pagos, extendé períodos y monitoreá renovaciones" />
-
+    <>
       <select
         value={status}
         onChange={(e) => setStatus(e.target.value)}
@@ -59,6 +121,7 @@ export function AdminSubscriptionsPage() {
         <option value="PENDING_PAYMENT">Pendientes de pago</option>
         <option value="EXPIRED">Expiradas</option>
         <option value="CANCELLED">Canceladas</option>
+        <option value="PAUSED">Pausadas</option>
       </select>
 
       <SectionCard noPadding>
@@ -68,7 +131,12 @@ export function AdminSubscriptionsPage() {
           </div>
         )}
         {state.status === 'error' && <div className="p-6"><Alert variant="error">{state.error.message}</Alert></div>}
-        {state.status === 'ready' && (
+        {state.status === 'ready' && state.data.data.length === 0 && (
+          <div className="py-12 text-center text-sm text-slate-400">
+            No hay suscripciones en este filtro.
+          </div>
+        )}
+        {state.status === 'ready' && state.data.data.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 uppercase tracking-wider">
@@ -94,7 +162,7 @@ export function AdminSubscriptionsPage() {
                       {s.plan?.name} <span className="text-xs text-slate-400">${(s.plan?.monthlyPrice ?? 0).toFixed(2)}/mes</span>
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS_PILL[s.status]}`}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS_PILL[s.status] ?? 'bg-slate-100 text-slate-700'}`}>
                         {s.status}
                       </span>
                     </td>
@@ -140,7 +208,7 @@ export function AdminSubscriptionsPage() {
           onChanged={() => { setChangingSub(null); refetch(); }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -250,9 +318,9 @@ function ChangePlanModal({
           <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 p-3">
             <p className="text-xs text-amber-800 dark:text-amber-200">
               {selectedId !== subscription.planId ? (
-                <>Al confirmar, la suscripción se actualiza al plan elegido y se extiende a 30 días desde hoy (FREE: sin vencimiento).</>
+                <>Al confirmar, la suscripcion se actualiza al plan elegido y se extiende a 30 dias desde hoy (FREE: sin vencimiento).</>
               ) : (
-                <>El plan seleccionado es el mismo que el actual. Elegí otro para confirmar el cambio.</>
+                <>El plan seleccionado es el mismo que el actual. Elegi otro para confirmar el cambio.</>
               )}
             </p>
           </div>

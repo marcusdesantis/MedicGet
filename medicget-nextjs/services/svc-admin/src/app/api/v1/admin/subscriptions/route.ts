@@ -9,11 +9,14 @@ export const dynamic = 'force-dynamic';
 export const GET = withRole(['ADMIN'], async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams;
   const pagination = parsePagination(sp);
-  const status = sp.get('status') ?? undefined;
+  const status   = sp.get('status') ?? undefined;
+  const audRaw   = sp.get('audience') ?? undefined;
+  const audience = audRaw === 'DOCTOR' || audRaw === 'CLINIC' ? audRaw : undefined;
   const { data, total } = await adminService.listSubscriptions({
     page:     pagination.page,
     pageSize: pagination.pageSize,
     status,
+    audience,
   });
   return apiOk(paginate(data, total, pagination));
 });

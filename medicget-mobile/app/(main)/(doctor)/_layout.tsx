@@ -87,6 +87,10 @@ export default function DoctorLayout() {
           name="reports"
           options={{ href: null }}
         />
+        <Tabs.Screen
+          name="plan"
+          options={{ href: null }}
+        />
       </Tabs>
     </ProtectedRoute>
   );

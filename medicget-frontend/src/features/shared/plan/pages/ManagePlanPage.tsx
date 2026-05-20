@@ -21,9 +21,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import {
-  Loader2, Sparkles, Check, X, AlertCircle, BadgeCheck,
+  Loader2, Sparkles, Check, X, BadgeCheck,
   ShieldCheck, ArrowRight,
 } from 'lucide-react';
 import { toast }       from 'sonner';
@@ -33,6 +32,7 @@ import { Alert }       from '@/components/ui/Alert';
 import { useApi }      from '@/hooks/useApi';
 import { useAuth }     from '@/context/AuthContext';
 import { plansApi, subscriptionsApi, type PlanDto } from '@/lib/api';
+import { SubscribeCheckoutModal } from '@/features/shared/subscription/components/SubscribeCheckoutModal';
 
 const MODULE_LABELS: Record<string, string> = {
   ONLINE:             'Videollamadas ilimitadas',
@@ -41,20 +41,26 @@ const MODULE_LABELS: Record<string, string> = {
   PAYMENTS_DASHBOARD: 'Panel de pagos online',
   REPORTS:            'Reportes avanzados',
   PRIORITY_SEARCH:    'Prioridad en búsqueda',
-  BRANDING:           'Branding personalizado',
-  MULTI_LOCATION:     'Multi-sede',
-  PRIORITY_SUPPORT:   'Soporte prioritario',
 };
 
 export function ManagePlanPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const audience = user?.role === 'clinic' ? 'CLINIC' : 'DOCTOR';
 
   const meQ    = useApi(() => subscriptionsApi.me(), []);
   const plansQ = useApi(() => plansApi.list(audience), []);
 
   const [cancelling, setCancelling] = useState(false);
+  // Modal de checkout PayPhone. Cuando hay un plan elegido aca, se renderiza
+  // el modal con el widget Cajita por encima de la pagina.
+  const [checkoutPlan, setCheckoutPlan] = useState<PlanDto | null>(null);
+
+  // Médicos que pertenecen a una clínica heredan el plan de la clínica.
+  // Mostramos la página de "Mi plan" pero en modo SOLO LECTURA: detalles
+  // del plan vigente + módulos incluidos, sin grilla de otros planes ni
+  // botones de cambiar/cancelar. La clínica es la que paga y gestiona.
+  const isDoctorOfClinic = user?.role === 'doctor' && !!user?.dto?.doctor?.clinicId;
+  const inherited = meQ.state.status === 'ready' && !!meQ.state.data.inherited;
 
   const currentPlan: PlanDto | null = useMemo(() => {
     if (meQ.state.status !== 'ready') return null;
@@ -100,8 +106,21 @@ export function ManagePlanPage() {
     <div className="space-y-6">
       <PageHeader
         title="Mi plan"
-        subtitle="Gestiona tu suscripción y desbloqueá funcionalidades"
+        subtitle={
+          isDoctorOfClinic
+            ? 'Plan heredado de tu clínica'
+            : 'Gestiona tu suscripción y desbloqueá funcionalidades'
+        }
       />
+
+      {isDoctorOfClinic && (
+        <Alert variant="info">
+          <ShieldCheck size={14} className="inline mr-1.5" />
+          Pertenecés a una clínica, así que tu plan lo gestiona y paga ella.
+          Esta vista es informativa — si necesitás más funciones, hablalo
+          con el administrador de tu clínica.
+        </Alert>
+      )}
 
       {/* Plan actual */}
       {currentPlan && (
@@ -136,15 +155,15 @@ export function ManagePlanPage() {
           <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
             <p className="text-xs uppercase tracking-wider text-slate-400 mb-2 font-semibold">Tu plan incluye</p>
             <div className="flex flex-wrap gap-1.5">
-              {currentPlan.modules.map((m) => (
+              {currentPlan.modules.filter((m) => MODULE_LABELS[m]).map((m) => (
                 <span key={m} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
-                  <Check size={11} /> {MODULE_LABELS[m] ?? m}
+                  <Check size={11} /> {MODULE_LABELS[m]}
                 </span>
               ))}
             </div>
           </div>
 
-          {!isFree && (
+          {!isFree && !isDoctorOfClinic && (
             <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
               <button
                 onClick={onCancel}
@@ -159,10 +178,21 @@ export function ManagePlanPage() {
               </p>
             </div>
           )}
+
+          {isDoctorOfClinic && inherited && (
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <p className="text-[11px] text-slate-400">
+                Este plan está vinculado a tu clínica. Si te desvinculás de
+                ella, volverás al plan gratuito como médico independiente.
+              </p>
+            </div>
+          )}
         </SectionCard>
       )}
 
-      {/* Otros planes */}
+      {/* Otros planes — sólo para usuarios independientes (los médicos
+          que pertenecen a una clínica no compran nada por su cuenta). */}
+      {!isDoctorOfClinic && (
       <div>
         <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">
           {isFree ? 'Mejorá tu plan' : 'Cambiar de plan'}
@@ -214,15 +244,28 @@ export function ManagePlanPage() {
                   }`}>/mes</span>
                 </div>
 
+                {/* Cupo de médicos — sólo para planes CLINIC. Es la
+                    característica MÁS importante del plan, así que la
+                    destacamos antes de la lista de módulos. */}
+                {p.audience === 'CLINIC' && (
+                  <div className={`mt-4 px-3 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-1.5 ${
+                    isHighlight && !isCurrent
+                      ? 'bg-white/10 text-white'
+                      : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    👨‍⚕️ {p.maxDoctors == null ? 'Médicos ilimitados' : `Hasta ${p.maxDoctors} médicos`}
+                  </div>
+                )}
+
                 <ul className={`mt-5 space-y-1.5 text-xs ${
                   isHighlight && !isCurrent ? 'text-blue-50' : 'text-slate-600 dark:text-slate-300'
                 }`}>
-                  {p.modules.slice(0, 6).map((m) => (
+                  {p.modules.filter((m) => MODULE_LABELS[m]).slice(0, 6).map((m) => (
                     <li key={m} className="flex items-start gap-1.5">
                       <Check size={11} className={`mt-0.5 flex-shrink-0 ${
                         isHighlight && !isCurrent ? 'text-blue-200' : 'text-emerald-500'
                       }`} />
-                      <span>{MODULE_LABELS[m] ?? m}</span>
+                      <span>{MODULE_LABELS[m]}</span>
                     </li>
                   ))}
                 </ul>
@@ -243,7 +286,7 @@ export function ManagePlanPage() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => navigate(`/subscribe/${p.id}`)}
+                      onClick={() => setCheckoutPlan(p)}
                       className={`w-full inline-flex items-center justify-center gap-1.5 font-semibold text-sm px-4 py-2 rounded-xl transition ${
                         isHighlight
                           ? 'bg-white text-blue-700 hover:bg-blue-50'
@@ -260,11 +303,25 @@ export function ManagePlanPage() {
           })}
         </div>
       </div>
+      )}
 
-      <Alert variant="info">
-        <ShieldCheck size={14} className="inline mr-1.5" />
-        Pagos procesados por PayPhone con cifrado TLS · podés cancelar cuando quieras
-      </Alert>
+      {!isDoctorOfClinic && (
+        <Alert variant="info">
+          <ShieldCheck size={14} className="inline mr-1.5" />
+          Pagos procesados por PayPhone con cifrado TLS . podes cancelar cuando quieras
+        </Alert>
+      )}
+
+      {/* Modal de checkout PayPhone (Cajita). Se muestra cuando el usuario
+          eligio cambiar/mejorar de plan. El flujo "return" sigue funcionando
+          via redirect del SDK a /subscribe/return. */}
+      {checkoutPlan && (
+        <SubscribeCheckoutModal
+          plan={checkoutPlan}
+          onClose={() => setCheckoutPlan(null)}
+          onSuccess={() => { meQ.refetch(); }}
+        />
+      )}
     </div>
   );
 }
