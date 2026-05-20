@@ -22,7 +22,10 @@ import {
   Search,
   Stethoscope,
   UserPlus,
+  ArrowRight,
+  AlertTriangle,
 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -51,6 +54,17 @@ function fullName(p?: { firstName?: string; lastName?: string }): string {
 
 function normalize(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** Extrae `{ code, message }` de un error de axios. Lo usamos para
+ *  detectar el code `PLAN_LIMIT_REACHED` cuando una clinica intenta
+ *  agregar un medico por encima de su cupo (`Plan.maxDoctors`). */
+function getErrorInfo(e: unknown): { code?: string; message: string } {
+  const err = e as { response?: { data?: { error?: { code?: string; message?: string } } } };
+  return {
+    code:    err?.response?.data?.error?.code,
+    message: err?.response?.data?.error?.message ?? 'Ocurrio un error inesperado',
+  };
 }
 
 export default function ClinicDoctors() {
@@ -293,6 +307,42 @@ function Stat({
   );
 }
 
+/**
+ * Alerta especifica para PLAN_LIMIT_REACHED — mensaje + boton que cierra
+ * el modal de "Agregar medico" y lleva al admin a /clinic/plan para que
+ * suba de plan.
+ */
+function PlanLimitAlert({
+  message, onUpgrade,
+}: {
+  message:   string;
+  onUpgrade: () => void;
+}) {
+  return (
+    <View className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+      <View className="flex-row items-start gap-2">
+        <AlertTriangle size={16} color="#d97706" style={{ marginTop: 2 }} />
+        <View className="flex-1">
+          <Text className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+            Llegaste al cupo de medicos de tu plan
+          </Text>
+          <Text className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-1">
+            {message}
+          </Text>
+          <Pressable
+            onPress={onUpgrade}
+            className="mt-2.5 flex-row items-center gap-1.5 bg-amber-600 active:bg-amber-700 self-start px-3 py-2 rounded-lg">
+            <Text className="text-white text-xs font-bold">
+              Mejora tu plan
+            </Text>
+            <ArrowRight size={12} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function AddDoctorModal({
   clinicId,
   onClose,
@@ -303,6 +353,14 @@ function AddDoctorModal({
   onAdded: () => void;
 }) {
   const [tab, setTab] = useState<'existing' | 'create'>('existing');
+  const router = useRouter();
+
+  // Cuando una de las dos pestanas detecta PLAN_LIMIT_REACHED, cerramos
+  // el modal y navegamos a /clinic/plan para que el admin suba de plan.
+  const handleUpgrade = () => {
+    onClose();
+    router.push('/(main)/(clinic)/plan' as never);
+  };
 
   return (
     <Modal visible title="Añadir médico" onClose={onClose}>
@@ -338,9 +396,17 @@ function AddDoctorModal({
       </View>
 
       {tab === 'existing' ? (
-        <ExistingTab clinicId={clinicId} onAdded={onAdded} />
+        <ExistingTab
+          clinicId={clinicId}
+          onAdded={onAdded}
+          onUpgrade={handleUpgrade}
+        />
       ) : (
-        <CreateTab clinicId={clinicId} onAdded={onAdded} />
+        <CreateTab
+          clinicId={clinicId}
+          onAdded={onAdded}
+          onUpgrade={handleUpgrade}
+        />
       )}
     </Modal>
   );
@@ -349,14 +415,19 @@ function AddDoctorModal({
 function ExistingTab({
   clinicId,
   onAdded,
+  onUpgrade,
 }: {
-  clinicId: string;
-  onAdded: () => void;
+  clinicId:  string;
+  onAdded:   () => void;
+  onUpgrade: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [adding, setAdding] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  /** Cuando el backend devuelve PLAN_LIMIT_REACHED guardamos el mensaje
+   *  aca para renderizar el CTA "Mejora tu plan" en vez del Alert rojo. */
+  const [planLimitMsg, setPlanLimitMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 250);
@@ -372,14 +443,17 @@ function ExistingTab({
   const handleAdd = async (doctorId: string) => {
     setAdding(doctorId);
     setErr(null);
+    setPlanLimitMsg(null);
     try {
       await doctorsApi.update(doctorId, { clinicId } as Partial<DoctorDto>);
       onAdded();
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ?? 'No se pudo añadir';
-      setErr(msg);
+      const { code, message } = getErrorInfo(e);
+      if (code === 'PLAN_LIMIT_REACHED') {
+        setPlanLimitMsg(message);
+      } else {
+        setErr(message);
+      }
     } finally {
       setAdding(null);
     }
@@ -402,6 +476,12 @@ function ExistingTab({
           className="flex-1 ml-2 text-sm text-slate-800 dark:text-slate-100"
         />
       </View>
+
+      {planLimitMsg ? (
+        <View className="mb-3">
+          <PlanLimitAlert message={planLimitMsg} onUpgrade={onUpgrade} />
+        </View>
+      ) : null}
 
       {err ? (
         <View className="mb-3">
@@ -499,13 +579,16 @@ const EMPTY_FORM: CreateForm = {
 function CreateTab({
   clinicId,
   onAdded,
+  onUpgrade,
 }: {
-  clinicId: string;
-  onAdded: () => void;
+  clinicId:  string;
+  onAdded:   () => void;
+  onUpgrade: () => void;
 }) {
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [planLimitMsg, setPlanLimitMsg] = useState<string | null>(null);
   const [created, setCreated] = useState<{
     doctor: DoctorDto;
     tempPassword: string;
@@ -522,6 +605,7 @@ function CreateTab({
     if (!valid || saving) return;
     setSaving(true);
     setErr(null);
+    setPlanLimitMsg(null);
     try {
       const res = await clinicsApi.createDoctor(clinicId, {
         email: form.email.trim(),
@@ -538,10 +622,12 @@ function CreateTab({
       });
       setCreated(res.data);
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ?? 'No se pudo crear el médico';
-      setErr(msg);
+      const { code, message } = getErrorInfo(e);
+      if (code === 'PLAN_LIMIT_REACHED') {
+        setPlanLimitMsg(message);
+      } else {
+        setErr(message);
+      }
     } finally {
       setSaving(false);
     }
@@ -610,6 +696,12 @@ function CreateTab({
         Registrás al médico desde cero. Generamos una contraseña temporal y se
         la enviamos por email.
       </Text>
+
+      {planLimitMsg ? (
+        <View className="mb-3">
+          <PlanLimitAlert message={planLimitMsg} onUpgrade={onUpgrade} />
+        </View>
+      ) : null}
 
       {err ? (
         <View className="mb-3">

@@ -30,6 +30,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
@@ -246,10 +247,9 @@ export default function ClinicProfile() {
               />
             </FormField>
             <FormField label="Teléfono de contacto">
-              <Input
+              <PhoneField
                 value={form.phone}
-                onChangeText={(t) => setForm({ ...form, phone: t })}
-                keyboardType="phone-pad"
+                onChange={(v) => setForm({ ...form, phone: v })}
               />
             </FormField>
             <FormField label="Email público">
@@ -329,10 +329,9 @@ export default function ClinicProfile() {
               </View>
             </View>
             <FormField label="Teléfono personal">
-              <Input
+              <PhoneField
                 value={form.ownerPhone}
-                onChangeText={(t) => setForm({ ...form, ownerPhone: t })}
-                keyboardType="phone-pad"
+                onChange={(v) => setForm({ ...form, ownerPhone: v })}
               />
             </FormField>
           </View>

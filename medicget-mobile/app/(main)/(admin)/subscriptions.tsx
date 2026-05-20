@@ -33,14 +33,28 @@ import {
   type SubscriptionDto,
 } from '@/lib/api';
 
-const STATUS_TABS = ['Todas', 'Activas', 'Pendientes', 'Expiradas', 'Canceladas'] as const;
-type StatusTab = (typeof STATUS_TABS)[number];
+/**
+ * Tabs por audiencia — alineadas con el web AdminSubscriptionsPage:
+ * separamos "Especialistas" (planes DOCTOR) de "Clinicas" (planes CLINIC)
+ * para que el admin no mezcle dos productos distintos. El filtro de
+ * status pasa a ser un selector secundario dentro de cada tab.
+ */
+const AUDIENCE_TABS = ['Especialistas', 'Clinicas'] as const;
+type AudienceTab = (typeof AUDIENCE_TABS)[number];
 
-const STATUS_FILTER: Record<StatusTab, string | undefined> = {
-  Todas: undefined,
-  Activas: 'ACTIVE',
+const AUDIENCE_FILTER: Record<AudienceTab, 'DOCTOR' | 'CLINIC'> = {
+  Especialistas: 'DOCTOR',
+  Clinicas:      'CLINIC',
+};
+
+const STATUS_OPTIONS = ['Todas', 'Activas', 'Pendientes', 'Expiradas', 'Canceladas'] as const;
+type StatusOption = (typeof STATUS_OPTIONS)[number];
+
+const STATUS_FILTER: Record<StatusOption, string | undefined> = {
+  Todas:      undefined,
+  Activas:    'ACTIVE',
   Pendientes: 'PENDING_PAYMENT',
-  Expiradas: 'EXPIRED',
+  Expiradas:  'EXPIRED',
   Canceladas: 'CANCELLED',
 };
 
@@ -68,15 +82,17 @@ const STATUS_LABEL: Record<string, { label: string; bg: string; text: string }> 
 };
 
 export default function AdminSubscriptions() {
-  const [tab, setTab] = useState<StatusTab>('Todas');
+  const [tab, setTab] = useState<AudienceTab>('Especialistas');
+  const [statusOpt, setStatusOpt] = useState<StatusOption>('Todas');
   const [extending, setExtending] = useState<SubscriptionDto | null>(null);
   const [changing, setChanging] = useState<SubscriptionDto | null>(null);
 
-  const status = STATUS_FILTER[tab];
+  const audience = AUDIENCE_FILTER[tab];
+  const status = STATUS_FILTER[statusOpt];
 
   const { state, refetch } = useApi(
-    () => adminApi.subscriptions({ status, pageSize: 100 }),
-    [status],
+    () => adminApi.subscriptions({ audience, status, pageSize: 100 }),
+    [audience, status],
   );
   useRefetchOnFocus(refetch);
 
@@ -87,15 +103,44 @@ export default function AdminSubscriptions() {
     <Screen>
       <PageHeader
         title="Suscripciones"
-        subtitle="Auditá pagos y extendé períodos"
+        subtitle={
+          tab === 'Especialistas'
+            ? 'Planes profesionales de medicos independientes'
+            : 'Planes para clinicas'
+        }
       />
 
-      <View className="mb-3">
+      {/* Tabs por audiencia — DOCTOR vs CLINIC */}
+      <View className="mb-2">
         <Tabs
-          tabs={[...STATUS_TABS]}
+          tabs={[...AUDIENCE_TABS]}
           active={tab}
-          onChange={(v) => setTab(v as StatusTab)}
+          onChange={(v) => setTab(v as AudienceTab)}
         />
+      </View>
+
+      {/* Filtro secundario por status (chips) */}
+      <View className="flex-row flex-wrap gap-1.5 mb-3">
+        {STATUS_OPTIONS.map((opt) => {
+          const on = opt === statusOpt;
+          return (
+            <Pressable
+              key={opt}
+              onPress={() => setStatusOpt(opt)}
+              className={`px-3 py-1.5 rounded-full border ${
+                on
+                  ? 'bg-blue-600 border-blue-600'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+              }`}>
+              <Text
+                className={`text-xs font-semibold ${
+                  on ? 'text-white' : 'text-slate-600 dark:text-slate-300'
+                }`}>
+                {opt}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {state.status === 'loading' && (
@@ -113,7 +158,7 @@ export default function AdminSubscriptions() {
           {state.data.data.length === 0 ? (
             <EmptyState
               title="Sin suscripciones"
-              description="Probá con otro filtro."
+              description="Proba con otro filtro."
             />
           ) : (
             <View>

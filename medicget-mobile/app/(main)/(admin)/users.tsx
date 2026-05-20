@@ -42,6 +42,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { useApi } from '@/hooks/useApi';
 import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { tokenStorage } from '@/lib/storage';
@@ -626,10 +627,9 @@ function CreateUserModal({
           </View>
         </View>
         <FormField label="Teléfono">
-          <Input
+          <PhoneField
             value={form.phone}
-            onChangeText={(t) => setForm({ ...form, phone: t })}
-            keyboardType="phone-pad"
+            onChange={(v) => setForm({ ...form, phone: v })}
           />
         </FormField>
         {form.role === 'CLINIC' ? (
@@ -740,10 +740,9 @@ function EditUserModal({
           </View>
         </View>
         <FormField label="Teléfono">
-          <Input
+          <PhoneField
             value={form.phone}
-            onChangeText={(t) => setForm({ ...form, phone: t })}
-            keyboardType="phone-pad"
+            onChange={(v) => setForm({ ...form, phone: v })}
           />
         </FormField>
         <Text className="text-[11px] text-slate-400">

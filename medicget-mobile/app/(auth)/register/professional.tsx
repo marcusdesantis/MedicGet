@@ -16,6 +16,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Alert } from '@/components/ui/Alert';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { useRegistrationDraft } from '@/features/auth/registration-draft';
 import {
   isClean,
@@ -110,11 +111,10 @@ export default function RegisterProfessionalScreen() {
           <FormField
             label="Teléfono"
             error={draft.phone !== '' ? errors.phone : null}>
-            <Input
-              keyboardType="phone-pad"
-              placeholder="+593 99 999 9999"
+            <PhoneField
               value={draft.phone}
-              onChangeText={(v) => setDraft({ phone: v })}
+              onChange={(v) => setDraft({ phone: v })}
+              invalid={draft.phone !== '' && !!errors.phone}
             />
           </FormField>
 

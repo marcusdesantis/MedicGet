@@ -1,10 +1,12 @@
 /**
- * Patient — Chat de la cita (modalidad CHAT). Espejo recortado del
- * AppointmentChatPage web: header con peer, lista de mensajes con
- * burbujas y separador de día, composer con envío y polling cada 3s.
+ * Patient — Chat de la cita (modalidad CHAT). Espejo del AppointmentChatPage
+ * web: header con peer, lista de mensajes con burbujas y separador de día,
+ * composer con envío y polling cada 3s.
  *
- * Por ahora sin adjuntos (faltan dependencias de upload). El backend
- * acepta texto plano vía POST /appointments/:id/messages.
+ * Soporta adjuntos: imágenes via ImagePicker (base64) y PDFs via
+ * DocumentPicker (con fetch local + FileReader para sacar el base64).
+ * El backend acepta `attachmentUrl` como data URL — mismo contrato que
+ * el web.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

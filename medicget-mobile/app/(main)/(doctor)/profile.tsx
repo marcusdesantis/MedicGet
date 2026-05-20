@@ -34,6 +34,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -338,11 +339,9 @@ export default function DoctorProfile() {
             </FormField>
 
             <FormField label="Teléfono">
-              <Input
+              <PhoneField
                 value={form.phone}
-                onChangeText={(t) => setForm({ ...form, phone: t })}
-                placeholder="+593..."
-                keyboardType="phone-pad"
+                onChange={(v) => setForm({ ...form, phone: v })}
               />
             </FormField>
 
