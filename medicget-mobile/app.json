@@ -1,28 +1,47 @@
 {
   "expo": {
-    "name": "medicget",
+    "name": "MedicGet",
     "slug": "medicget",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "medicget",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.medicget.app"
+      "bundleIdentifier": "com.medicget.app",
+      "buildNumber": "1"
     },
     "android": {
-      "package": "com.medicget.app"
+      "package": "com.medicget.app",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
     },
     "web": {
       "bundler": "metro"
     },
     "plugins": [
       "expo-router",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "http://89.117.58.101:8080/api/v1"
     }
   }
 }

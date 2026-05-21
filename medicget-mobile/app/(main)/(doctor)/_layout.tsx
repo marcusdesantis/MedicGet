@@ -1,5 +1,5 @@
 /**
- * Layout del médico — tabs inferiores + ruteo protegido.
+ * Layout del medico - tabs inferiores + ruteo protegido.
  *
  * Cinco tabs principales: Inicio (dashboard), Agenda (citas), Horarios
  * (disponibilidad), Pacientes (historial), Perfil. Detalle/chat/payments
@@ -75,22 +75,11 @@ export default function DoctorLayout() {
           name="appointment/[id]/chat"
           options={{ href: null }}
         />
-        <Tabs.Screen
-          name="payments"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="notifications"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="reports"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="plan"
-          options={{ href: null }}
-        />
+        <Tabs.Screen name="payments" options={{ href: null }} />
+        <Tabs.Screen name="notifications" options={{ href: null }} />
+        <Tabs.Screen name="reports" options={{ href: null }} />
+        <Tabs.Screen name="plan" options={{ href: null }} />
+        <Tabs.Screen name="setup" options={{ href: null }} />
       </Tabs>
     </ProtectedRoute>
   );

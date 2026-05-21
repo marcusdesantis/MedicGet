@@ -1,9 +1,9 @@
 /**
- * lib/api.ts — DTOs + colecciones de endpoints. Espejo del cliente del
- * frontend web, recortado a lo que la app móvil consume hoy. Comparte
+ * lib/api.ts - DTOs + colecciones de endpoints. Espejo del cliente del
+ * frontend web, recortado a lo que la app movil consume hoy. Comparte
  * exactamente las mismas formas de payload con el backend (svc-auth,
- * svc-dashboard, svc-appointment, etc.) para que la lógica de pantallas
- * sea idéntica a la del web.
+ * svc-dashboard, svc-appointment, etc.) para que la logica de pantallas
+ * sea identica a la del web.
  */
 
 import {
@@ -13,14 +13,14 @@ import {
   apiPost,
 } from '@/services/http';
 
-// ─── Generic ──────────────────────────────────────────────────────────────────
+// --- Generic ----------------------------------------------------------------
 
 export interface PaginatedData<T> {
   data: T[];
   meta: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
-// ─── Profile / User ───────────────────────────────────────────────────────────
+// --- Profile / User ---------------------------------------------------------
 
 export interface ProfileDto {
   firstName: string;
@@ -53,7 +53,7 @@ export interface UserDto {
   patient?: { id: string } | null;
 }
 
-// ─── Doctor / Patient / Appointment ──────────────────────────────────────────
+// --- Doctor / Patient / Appointment ----------------------------------------
 
 export type AppointmentModality = 'ONLINE' | 'PRESENCIAL' | 'CHAT';
 
@@ -190,8 +190,8 @@ export interface CheckoutSessionDto {
   responseUrl: string;
   stubMode: boolean;
   expiresAt: string;
-  /** Desglose honorarios + comisión + total. El backend lo agrega a la
-   *  respuesta del checkout aunque no esté en el shape oficial de la
+  /** Desglose honorarios + comision + total. El backend lo agrega a la
+   *  respuesta del checkout aunque no este en el shape oficial de la
    *  Cajita. */
   breakdown?: PaymentBreakdownDto;
 }
@@ -243,7 +243,7 @@ export interface NotificationDto {
   createdAt: string;
 }
 
-// ─── Dashboards ───────────────────────────────────────────────────────────────
+// --- Dashboards -------------------------------------------------------------
 
 export interface PatientDashboardDto {
   patient: PatientDto;
@@ -283,9 +283,19 @@ export interface MedicalRecordInput {
   notes?: string;
 }
 
+/**
+ * PaymentRowDto - pago polimorfico (cita o suscripcion).
+ *
+ * Tras la migracion a Payment polimorfico, una fila puede tener:
+ *   - `appointment` cuando es un cobro de cita (paciente -> medico/clinica)
+ *   - `subscription` cuando es un cobro de plan (medico/clinica -> MedicGet)
+ *
+ * Solo uno de los dos llega con datos segun el tipo de pago.
+ */
 export interface PaymentRowDto {
   id: string;
-  appointmentId: string;
+  appointmentId?: string | null;
+  subscriptionId?: string | null;
   amount: number;
   platformFee?: number | null;
   doctorAmount?: number | null;
@@ -294,9 +304,10 @@ export interface PaymentRowDto {
   paidAt?: string | null;
   refundedAt?: string | null;
   transactionId?: string | null;
+  payphonePaymentId?: string | null;
   notes?: string | null;
   createdAt: string;
-  appointment: {
+  appointment?: {
     id: string;
     date: string;
     time: string;
@@ -305,7 +316,21 @@ export interface PaymentRowDto {
     patient: { id: string; user: { email: string; profile?: ProfileDto } };
     doctor: { id: string; specialty: string; user: { profile?: ProfileDto } };
     clinic: { id: string; name: string } | null;
-  };
+  } | null;
+  subscription?: {
+    id: string;
+    status: string;
+    startsAt: string;
+    expiresAt: string;
+    plan: {
+      id: string;
+      code: string;
+      name: string;
+      audience: 'DOCTOR' | 'CLINIC';
+      monthlyPrice: number;
+    };
+    user: { id: string; email: string; profile?: ProfileDto };
+  } | null;
 }
 
 export interface ClinicDto {
@@ -341,7 +366,7 @@ export interface ClinicDashboardDto {
   topDoctors: { doctor: DoctorDto; appointmentCount: number }[];
 }
 
-// ─── Auth body shapes ─────────────────────────────────────────────────────────
+// --- Auth body shapes -------------------------------------------------------
 
 export interface RegisterBody {
   email: string;
@@ -388,7 +413,7 @@ export interface UpdateAppointmentBody {
   cancelReason?: string;
 }
 
-// ─── Auth API ────────────────────────────────────────────────────────────────
+// --- Auth API ---------------------------------------------------------------
 
 export const authApi = {
   login: (email: string, password: string) =>
@@ -415,7 +440,7 @@ export const authApi = {
     apiPost<{ ok: true }>('/auth/resend-verification', { email }),
 };
 
-// ─── Domain APIs ──────────────────────────────────────────────────────────────
+// --- Domain APIs ------------------------------------------------------------
 
 export const dashboardApi = {
   clinic: () => apiGet<ClinicDashboardDto>('/dashboard/clinic'),
@@ -464,9 +489,9 @@ export const clinicsApi = {
   getDoctors: (id: string, params?: Record<string, unknown>) =>
     apiGet<PaginatedData<DoctorDto>>(`/clinics/${id}/doctors`, params),
   /**
-   * Crea un médico nuevo asociado a la clínica con credenciales temporales.
-   * Devuelve { doctor, tempPassword } — el admin debe compartir tempPassword
-   * con el médico (también se le manda por email).
+   * Crea un medico nuevo asociado a la clinica con credenciales temporales.
+   * Devuelve { doctor, tempPassword } - el admin debe compartir tempPassword
+   * con el medico (tambien se le manda por email).
    */
   createDoctor: (
     clinicId: string,
@@ -542,6 +567,15 @@ export const paymentApi = {
     ),
   list: (params?: Record<string, unknown>) =>
     apiGet<PaginatedData<PaymentRowDto>>('/payments', params),
+  /**
+   * URL absoluta del recibo HTML. La usamos para abrir en WebView o
+   * compartir; el backend valida el JWT del caller para autorizar.
+   */
+  receiptUrl: (paymentId: string) => {
+    const base =
+      process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://10.0.2.2:8080/api/v1';
+    return `${base}/payments/${paymentId}/receipt`;
+  },
 };
 
 /**
@@ -611,7 +645,7 @@ export const notificationsApi = {
     apiPost<{ updated: number }>('/notifications/read-all', {}),
 };
 
-// ─── Admin / Superadmin ──────────────────────────────────────────────────────
+// --- Admin / Superadmin -----------------------------------------------------
 
 export type PlanCode = 'FREE' | 'PRO' | 'PREMIUM';
 export type PlanAudience = 'DOCTOR' | 'CLINIC';
@@ -754,4 +788,13 @@ export const adminApi = {
       `/admin/subscriptions/${id}/change-plan`,
       { planId },
     ),
+
+  listSettings: () => apiGet<AppSettingDto[]>('/admin/settings'),
+  /** Alias historico usado por la pantalla mobile (espejo del web). */
+  settings: () => apiGet<AppSettingDto[]>('/admin/settings'),
+  updateSetting: (key: string, value: string | null) =>
+    apiPatch<AppSettingDto>(`/admin/settings/${key}`, { value }),
+  /** Bulk save - persiste TODOS los settings que llegan en el record. */
+  saveSettings: (values: Record<string, string | null>) =>
+    apiPost<{ updated: number }>('/admin/settings', values),
 };

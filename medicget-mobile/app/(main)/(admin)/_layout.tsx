@@ -1,14 +1,16 @@
 /**
- * Layout del superadmin — tabs inferiores + ruteo protegido.
+ * Layout del superadmin - tabs inferiores + ruteo protegido.
  *
- * Cinco tabs principales: Inicio, Usuarios, Planes, Suscripciones,
- * Configuración. Pagos y notificaciones quedan como hidden.
+ * Seis tabs principales: Inicio, Usuarios, Planes, Suscripciones,
+ * Pagos, Configuracion. Notificaciones queda como hidden (se navega
+ * desde el header).
  */
 
 import { Tabs } from 'expo-router';
 import {
   CreditCard,
   Home,
+  Receipt,
   Settings,
   Tag,
   Users,
@@ -49,9 +51,18 @@ export default function AdminLayout() {
         <Tabs.Screen
           name="subscriptions"
           options={{
-            title: 'Suscripciones',
+            title: 'Subs',
             tabBarIcon: ({ color, size }) => (
               <CreditCard color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="payments"
+          options={{
+            title: 'Pagos',
+            tabBarIcon: ({ color, size }) => (
+              <Receipt color={color} size={size} />
             ),
           }}
         />

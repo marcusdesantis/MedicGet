@@ -34,6 +34,7 @@ import {
 } from '@/lib/api';
 
 export default function DoctorHome() {
+  const router = useRouter();
   const { user } = useAuth();
   const { state, refetch } = useApi(() => dashboardApi.doctor(), []);
   useRefetchOnFocus(refetch);
@@ -64,11 +65,23 @@ export default function DoctorHome() {
           <Text className="text-rose-700 dark:text-rose-300 text-sm">
             {state.error.message}
           </Text>
-          <Pressable onPress={refetch} className="mt-2">
-            <Text className="text-teal-600 text-xs font-semibold">
-              Reintentar
-            </Text>
-          </Pressable>
+          <View className="flex-row gap-3 mt-2">
+            <Pressable onPress={refetch}>
+              <Text className="text-teal-600 text-xs font-semibold">
+                Reintentar
+              </Text>
+            </Pressable>
+            {/* Si el dashboard devuelve 404 (medico sin perfil completado)
+                ofrecemos atajo a la pantalla de setup, igual que en el web. */}
+            {user?.dto.doctor?.id ? (
+              <Pressable
+                onPress={() => router.push('/(main)/(doctor)/setup' as never)}>
+                <Text className="text-teal-600 text-xs font-semibold underline">
+                  Completar mi perfil
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </Alert>
       )}
 

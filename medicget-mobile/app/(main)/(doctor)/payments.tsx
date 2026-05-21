@@ -1,9 +1,9 @@
 /**
- * Doctor — Historial de pagos. Espejo del DoctorPaymentsPage web.
+ * Doctor - Historial de pagos. Espejo del DoctorPaymentsPage web.
  *
- * Backend devuelve la lista filtrada por rol automáticamente: cuando el
+ * Backend devuelve la lista filtrada por rol automaticamente: cuando el
  * caller es DOCTOR, `paymentApi.list()` devuelve solo los pagos donde el
- * médico era el destinatario. Mostramos: total bruto, comisión, neto.
+ * medico era el destinatario. Mostramos: total bruto, comision, neto.
  */
 
 import { useMemo } from 'react';
@@ -29,13 +29,24 @@ export default function DoctorPayments() {
   );
   useRefetchOnFocus(refetch);
 
+  /**
+   * Defensiva: aunque el backend ya filtra al doctor a solo pagos de
+   * cita, despues de la migracion a Payment polimorfico (que permite
+   * suscripciones) tipamos `appointment` como opcional. Filtramos rows
+   * sin appointment para que el codigo aguas abajo pueda asumir que
+   * esta presente.
+   */
+  const rows = useMemo(() => {
+    if (state.status !== 'ready') return [];
+    return state.data.data.filter((p) => p.appointment != null);
+  }, [state]);
+
   const summary = useMemo(() => {
-    if (state.status !== 'ready') return null;
     let gross = 0;
     let fees = 0;
     let net = 0;
     let paidCount = 0;
-    for (const p of state.data.data) {
+    for (const p of rows) {
       if (p.status === 'PAID') {
         gross += p.amount;
         fees += p.platformFee ?? 0;
@@ -44,7 +55,7 @@ export default function DoctorPayments() {
       }
     }
     return { gross, fees, net, paidCount };
-  }, [state]);
+  }, [rows]);
 
   return (
     <Screen>
@@ -93,21 +104,21 @@ export default function DoctorPayments() {
                 />
               </View>
               <View className="flex-row gap-3">
-                <Card label="Comisión plataforma" value={`$${summary.fees.toFixed(2)}`} />
+                <Card label="Comision plataforma" value={`$${summary.fees.toFixed(2)}`} />
                 <Card label="Pagos confirmados" value={summary.paidCount} />
               </View>
             </View>
           ) : null}
 
           <SectionCard title="Movimientos" noPadding>
-            {state.data.data.length === 0 ? (
+            {rows.length === 0 ? (
               <EmptyState
-                title="Sin pagos todavía"
-                description="Cuando un paciente pague una consulta, aparecerá aquí."
+                title="Sin pagos todavia"
+                description="Cuando un paciente pague una consulta, aparecera aqui."
               />
             ) : (
               <View>
-                {state.data.data.map((p) => (
+                {rows.map((p) => (
                   <PaymentRow key={p.id} payment={p} />
                 ))}
               </View>
@@ -151,10 +162,11 @@ function Card({
 }
 
 function PaymentRow({ payment }: { payment: PaymentRowDto }) {
-  const profile = payment.appointment.patient.user.profile;
+  const appt = payment.appointment!;
+  const profile = appt.patient.user.profile;
   const patientName =
     `${profile?.firstName ?? ''} ${profile?.lastName ?? ''}`.trim() ||
-    payment.appointment.patient.user.email;
+    appt.patient.user.email;
 
   const statusConfig: Record<
     PaymentRowDto['status'],
@@ -179,7 +191,7 @@ function PaymentRow({ payment }: { payment: PaymentRowDto }) {
       bg: 'bg-slate-100 dark:bg-slate-800',
     },
     FAILED: {
-      label: 'Falló',
+      label: 'Fallo',
       icon: <XCircle size={12} color="#e11d48" />,
       text: 'text-rose-700 dark:text-rose-300',
       bg: 'bg-rose-100 dark:bg-rose-900/30',
@@ -187,8 +199,7 @@ function PaymentRow({ payment }: { payment: PaymentRowDto }) {
   };
 
   const cfg = statusConfig[payment.status];
-  const net =
-    payment.doctorAmount ?? payment.amount - (payment.platformFee ?? 0);
+  const net = payment.doctorAmount ?? payment.amount - (payment.platformFee ?? 0);
 
   return (
     <View className="flex-row items-start gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -200,13 +211,10 @@ function PaymentRow({ payment }: { payment: PaymentRowDto }) {
       />
       <View className="flex-1 min-w-0">
         <View className="flex-row items-center gap-2 flex-wrap">
-          <Text
-            numberOfLines={1}
-            className="text-sm font-semibold text-slate-800 dark:text-white">
+          <Text numberOfLines={1} className="text-sm font-semibold text-slate-800 dark:text-white">
             {patientName}
           </Text>
-          <View
-            className={`flex-row items-center gap-1 px-2 py-0.5 rounded-full ${cfg.bg}`}>
+          <View className={`flex-row items-center gap-1 px-2 py-0.5 rounded-full ${cfg.bg}`}>
             {cfg.icon}
             <Text className={`text-[10px] font-medium ${cfg.text}`}>
               {cfg.label}
@@ -214,12 +222,11 @@ function PaymentRow({ payment }: { payment: PaymentRowDto }) {
           </View>
         </View>
         <Text className="text-[11px] text-slate-400 mt-0.5">
-          {fmtMedDate(payment.appointment.date)} · {payment.appointment.time}{' '}
-          · {payment.appointment.modality.toLowerCase()}
+          {fmtMedDate(appt.date)} - {appt.time} - {appt.modality.toLowerCase()}
         </Text>
         {payment.platformFee ? (
           <Text className="text-[10px] text-slate-400 mt-0.5">
-            Comisión ${(payment.platformFee ?? 0).toFixed(2)}
+            Comision ${(payment.platformFee ?? 0).toFixed(2)}
           </Text>
         ) : null}
       </View>
