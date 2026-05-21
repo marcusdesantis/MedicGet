@@ -15,7 +15,6 @@
 
 import bcrypt from 'bcryptjs';
 import { prisma } from '@medicget/shared/prisma';
-import { bootstrapPlanFeatures } from '@medicget/shared/subscription';
 import { ensureVapidKeys }       from '@medicget/shared/webpush';
 
 const ADMIN_EMAIL    = 'admin@gmail.com';
@@ -42,7 +41,15 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   SMTP_PASS:       'Ecuador7.',
   SMTP_FROM:       'MedicGet <soportemedicget@abisoft.it>',
   BRAND_NAME:      'MedicGet',
-  PLATFORM_FEE_PCT: '10',
+  // PLATFORM_FEE_PCT: comision real aplicada al payment (hoy SIEMPRE 0,
+  // el cobro de la plataforma se acuerda manualmente offline con cada
+  // medico). Queda oculto del admin para evitar que se modifique por
+  // accidente.
+  PLATFORM_FEE_PCT: '0',
+  // COMMISSION_PCT: porcentaje INFORMATIVO que se publica en la landing
+  // y en /terminos para que pacientes y medicos sepan el modelo de
+  // negocio. NO se aplica a ningun calculo de Payment.
+  COMMISSION_PCT:   '15',
 };
 
 async function bootstrapDefaultSettings(): Promise<void> {
@@ -56,6 +63,7 @@ async function bootstrapDefaultSettings(): Promise<void> {
         key,
         category: key.startsWith('SMTP_')      ? 'EMAIL'
                 : key === 'PLATFORM_FEE_PCT'   ? 'PAYMENTS'
+                : key === 'COMMISSION_PCT'     ? 'PAYMENTS'
                 : key.startsWith('BRAND_')     ? 'BRANDING'
                 : 'GENERAL',
         isSecret: key === 'SMTP_PASS',
@@ -103,9 +111,7 @@ export async function ensureAdminBootstrapped(): Promise<void> {
         // eslint-disable-next-line no-console
         console.log(`[svc-admin] Superadmin seed created: ${ADMIN_EMAIL}`);
       }
-      // Reaplicar módulos canónicos a los planes seedeados (incluye PAYMENTS_DASHBOARD
-      // para médicos Pro/Premium, que no estaba en el seed inicial).
-      await bootstrapPlanFeatures();
+      // bootstrapPlanFeatures() eliminado tras quitar el sistema de planes.
       // Sembrar credenciales SMTP de Abisoft + branding default si AppSettings
       // todavía está vacío (primera vez que arranca el sistema).
       await bootstrapDefaultSettings().catch(() => {/* swallow */});

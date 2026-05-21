@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useApi }  from '@/hooks/useApi';
-import { plansApi, doctorsApi, type PlanDto, type DoctorDto } from '@/lib/api';
+import { doctorsApi, publicCommissionApi, type DoctorDto } from '@/lib/api';
 import { Avatar }  from '@/components/ui/Avatar';
 
 /**
@@ -174,14 +174,50 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ─── STATS STRIP ───────────────────────────────────────────────────── */}
-      <section className="border-y border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/30">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <Stat number="< 60s"  label="Tiempo de reserva"   icon={<Zap size={16} />} />
-            <Stat number="24/7"   label="Disponibilidad"      icon={<Clock size={16} />} />
-            <Stat number="20+"    label="Especialidades"      icon={<Stethoscope size={16} />} />
-            <Stat number="100%"   label="Pagos seguros"       icon={<Lock size={16} />} />
+      {/* ─── STATS STRIP ─────────────────────────────────────────────────────
+       *  Re-diseno con vibe medico-profesional. Cuatro pilares de confianza:
+       *  rapidez, satisfaccion, cobertura, seguridad. Cada uno con icono
+       *  diferenciado, numero grande, label corto y un subtexto que ANCLA
+       *  el numero a una historia concreta (sin "100%" abstracto). */}
+      <section
+        aria-labelledby="trust-pillars"
+        className="border-y border-slate-100 dark:border-slate-800/60 bg-gradient-to-b from-white via-slate-50/40 to-white dark:from-slate-950 dark:via-slate-900/30 dark:to-slate-950"
+      >
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-14 lg:py-16">
+          <h2 id="trust-pillars" className="sr-only">Por que elegir MedicGet</h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-slate-200/70 dark:lg:divide-slate-800/60">
+            <TrustPillar
+              icon={<Star size={18} />}
+              accent="amber"
+              metric="4.9"
+              suffix={<Star size={14} className="fill-amber-400 text-amber-400 -ml-1 -translate-y-0.5" />}
+              label="Calificacion promedio"
+              detail="Basado en resenias de pacientes verificados"
+            />
+            <TrustPillar
+              icon={<Zap size={18} />}
+              accent="blue"
+              metric="< 2"
+              suffix={<span className="text-2xl ml-1 text-slate-400 font-medium">min</span>}
+              label="Tiempo medio de reserva"
+              detail="Encontra al especialista y confirma tu cita en linea"
+            />
+            <TrustPillar
+              icon={<Stethoscope size={18} />}
+              accent="teal"
+              metric="30+"
+              label="Especialidades medicas"
+              detail="Desde medicina general hasta sub-especialidades"
+            />
+            <TrustPillar
+              icon={<ShieldCheck size={18} />}
+              accent="emerald"
+              metric="PCI-DSS"
+              isText
+              label="Pagos cifrados"
+              detail="Procesados por PayPhone bajo estandares bancarios"
+            />
           </div>
         </div>
       </section>
@@ -345,8 +381,13 @@ export function HomePage() {
       {/* ─── ESPECIALISTAS ─────────────────────────────────────────────── */}
       <FeaturedDoctorsSection />
 
-      {/* ─── PRICING ─────────────────────────────────────────────────────── */}
-      <PricingSection />
+      {/* ─── MODELO DE NEGOCIO (reemplazo de PricingSection) ──────────────
+       *  Antes había planes pagos para médicos / clínicas. Ahora el
+       *  registro es 100% gratis y la plataforma se sostiene con una
+       *  comisión sobre el monto de la consulta. El % se lee desde el
+       *  backend (/public/commission) para que el admin lo pueda ajustar
+       *  sin redeploy. */}
+      <CommissionDisclosureSection />
 
       {/* ─── FAQ ───────────────────────────────────────────────────────────── */}
       <section id="faq" className="py-24 lg:py-32">
@@ -361,11 +402,15 @@ export function HomePage() {
           <div className="space-y-3">
             <FaqItem
               question="¿Cuánto cuesta usar MedicGet?"
-              answer="Para pacientes es 100% gratis. Para médicos y clínicas hay un plan free con todas las funciones esenciales y planes premium con reportes avanzados, integraciones y prioridad en búsquedas."
+              answer="El registro y el uso son 100% gratis para pacientes, médicos y clínicas. La plataforma se sostiene con una comisión sobre el monto de cada consulta cobrada. El paciente paga el precio publicado por el médico (sin cargos adicionales) y la plataforma acuerda el split con cada profesional por separado."
             />
             <FaqItem
-              question="¿Cómo funcionan los pagos?"
-              answer="Integramos PayPhone para procesar pagos en línea con tarjetas locales. El paciente paga al reservar, el médico recibe automáticamente y la plataforma retiene una pequeña comisión por cita."
+              question="¿Cómo se aplica la comisión por consulta?"
+              answer="El paciente paga al médico el monto neto de la consulta (ej. $20). En la contabilidad del sistema el médico recibe el 100% del cobro. La liquidación del porcentaje de comisión con la plataforma se hace de forma manual, fuera del app, según el acuerdo firmado al registrarse. Podés ver el % actual publicado en la sección 'Modelo de negocio' arriba."
+            />
+            <FaqItem
+              question="¿Cómo funcionan los pagos del paciente?"
+              answer="Integramos PayPhone para procesar pagos en línea con tarjetas locales. El paciente paga al reservar y el médico recibe la confirmación automática. El comprobante queda disponible para ambos lados desde el panel."
             />
             <FaqItem
               question="¿Qué pasa si necesito cancelar una cita?"
@@ -453,10 +498,9 @@ export function HomePage() {
               { label: 'Estado',          href: '#' },
             ]} />
             <FooterCol title="Legal" links={[
-              { label: 'Términos',          href: '#' },
-              { label: 'Privacidad',        href: '#' },
-              { label: 'Cookies',           href: '#' },
-              { label: 'Aviso médico',      href: '#' },
+              { label: 'Términos',          href: '/terminos' },
+              { label: 'Privacidad',        href: '/terminos#5' },
+              { label: 'Aviso médico',      href: '/terminos#4' },
             ]} />
           </div>
 
@@ -545,32 +589,126 @@ function HeroVisual() {
         </div>
       </div>
 
-      {/* Floating slot card */}
-      <div className="absolute right-4 lg:right-12 -bottom-2 w-56 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-900/10 p-4 hidden sm:block">
-        <div className="flex items-center gap-2 mb-2">
-          <Clock size={12} className="text-slate-400" />
-          <p className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">Hoy disponible</p>
+      {/* Floating "Reserva tu cita" card —
+       *  En vez de un timetable suelto, mostramos un mini-flujo de reserva:
+       *  doctor + indicador de disponibilidad en vivo + 4 slots con uno
+       *  pre-seleccionado + CTA. Lee de un vistazo como "el paciente ya
+       *  está a 1 click de confirmar". */}
+      <div className="absolute right-4 lg:right-12 -bottom-4 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl shadow-slate-900/15 p-4 hidden sm:block">
+        {/* Header — doctor mini-row */}
+        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+            CV
+          </div>
+          <div className="min-w-0">
+            <p className="text-[12px] font-semibold text-slate-800 dark:text-white truncate">Dr. Carlos Vega</p>
+            <p className="text-[10px] text-blue-600 dark:text-blue-400">Cardiología</p>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {['09:00', '11:30', '14:00', '15:30', '16:30', '18:00'].map((t, i) => (
-            <span key={t} className={`text-[11px] font-semibold rounded py-1 text-center ${
-              i === 4 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-            }`}>{t}</span>
+
+        {/* Live availability strip */}
+        <div className="flex items-center justify-between mt-3 mb-2">
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+            </span>
+            <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">5 horarios libres hoy</p>
+          </div>
+        </div>
+
+        {/* Slots — 4 visibles, el seleccionado destacado */}
+        <div className="grid grid-cols-4 gap-1.5">
+          {[
+            { t: '11:30', taken: false },
+            { t: '14:00', taken: false },
+            { t: '16:30', taken: false, active: true },
+            { t: '18:00', taken: false },
+          ].map((s) => (
+            <span
+              key={s.t}
+              className={`text-[11px] font-semibold rounded-md py-1.5 text-center transition ${
+                s.active
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30 ring-2 ring-blue-200 dark:ring-blue-900/60'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {s.t}
+            </span>
           ))}
+        </div>
+
+        {/* CTA simulation — refuerza "es un solo click" */}
+        <div className="mt-3 flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+          <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+            <Lock size={9} /> Pago seguro
+          </span>
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600">
+            Reservar <ArrowRight size={10} />
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-function Stat({ number, label, icon }: { number: string; label: string; icon: React.ReactNode }) {
+/**
+ * TrustPillar - card de la franja de stats. Espejo medico-profesional:
+ * icono coloreado en circulo + numero grande + label fuerte + linea de
+ * contexto. El `accent` controla el color del icono pero el numero queda
+ * en slate-900 para no caer en pinatazos visuales. `isText` permite
+ * mostrar etiquetas de cumplimiento (PCI-DSS, ISO...) sin que se vea
+ * como un numero raro.
+ */
+type PillarAccent = 'blue' | 'teal' | 'amber' | 'emerald';
+
+const PILLAR_ACCENTS: Record<PillarAccent, { bg: string; text: string; ring: string }> = {
+  blue:    { bg: 'bg-blue-50 dark:bg-blue-950/40',       text: 'text-blue-600 dark:text-blue-400',       ring: 'ring-blue-100 dark:ring-blue-900/40' },
+  teal:    { bg: 'bg-teal-50 dark:bg-teal-950/40',       text: 'text-teal-600 dark:text-teal-400',       ring: 'ring-teal-100 dark:ring-teal-900/40' },
+  amber:   { bg: 'bg-amber-50 dark:bg-amber-950/40',     text: 'text-amber-600 dark:text-amber-400',     ring: 'ring-amber-100 dark:ring-amber-900/40' },
+  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', text: 'text-emerald-600 dark:text-emerald-400', ring: 'ring-emerald-100 dark:ring-emerald-900/40' },
+};
+
+function TrustPillar({
+  icon,
+  accent,
+  metric,
+  suffix,
+  label,
+  detail,
+  isText,
+}: {
+  icon:   React.ReactNode;
+  accent: PillarAccent;
+  metric: string;
+  suffix?: React.ReactNode;
+  label:  string;
+  detail: string;
+  isText?: boolean;
+}) {
+  const cls = PILLAR_ACCENTS[accent];
   return (
-    <div className="text-center">
-      <div className="inline-flex items-center justify-center h-10 w-10 rounded-lg bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm mb-3">
+    <div className="flex items-start gap-4 px-2 lg:px-6 py-2 lg:py-1">
+      <span
+        className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${cls.bg} ${cls.text} ring-1 ${cls.ring} flex-shrink-0`}
+        aria-hidden
+      >
         {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="flex items-baseline gap-0.5 leading-none">
+          <span
+            className={`font-bold tracking-tight text-slate-900 dark:text-white ${
+              isText ? 'text-xl sm:text-2xl' : 'text-3xl sm:text-[2rem]'
+            }`}
+          >
+            {metric}
+          </span>
+          {suffix}
+        </p>
+        <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-snug">{detail}</p>
       </div>
-      <p className="text-3xl sm:text-4xl font-bold tracking-tight">{number}</p>
-      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">{label}</p>
     </div>
   );
 }
@@ -851,135 +989,93 @@ function DoctorsSkeleton() {
   );
 }
 
-/* ─── Pricing section ─────────────────────────────────────────────────────
+/* ─── Modelo de negocio (commission disclosure) ───────────────────────────
  *
- * Pulls the active plans from the public /plans endpoint and renders them
- * in two tabs (médicos / clínicas). Each card shows: name, monthly price,
- * description, list of included modules, and a "Empezar" / "Suscribirme"
- * CTA. The CTA goes to /register for FREE plans (no payment) and to
- * /subscribe/<planId> for paid ones (kicks off PayPhone).
+ * Reemplaza la PricingSection vieja. Comunica el modelo "100% gratis +
+ * comisión por consulta" con tres bloques:
+ *   1. Promesa: cuenta gratis, sin tarjeta
+ *   2. Cómo gana la plataforma: comisión X% (valor dinámico del backend)
+ *   3. Para quién aplica + link a /terminos
+ *
+ * El % se lee de /api/v1/public/commission. Si falla, mostramos "15%"
+ * como fallback razonable para no romper la landing.
  */
-function PricingSection() {
-  const [audience, setAudience] = useState<'DOCTOR' | 'CLINIC'>('DOCTOR');
-  const { state } = useApi(() => plansApi.list(audience), [audience]);
+function CommissionDisclosureSection() {
+  const { state } = useApi(() => publicCommissionApi.get(), []);
+  const pct =
+    state.status === 'ready' ? state.data.commissionPct.toFixed(0) : '15';
 
   return (
-    <section id="pricing" className="py-24 lg:py-32 bg-slate-50/50 dark:bg-slate-900/30">
-      <div className="max-w-6xl mx-auto px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider">Planes</p>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-            Elegí cómo querés crecer
-          </h2>
-          <p className="mt-4 text-lg text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">
-            Probalo gratis y subí a Pro o Premium cuando estés listo. Sin contratos, sin
-            sorpresas — desactivá cuando quieras.
+    <section
+      id="pricing"
+      className="py-24 lg:py-32 bg-slate-50/50 dark:bg-slate-900/30 border-y border-slate-100 dark:border-slate-800"
+    >
+      <div className="max-w-5xl mx-auto px-6 lg:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-3 uppercase tracking-wider">
+            Modelo de negocio
           </p>
-
-          {/* Audience switch */}
-          <div className="inline-flex mt-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1">
-            <button
-              onClick={() => setAudience('DOCTOR')}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${
-                audience === 'DOCTOR' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Para médicos
-            </button>
-            <button
-              onClick={() => setAudience('CLINIC')}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${
-                audience === 'CLINIC' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Para clínicas
-            </button>
-          </div>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+            Registro gratuito.<br />
+            <span className="text-slate-400">Comisión por consulta.</span>
+          </h2>
+          <p className="mt-4 text-lg text-slate-500 dark:text-slate-400">
+            Como Uber o inDrive, en MedicGet nadie paga por entrar. Médicos
+            y clínicas se registran sin costo. Cobramos solo cuando hay
+            una consulta efectiva.
+          </p>
         </div>
 
-        {state.status === 'loading' && (
-          <div className="flex items-center justify-center py-16 text-slate-400">
-            <Loader2 className="animate-spin" size={20} />
+        <div className="grid md:grid-cols-3 gap-5">
+          {/* Card 1 — Cuenta gratis */}
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-7">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600">
+              <Sparkles size={20} />
+            </div>
+            <h3 className="mt-4 text-xl font-bold tracking-tight">100% gratis</h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              Pacientes, médicos y clínicas crean su cuenta sin tarjeta de
+              crédito. No hay planes pagos, no hay límites por funcionalidad.
+            </p>
           </div>
-        )}
-        {state.status === 'error' && (
-          <p className="text-center text-rose-500 text-sm">No se pudieron cargar los planes.</p>
-        )}
-        {state.status === 'ready' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {state.data.map((p, idx) => (
-              <PricingCard key={p.id} plan={p} highlight={idx === 1 /* PRO en el medio */} />
-            ))}
+
+          {/* Card 2 — Comisión X% destacada */}
+          <div className="rounded-2xl bg-blue-600 text-white p-7 shadow-xl shadow-blue-600/20 md:scale-[1.03]">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 text-white">
+              <CreditCard size={20} />
+            </div>
+            <h3 className="mt-4 text-xl font-bold tracking-tight">
+              Comisión del {pct}% por consulta
+            </h3>
+            <p className="mt-2 text-sm text-blue-100 leading-relaxed">
+              Sobre cada consulta cobrada al paciente, una parte se queda con
+              el médico y otra con la plataforma. El % se acuerda al
+              registrarse y la liquidación es manual fuera del app.
+            </p>
           </div>
-        )}
+
+          {/* Card 3 — Transparencia */}
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-7">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600">
+              <ShieldCheck size={20} />
+            </div>
+            <h3 className="mt-4 text-xl font-bold tracking-tight">Sin sorpresas</h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              El paciente paga el precio publicado por el médico (ej. $20).
+              No agregamos cargos extra al cobro. La comisión sale del
+              acuerdo con el profesional, no del paciente.
+            </p>
+            <Link
+              to="/terminos"
+              className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Leer términos completos <ArrowRight size={12} />
+            </Link>
+          </div>
+        </div>
       </div>
     </section>
   );
-}
-
-function PricingCard({ plan, highlight }: { plan: PlanDto; highlight: boolean }) {
-  const isFree = plan.monthlyPrice === 0;
-  return (
-    <div
-      className={`relative rounded-2xl p-8 transition shadow-sm ${
-        highlight
-          ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/20 scale-[1.02]'
-          : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
-      }`}
-    >
-      {highlight && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-block px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-400 text-amber-900">
-          Más popular
-        </span>
-      )}
-      <h3 className={`text-lg font-semibold ${highlight ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
-        {plan.name}
-      </h3>
-      <div className="mt-3">
-        <span className={`text-4xl font-bold ${highlight ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
-          ${plan.monthlyPrice.toFixed(2)}
-        </span>
-        <span className={`text-sm ${highlight ? 'text-blue-100' : 'text-slate-500'}`}>/mes</span>
-      </div>
-      <p className={`mt-3 text-sm ${highlight ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'} min-h-[3.5em]`}>
-        {plan.description}
-      </p>
-
-      <ul className="mt-6 space-y-2">
-        {plan.modules.filter((m) => prettyModuleLabel(m)).map((m) => (
-          <li key={m} className="flex items-center gap-2 text-sm">
-            <CheckCircle2 size={14} className={highlight ? 'text-blue-200' : 'text-emerald-500'} />
-            <span className={highlight ? 'text-white' : 'text-slate-600 dark:text-slate-300'}>
-              {prettyModuleLabel(m)}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      <Link
-        to={isFree ? '/register' : `/subscribe/${plan.id}`}
-        className={`mt-8 block w-full text-center px-6 py-3 rounded-xl font-bold text-sm transition ${
-          highlight
-            ? 'bg-white text-blue-700 hover:bg-blue-50'
-            : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100'
-        }`}
-      >
-        {isFree ? 'Empezar gratis' : `Suscribirme · $${plan.monthlyPrice.toFixed(2)}/mes`}
-      </Link>
-    </div>
-  );
-}
-
-function prettyModuleLabel(code: string): string {
-  const m: Record<string, string> = {
-    ONLINE:             'Videollamadas',
-    PRESENCIAL:         'Citas presenciales',
-    CHAT:               'Chat en vivo',
-    REPORTS:            'Reportes avanzados',
-    PRIORITY_SEARCH:    'Prioridad en búsqueda',
-    PAYMENTS_DASHBOARD: 'Panel de pagos',
-  };
-  return m[code] ?? '';
 }
 
 function FaqItem({ question, answer }: { question: string; answer: string }) {

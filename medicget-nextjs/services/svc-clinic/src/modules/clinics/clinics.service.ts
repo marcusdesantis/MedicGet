@@ -3,7 +3,7 @@ import type { AuthUser } from '@medicget/shared/auth';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { paginate } from '@medicget/shared/paginate';
 import { sendEmail } from '@medicget/shared/email';
-import { countActiveDoctorsInClinic, getEffectivePlan } from '@medicget/shared/subscription';
+import { countActiveDoctorsInClinic } from '@medicget/shared/subscription';
 import * as repo from './clinics.repository';
 import type { CreateClinicData, UpdateClinicData } from './clinics.repository';
 
@@ -162,23 +162,10 @@ export async function createDoctorForClinic(
     return { ok: false, code: 'FORBIDDEN', message: 'Esta clínica no te pertenece.' };
   }
 
-  // ─── Cupo de médicos del plan ─────────────────────────────────────────
-  // Resolvemos el plan efectivo de la clínica (el plan ACTIVE de su
-  // user). El cupo vive en `Plan.maxDoctors` (null = sin límite).
-  // Si la clínica ya tiene ≥ maxDoctors médicos ACTIVE, no la dejamos
-  // crear uno nuevo y devolvemos PLAN_LIMIT_REACHED con CTA al upgrade.
-  const effective = await getEffectivePlan(caller.id);
-  const cupoLibre = effective?.plan
-    ? (effective.plan.maxDoctors == null ? Infinity : effective.plan.maxDoctors)
-    : 3; // fallback al cupo de FREE-CLINIC si no hay sub registrada
-  const yaTiene = await countActiveDoctorsInClinic(clinicId);
-  if (yaTiene >= cupoLibre) {
-    return {
-      ok:    false,
-      code:  'PLAN_LIMIT_REACHED',
-      message: `Tu plan permite hasta ${cupoLibre} médicos y ya tenés ${yaTiene}. Subí de plan para agregar más.`,
-    };
-  }
+  // Sin planes en la plataforma: la clínica puede agregar médicos sin tope.
+  // Conservamos `countActiveDoctorsInClinic` por si en el futuro se vuelve
+  // a meter un cupo, pero hoy no gatea nada.
+  await countActiveDoctorsInClinic(clinicId);
 
   const { prisma } = await import('@medicget/shared/prisma');
 

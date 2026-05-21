@@ -230,19 +230,8 @@ function DashboardBody({
         <ArrowRight size={16} color="#94a3b8" />
       </Pressable>
 
-      <Pressable
-        onPress={() => router.push('/(main)/(doctor)/plan' as never)}
-        className="flex-row items-center justify-between bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 px-4 py-3">
-        <View>
-          <Text className="text-sm font-semibold text-slate-800 dark:text-white">
-            Mi plan
-          </Text>
-          <Text className="text-xs text-slate-400">
-            Gestioná tu suscripción y desbloqueá funcionalidades
-          </Text>
-        </View>
-        <ArrowRight size={16} color="#94a3b8" />
-      </Pressable>
+      {/* "Mi plan" eliminado: el sistema de planes/suscripciones fue
+          retirado y todas las cuentas son gratuitas con full features. */}
     </View>
   );
 }

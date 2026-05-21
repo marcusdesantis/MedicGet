@@ -59,24 +59,9 @@ export const GET = withAuth(async (req: NextRequest, { user }) => {
     if (!c) return apiOk(paginate([], 0, pagination));
     where.appointment = { clinicId: c.id };
   }
-  // ADMIN no agrega filtros por rol — ve todo. Pero PUEDE filtrar por
-  // `?audience=` para acotar a un tipo de pago en particular.
-  else if (user.role === 'ADMIN') {
-    const audience = sp.get('audience');
-    if (audience === 'PATIENT') {
-      // Pagos de cita (paciente paga al médico/clínica): tienen appointmentId.
-      where.appointmentId = { not: null };
-    } else if (audience === 'DOCTOR') {
-      // Pagos de suscripción de médicos: subscriptionId presente y plan.audience=DOCTOR.
-      where.subscriptionId = { not: null };
-      where.subscription   = { plan: { audience: 'DOCTOR' } };
-    } else if (audience === 'CLINIC') {
-      // Pagos de suscripción de clínicas: subscriptionId presente y plan.audience=CLINIC.
-      where.subscriptionId = { not: null };
-      where.subscription   = { plan: { audience: 'CLINIC' } };
-    }
-    // Sin `audience` → admin ve absolutamente todos los pagos mezclados.
-  }
+  // ADMIN ve todos los pagos. El parámetro ?audience= quedó obsoleto al
+  // eliminar el sistema de suscripciones — ahora todos los pagos son por
+  // citas — así que lo ignoramos sin romper compatibilidad con el cliente.
 
   const [data, total] = await Promise.all([
     prisma.payment.findMany({
@@ -87,12 +72,6 @@ export const GET = withAuth(async (req: NextRequest, { user }) => {
             patient: { include: { user: { include: { profile: true } } } },
             doctor:  { include: { user: { include: { profile: true } } } },
             clinic:  true,
-          },
-        },
-        subscription: {
-          include: {
-            plan: true,
-            user: { include: { profile: true } },
           },
         },
       },

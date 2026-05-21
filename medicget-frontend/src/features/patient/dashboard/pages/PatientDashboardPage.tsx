@@ -1,4 +1,4 @@
-import { Calendar, Clock, FileText, Star, ArrowRight, Bell } from 'lucide-react';
+import { Calendar, Clock, FileText, Heart, ArrowRight, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { StatCard }    from '@/components/ui/StatCard';
 import { PageHeader }  from '@/components/ui/PageHeader';
@@ -43,7 +43,19 @@ export function PatientDashboardPage() {
   const s = stats as Record<string, number | undefined>;
   const upcoming  = s.upcoming  ?? s.upcomingCount  ?? 0;
   const completed = s.completed ?? s.completedCount ?? 0;
-  const totalSpent = s.totalSpent ?? 0;
+
+  // Citas atendidas este mes - contamos las completadas con fecha en
+  // el mes actual. Es un proxy "salud activa" mas significativo que
+  // el monto total invertido (que ademas con cuentas FREE quedaba en 0).
+  const thisMonth = (() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return recentAppointments.filter((a) => {
+      if (a.status !== 'COMPLETED') return false;
+      const d = new Date(a.date);
+      return d >= start && d <= now;
+    }).length;
+  })();
 
   return (
     <div className="space-y-6">
@@ -77,11 +89,11 @@ export function PatientDashboardPage() {
           iconColor="text-violet-600"
         />
         <StatCard
-          label="Total invertido"
-          value={`$${totalSpent.toFixed(2)}`}
-          icon={Star}
-          iconBg="bg-amber-100 dark:bg-amber-900/30"
-          iconColor="text-amber-500"
+          label="Consultas este mes"
+          value={thisMonth}
+          icon={Heart}
+          iconBg="bg-rose-100 dark:bg-rose-900/30"
+          iconColor="text-rose-500"
         />
         <StatCard
           label="Próxima cita"
@@ -164,9 +176,21 @@ export function PatientDashboardPage() {
                 <div key={n.id} className="px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                   <div className="flex items-start gap-3">
                     <Bell size={16} className={n.isRead ? 'text-slate-400 mt-0.5' : 'text-blue-600 mt-0.5'} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{n.title}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{n.message}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium truncate ${n.isRead ? 'text-slate-500' : 'text-slate-800 dark:text-white'}`}>
+                        {n.title}
+                      </p>
+                      {n.message && (
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{n.message}</p>
+                      )}
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {new Date(n.createdAt).toLocaleString('es-ES', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
                     </div>
                   </div>
                 </div>

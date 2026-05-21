@@ -150,13 +150,15 @@ export function ManageDoctorsPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-                  <Stat label="Rating"    value={doc.rating > 0 ? `★ ${doc.rating.toFixed(1)}` : '—'} cls="text-amber-500" />
-                  <Stat label="Reseñas"   value={String(doc.reviewCount)} />
-                  <Stat label="Precio"    value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(0)}` : '—'} />
+                  <Stat label="Valoración" value={doc.rating > 0 ? `★ ${doc.rating.toFixed(1)}` : '—'} cls="text-amber-500" />
+                  <Stat label="Reseñas"    value={String(doc.reviewCount)} />
+                  <Stat label="Precio"     value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(0)}` : '—'} />
                 </div>
 
                 <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-xs text-slate-400">{doc.experience} años exp.</span>
+                  <span className="text-xs text-slate-400">
+                    {doc.experience} año{doc.experience === 1 ? '' : 's'} de experiencia
+                  </span>
                   {actingId === doc.id ? (
                     <Loader2 className="animate-spin text-slate-400" size={16} />
                   ) : (
@@ -685,10 +687,9 @@ function CreatedSuccess({
           onClick={onAddAnother}
           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium px-4 py-2.5 rounded-xl"
         >
-          Crear otro médico
+          Agregar otro
         </Button>
       </div>
     </div>
   );
 }
-

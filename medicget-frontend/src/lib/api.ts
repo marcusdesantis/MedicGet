@@ -230,10 +230,13 @@ export interface AvailabilityDto {
 }
 
 export interface SlotDto {
-  id:       string;
-  date:     string;
-  time:     string;
-  isBooked: boolean;
+  id:           string;
+  date:         string;
+  time:         string;
+  isBooked:     boolean;
+  /** Marca interna del medico: slot cerrado por compromiso externo. */
+  isBlocked?:   boolean;
+  blockReason?: string | null;
 }
 
 export interface PatientDto {
@@ -591,6 +594,16 @@ export const doctorsApi = {
   getReviews:         (id: string, params?: Record<string, unknown>) => apiGet<PaginatedData<ReviewDto>>(`/doctors/${id}/reviews`, params),
 };
 
+/**
+ * Endpoints sobre slots individuales. El doctor (o admin) puede
+ * bloquear / desbloquear un horario puntual desde su agenda cuando
+ * tiene un compromiso fuera de MedicGet.
+ */
+export const slotsApi = {
+  toggleBlock: (slotId: string, body: { blocked: boolean; reason?: string | null }) =>
+    apiPatch<SlotDto>(`/slots/${slotId}/block`, body),
+};
+
 /** svc-patient :4005 → /api/v1/patients/ */
 export const patientsApi = {
   list:             (params?: Record<string, unknown>) => apiGet<PaginatedData<PatientDto>>('/patients', params),
@@ -840,39 +853,11 @@ export interface UpdateAppointmentBody {
   cancelReason?: string;
 }
 
-// ─── Plans / Subscriptions / Admin ────────────────────────────────────────────
-
-export type PlanCode     = 'FREE' | 'PRO' | 'PREMIUM';
-export type PlanAudience = 'DOCTOR' | 'CLINIC';
-
-export interface PlanDto {
-  id:           string;
-  code:         PlanCode;
-  audience:     PlanAudience;
-  name:         string;
-  description:  string | null;
-  monthlyPrice: number;
-  modules:      string[];
-  limits:       Record<string, unknown> | null;
-  /** Cupo máximo de médicos para planes CLINIC. null = sin límite. */
-  maxDoctors:   number | null;
-  isActive:     boolean;
-  sortOrder:    number;
-}
-
-export interface SubscriptionDto {
-  id:            string;
-  userId:        string;
-  planId:        string;
-  status:        'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_PAYMENT';
-  startsAt:      string;
-  expiresAt:     string;
-  lastPaymentId: string | null;
-  autoRenew:     boolean;
-  cancelledAt:   string | null;
-  plan?:         PlanDto;
-  user?:         UserDto;
-}
+// ─── Admin ────────────────────────────────────────────────────────────────────
+//
+// Sistema de planes / suscripciones eliminado. Todo usuario (medico,
+// clinica, paciente) accede a la plataforma gratis sin restricciones.
+// Las stats de admin ya no incluyen `subscriptions.active`.
 
 export interface AppSettingDto {
   id:        string;
@@ -887,58 +872,21 @@ export interface AdminStatsDto {
   users:         { total: number; patients: number; doctors: number; clinics: number };
   appointments:  { total: number };
   revenue:       { gross: number; platformFees: number; paidCount: number };
-  subscriptions: { active: number };
 }
-
-export const plansApi = {
-  /** Public — used by the landing page. Optional `audience` filter. */
-  list: (audience?: PlanAudience) =>
-    apiGet<PlanDto[]>('/plans', audience ? { audience } : undefined),
-};
-
-/**
- * Respuesta del POST /subscriptions/checkout. Para planes FREE solo
- * trae `subscriptionId` (no hay sesión PayPhone). Para planes pagados
- * trae todos los campos para montar el widget Cajita.
- */
-export type SubscriptionCheckoutResponse =
-  & { subscriptionId: string; breakdown?: PaymentBreakdownDto }
-  & (
-    | { stubMode?: false; token: string; storeId: string; amount: number;
-        amountWithoutTax: number; amountWithTax: number; tax: number;
-        service: number; tip: number; currency: string;
-        clientTransactionId: string; reference: string; responseUrl: string }
-    | { stubMode: true;  token: string; storeId: string; amount: number;
-        amountWithoutTax: number; amountWithTax: number; tax: number;
-        service: number; tip: number; currency: string;
-        clientTransactionId: string; reference: string; responseUrl: string }
-    | Record<string, never>
-  );
-
-export const subscriptionsApi = {
-  /** Returns the caller's current active subscription + the FREE fallback plan. */
-  me: () => apiGet<{ subscription: SubscriptionDto | null; freePlan: PlanDto | null; inherited?: boolean }>('/subscriptions/me'),
-  checkout: (body: { planId: string; responseUrl: string }) =>
-    apiPost<SubscriptionCheckoutResponse>('/subscriptions/checkout', body),
-  confirm: (body: {
-    subscriptionId:       string;
-    payphoneId?:          string;
-    /**
-     * clientTransactionId ORIGINAL del checkout (sub-<userId>-<ts>).
-     * PayPhone exige el mismo string al confirmar — sin esto, responde
-     * 404 "La transacción no existe". Lo recibimos en el URL de retorno.
-     */
-    clientTransactionId?: string;
-    fakeOk?:              boolean;
-  }) =>
-    apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>('/subscriptions/confirm', body),
-  /** Cancela el plan paga y vuelve a FREE inmediatamente. */
-  cancel: () => apiPost<{ ok: true }>('/subscriptions/cancel', {}),
-};
 
 /** Public branding settings — used to paint the landing page header. */
 export const publicSettingsApi = {
   get: () => apiGet<{ brandName: string; brandLogo: string | null }>('/app-settings/public'),
+};
+
+/**
+ * Public commission % — porcentaje informativo que se publica en la
+ * landing y /terminos. El admin lo edita desde /admin/settings → tab
+ * Pagos. NO afecta cálculos de Payment (la comisión real se acuerda
+ * offline con cada médico).
+ */
+export const publicCommissionApi = {
+  get: () => apiGet<{ commissionPct: number; label: string }>('/public/commission'),
 };
 
 /** Superadmin-only API. All endpoints require `role === ADMIN`. */
@@ -965,23 +913,6 @@ export const adminApi = {
       `/admin/users/${id}/impersonate`,
       {},
     ),
-
-  listPlans:    () => apiGet<PlanDto[]>('/admin/plans'),
-  createPlan:   (body: Partial<PlanDto>) => apiPost<PlanDto>('/admin/plans', body),
-  updatePlan:   (id: string, body: Partial<PlanDto>) => apiPatch<PlanDto>(`/admin/plans/${id}`, body),
-  deletePlan:   (id: string) => apiDelete<PlanDto>(`/admin/plans/${id}`),
-
-  subscriptions: (params?: Record<string, unknown>) =>
-    apiGet<PaginatedData<SubscriptionDto>>('/admin/subscriptions', params),
-  extendSubscription: (id: string, days: number) =>
-    apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/extend`, { days }),
-  /**
-   * Cambia el plan de una suscripción sin pasar por PayPhone (admin
-   * action). Cancela otras suscripciones activas del usuario en una
-   * transacción y deja sólo la nueva activa.
-   */
-  changeSubscriptionPlan: (id: string, planId: string) =>
-    apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/change-plan`, { planId }),
 
   settings:      () => apiGet<AppSettingDto[]>('/admin/settings'),
   saveSettings:  (values: Record<string, string | null>) =>

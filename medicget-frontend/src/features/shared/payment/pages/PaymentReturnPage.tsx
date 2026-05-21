@@ -47,20 +47,10 @@ export function PaymentReturnPage() {
   const userCancelled      = params.get('cancel') === '1';
   const fakeOk             = params.get('fakeOk') === '1';
 
-  // Si el clientTransactionId empieza con `sub-` es una suscripción
-  // — redirigimos a /subscribe/return que sabe manejar ese flow.
-  // PayPhone usa una sola URL de respuesta configurada en el panel,
-  // por eso TODOS los pagos (citas + suscripciones) caen acá primero.
-  useEffect(() => {
-    if (clientTxId.startsWith('sub-')) {
-      const qs = new URLSearchParams();
-      if (payphonePaymentId) qs.set('id', payphonePaymentId);
-      qs.set('clientTransactionId', clientTxId);
-      if (userCancelled) qs.set('cancel', '1');
-      if (fakeOk)        qs.set('fakeOk', '1');
-      navigate(`/subscribe/return?${qs.toString()}`, { replace: true });
-    }
-  }, [clientTxId, payphonePaymentId, userCancelled, fakeOk, navigate]);
+  // Antes redirigíamos a /subscribe/return cuando el `clientTransactionId`
+  // empezaba con `sub-`. El sistema de suscripciones fue eliminado, así
+  // que ya no debería llegar ningún callback con ese prefijo. Si por
+  // pagos viejos en cola apareciera uno, lo descartamos en silencio.
 
   const apptId = params.get('appt') ?? clientTxId;
 

@@ -1,7 +1,7 @@
 /**
  * Superadmin home — high-level KPIs across the whole platform.
  */
-import { Loader2, Users, Stethoscope, Building2, UserCheck, Calendar, DollarSign, Percent, BadgeCheck } from 'lucide-react';
+import { Loader2, Users, Stethoscope, Building2, UserCheck, Calendar, DollarSign, Percent, Receipt } from 'lucide-react';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { CardContainer } from '@/components/ui/CardContainer';
 import { Alert }         from '@/components/ui/Alert';
@@ -52,7 +52,7 @@ export function AdminDashboardPage() {
           <Kpi icon={Calendar}   color="indigo"  label="Citas totales"        value={s.appointments.total} />
           <Kpi icon={DollarSign} color="emerald" label="Volumen pagado"       value={fmtMoney(s.revenue.gross)} />
           <Kpi icon={Percent}    color="purple"  label="Comisión retenida"    value={fmtMoney(s.revenue.platformFees)} />
-          <Kpi icon={BadgeCheck} color="amber"   label="Suscripciones activas" value={s.subscriptions.active} />
+          <Kpi icon={Receipt}    color="amber"   label="Pagos completados"    value={s.revenue.paidCount ?? 0} />
         </div>
       </div>
 
@@ -60,9 +60,8 @@ export function AdminDashboardPage() {
         <h3 className="font-semibold text-slate-800 dark:text-white mb-2">Atajos del superadmin</h3>
         <ul className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
           <li>· <strong>Usuarios</strong> — ver, suspender o eliminar cualquier cuenta.</li>
-          <li>· <strong>Planes</strong> — crear, editar y desactivar planes para médicos y clínicas.</li>
-          <li>· <strong>Suscripciones</strong> — auditar pagos y extender períodos manualmente.</li>
-          <li>· <strong>Configuración</strong> — SMTP, PayPhone, Jitsi, comisión y branding sin redeploy.</li>
+          <li>· <strong>Pagos</strong> — auditar transacciones por consulta y emitir recibos.</li>
+          <li>· <strong>Configuración</strong> — SMTP, PayPhone, Jitsi, % de comisión y branding sin redeploy.</li>
         </ul>
       </CardContainer>
     </div>

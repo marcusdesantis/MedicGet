@@ -1,22 +1,12 @@
-import { NextRequest } from 'next/server';
-import { withRole } from '@medicget/shared/auth';
-import { apiOk } from '@medicget/shared/response';
-import { paginate, parsePagination } from '@medicget/shared/paginate';
-import { adminService } from '@/modules/admin/admin.service';
-
+/**
+ * Endpoint removido tras eliminar el sistema de planes/suscripciones.
+ * Cualquier llamada devuelve 404.
+ */
+import { apiError } from '@medicget/shared/response';
 export const dynamic = 'force-dynamic';
-
-export const GET = withRole(['ADMIN'], async (req: NextRequest) => {
-  const sp = req.nextUrl.searchParams;
-  const pagination = parsePagination(sp);
-  const status   = sp.get('status') ?? undefined;
-  const audRaw   = sp.get('audience') ?? undefined;
-  const audience = audRaw === 'DOCTOR' || audRaw === 'CLINIC' ? audRaw : undefined;
-  const { data, total } = await adminService.listSubscriptions({
-    page:     pagination.page,
-    pageSize: pagination.pageSize,
-    status,
-    audience,
-  });
-  return apiOk(paginate(data, total, pagination));
-});
+const removed = () =>
+  apiError('NOT_FOUND', 'Funcionalidad removida.');
+export const GET    = removed;
+export const POST   = removed;
+export const PATCH  = removed;
+export const DELETE = removed;

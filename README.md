@@ -84,3 +84,8 @@ Cada subproyecto tiene su propio README con detalles.
 ## Deploy a producción
 
 Toda la guía para desplegar MedicGet en un VPS usando Jenkins (desde provisionar el servidor hasta correr migraciones) está en [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
+# Si hay cambios en el DB entonces hay que aplicar estos comandos:
+
+npm run prisma:migrate
+npm run prisma:deploy

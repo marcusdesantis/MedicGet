@@ -61,18 +61,13 @@ async function openReceipt(paymentId: string): Promise<void> {
   }
 }
 
-interface PaymentsHistoryTableProps {
-  /**
-   * Solo aplica para superadmin. Pasa `?audience=` al backend para
-   * filtrar entre pagos de citas (PATIENT) y pagos de suscripción
-   * (DOCTOR / CLINIC). Cuando no se setea, se devuelven todos los pagos
-   * mezclados (que es el comportamiento default para doctores y clínicas
-   * mirando sus propios pagos, donde el backend ya hace el scope).
-   */
-  audience?: 'PATIENT' | 'DOCTOR' | 'CLINIC';
-}
-
-export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {}) {
+/**
+ * Tabla compartida entre /admin/payments, /doctor/payments y
+ * /clinic/payments. El backend scope-filtra por el JWT del caller.
+ * El modelo de planes / suscripciones fue eliminado, asi que ya no
+ * hay `audience` filter.
+ */
+export function PaymentsHistoryTable() {
   const [status, setStatus]   = useState<string>('');
   const [search, setSearch]   = useState<string>('');
   // Debounce del input — evita disparar refetch en cada tecla.
@@ -85,10 +80,9 @@ export function PaymentsHistoryTable({ audience }: PaymentsHistoryTableProps = {
   const { state, refetch } = useApi<PaginatedData<PaymentRowDto>>(
     () => paymentApi.list({
       status:   status || undefined,
-      audience: audience || undefined,
       pageSize: 200,
     }),
-    [status, audience],
+    [status],
   );
 
   /**

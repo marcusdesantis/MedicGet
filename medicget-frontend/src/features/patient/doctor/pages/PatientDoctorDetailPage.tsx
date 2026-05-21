@@ -394,7 +394,8 @@ export function PatientDoctorDetailPage() {
               //   • Hide slots already in the past (only relevant when the
               //     selected day is today). 15-min buffer so the patient has
               //     time to confirm/pay without the slot expiring.
-              const allSlots = slotsState.state.data.filter((s) => !s.isBooked);
+              // El paciente NO ve slots reservados ni bloqueados por el medico.
+              const allSlots = slotsState.state.data.filter((s) => !s.isBooked && !s.isBlocked);
               const free     = allSlots.filter((s) => !isSlotPast(selectedDay, s.time, doctorTz, 15));
 
               const isToday      = selectedDay === days[0].key;

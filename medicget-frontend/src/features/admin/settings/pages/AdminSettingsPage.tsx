@@ -252,27 +252,62 @@ function EmailTab({ draft, setDraft }: TabProps) {
   );
 }
 
-/* ─────────────── Payments tab ─────────────── */
+/* ─────────────── Payments tab ───────────────
+ *
+ * Modelo actual: la app NO descuenta comisión automáticamente al
+ * procesar el pago de una consulta. El médico recibe el 100% en la
+ * contabilidad del app y el split con la plataforma se acuerda
+ * MANUALMENTE (offline) en base a un % de referencia.
+ *
+ * Por eso:
+ *   - `PLATFORM_FEE_PCT` queda oculto (siempre 0).
+ *   - `COMMISSION_PCT` (este input) es solo INFORMATIVO. Su valor se
+ *     publica en la landing y en /terminos para transparencia.
+ */
 function PaymentsTab({ draft, setDraft }: TabProps) {
   return (
-    <SectionCard>
-      <div className="flex items-center gap-3 mb-1">
-        <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center"><CreditCard size={18} /></div>
-        <div>
-          <h3 className="font-bold text-slate-800 dark:text-white">Pasarela de pagos · PayPhone</h3>
-          <p className="text-xs text-slate-500">Credenciales del comercio + comisión de la plataforma.</p>
+    <div className="space-y-4">
+      <SectionCard>
+        <div className="flex items-center gap-3 mb-1">
+          <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center"><CreditCard size={18} /></div>
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-white">Pasarela de pagos · PayPhone</h3>
+            <p className="text-xs text-slate-500">Credenciales del comercio para procesar cobros de consulta.</p>
+          </div>
         </div>
-      </div>
-      <Alert variant="info" >
-        Si dejás el token vacío, el sistema corre en modo de desarrollo (stub) y aprueba todos los pagos automáticamente.
-      </Alert>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <PasswordField label="Token Bearer de PayPhone" k="PAYPHONE_TOKEN"    draft={draft} setDraft={setDraft} />
-        <Field         label="Store ID"                  k="PAYPHONE_STORE_ID" draft={draft} setDraft={setDraft} placeholder="12345" />
-        <Field         label="Base URL de PayPhone"      k="PAYPHONE_BASE_URL" draft={draft} setDraft={setDraft} placeholder="https://pay.payphonetodoesposible.com/api" />
-        <Field         label="Comisión plataforma (%)"   k="PLATFORM_FEE_PCT"  draft={draft} setDraft={setDraft} type="number" placeholder="10" />
-      </div>
-    </SectionCard>
+        <Alert variant="info">
+          Si dejás el token vacío, el sistema corre en modo de desarrollo (stub) y aprueba todos los pagos automáticamente.
+        </Alert>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <PasswordField label="Token Bearer de PayPhone" k="PAYPHONE_TOKEN"    draft={draft} setDraft={setDraft} />
+          <Field         label="Store ID"                 k="PAYPHONE_STORE_ID" draft={draft} setDraft={setDraft} placeholder="12345" />
+          <Field         label="Base URL de PayPhone"     k="PAYPHONE_BASE_URL" draft={draft} setDraft={setDraft} placeholder="https://pay.payphonetodoesposible.com/api" />
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <div className="flex items-center gap-3 mb-1">
+          <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center"><CreditCard size={18} /></div>
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-white">Modelo de negocio</h3>
+            <p className="text-xs text-slate-500">% informativo que se publica en la landing y políticas.</p>
+          </div>
+        </div>
+        <Alert variant="info">
+          Este porcentaje <strong>no se aplica automáticamente</strong> al cobro: el médico recibe el 100% del monto en la contabilidad del sistema y la liquidación con la plataforma se realiza de forma manual. El valor aparece en la landing y en <code>/terminos</code> para transparencia con los usuarios.
+        </Alert>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field
+            label="Porcentaje de comisión por consulta (%)"
+            k="COMMISSION_PCT"
+            draft={draft}
+            setDraft={setDraft}
+            type="number"
+            placeholder="15"
+          />
+        </div>
+      </SectionCard>
+    </div>
   );
 }
 

@@ -578,59 +578,15 @@ export const paymentApi = {
   },
 };
 
+
 /**
- * Response del POST /subscriptions/checkout. Tiene la misma shape que
- * CheckoutSessionDto para citas, pero ademas trae `subscriptionId` y un
- * `breakdown` opcional con la comision de la plataforma. Para planes FREE
- * el backend solo devuelve { subscriptionId }; para stubMode { subscriptionId,
- * stubMode: true }.
+ * Public commission - porcentaje informativo que se publica en la
+ * landing/terminos. NO afecta calculos. El admin lo edita desde
+ * /admin/settings.
  */
-export interface SubscriptionCheckoutResponse {
-  subscriptionId:      string;
-  breakdown?:          PaymentBreakdownDto;
-  stubMode?:           boolean;
-  token?:              string;
-  storeId?:            string;
-  amount?:             number;
-  amountWithoutTax?:   number;
-  amountWithTax?:      number;
-  tax?:                number;
-  service?:            string;
-  tip?:                number;
-  currency?:           string;
-  clientTransactionId?: string;
-  reference?:          string;
-}
-
-export const plansApi = {
-  /** Listado publico de planes. Si pasas audience filtra a DOCTOR o CLINIC. */
-  list: (audience?: PlanAudience) =>
-    apiGet<PlanDto[]>('/plans', audience ? { audience } : undefined),
-};
-
-export const subscriptionsApi = {
-  /** Devuelve la suscripcion EFECTIVA del usuario + plan FREE como fallback.
-   *  Para medicos de clinica, devuelve la suscripcion de la clinica con
-   *  `inherited: true`. */
-  me: () =>
-    apiGet<{
-      subscription: SubscriptionDto | null;
-      freePlan:     PlanDto | null;
-      inherited?:   boolean;
-    }>('/subscriptions/me'),
-  checkout: (body: { planId: string; responseUrl: string }) =>
-    apiPost<SubscriptionCheckoutResponse>('/subscriptions/checkout', body),
-  confirm: (body: {
-    subscriptionId:       string;
-    payphoneId?:          string;
-    clientTransactionId?: string;
-    fakeOk?:              boolean;
-  }) =>
-    apiPost<{ status: 'ACTIVE' | 'PENDING' | 'FAILED' }>(
-      '/subscriptions/confirm',
-      body,
-    ),
-  cancel: () => apiPost<{ ok: true }>('/subscriptions/cancel', {}),
+export const publicCommissionApi = {
+  get: () =>
+    apiGet<{ commissionPct: number; label: string }>('/public/commission'),
 };
 
 export const notificationsApi = {
@@ -647,38 +603,7 @@ export const notificationsApi = {
 
 // --- Admin / Superadmin -----------------------------------------------------
 
-export type PlanCode = 'FREE' | 'PRO' | 'PREMIUM';
-export type PlanAudience = 'DOCTOR' | 'CLINIC';
 
-export interface PlanDto {
-  id: string;
-  code: PlanCode;
-  audience: PlanAudience;
-  name: string;
-  description: string | null;
-  monthlyPrice: number;
-  modules: string[];
-  limits: Record<string, unknown> | null;
-  /** Solo planes CLINIC. null = sin limite (enterprise). undefined = el
-   *  backend todavia no lo tipa para este plan. */
-  maxDoctors?: number | null;
-  isActive: boolean;
-  sortOrder: number;
-}
-
-export interface SubscriptionDto {
-  id: string;
-  userId: string;
-  planId: string;
-  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_PAYMENT';
-  startsAt: string;
-  expiresAt: string;
-  lastPaymentId: string | null;
-  autoRenew: boolean;
-  cancelledAt: string | null;
-  plan?: PlanDto;
-  user?: UserDto;
-}
 
 export interface AppSettingDto {
   id: string;
@@ -693,7 +618,6 @@ export interface AdminStatsDto {
   users: { total: number; patients: number; doctors: number; clinics: number };
   appointments: { total: number };
   revenue: { gross: number; platformFees: number; paidCount: number };
-  subscriptions: { active: number };
 }
 
 export interface AdminUserPatch {
@@ -772,22 +696,6 @@ export const adminApi = {
       body,
     ),
 
-  listPlans: () => apiGet<PlanDto[]>('/admin/plans'),
-  createPlan: (body: Partial<PlanDto>) =>
-    apiPost<PlanDto>('/admin/plans', body),
-  updatePlan: (id: string, body: Partial<PlanDto>) =>
-    apiPatch<PlanDto>(`/admin/plans/${id}`, body),
-  deletePlan: (id: string) => apiDelete<PlanDto>(`/admin/plans/${id}`),
-
-  subscriptions: (params?: Record<string, unknown>) =>
-    apiGet<PaginatedData<SubscriptionDto>>('/admin/subscriptions', params),
-  extendSubscription: (id: string, days: number) =>
-    apiPost<SubscriptionDto>(`/admin/subscriptions/${id}/extend`, { days }),
-  changeSubscriptionPlan: (id: string, planId: string) =>
-    apiPost<SubscriptionDto>(
-      `/admin/subscriptions/${id}/change-plan`,
-      { planId },
-    ),
 
   listSettings: () => apiGet<AppSettingDto[]>('/admin/settings'),
   /** Alias historico usado por la pantalla mobile (espejo del web). */

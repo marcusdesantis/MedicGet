@@ -8,16 +8,12 @@ import { CardContainer } from '@/components/ui/CardContainer';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApi } from '@/hooks/useApi';
 import { doctorsApi, type DoctorDto, type PaginatedData } from '@/lib/api';
-// Catálogo único de especialidades para toda la app — antes esta página
+// Catálogo único de especialidades para toda la app - antes esta página
 // usaba la lista corta de `register/data/specialties.ts`. Ahora consumimos
 // el mismo catálogo que SpecialtyCombobox usa en registro + setup, así
 // el paciente filtra contra TODAS las especialidades disponibles.
 import { DEFAULT_SPECIALTIES } from '@/lib/specialties';
 
-/**
- * Fields rendered in the search filter bar. Specialty is read from the URL
- * so deep links from the dashboard or a marketing page can pre-filter.
- */
 function initials(profile?: { firstName?: string; lastName?: string }): string {
   const a = profile?.firstName?.[0] ?? '';
   const b = profile?.lastName?.[0] ?? '';
@@ -30,15 +26,20 @@ function fullName(d: DoctorDto): string {
 }
 
 /**
- * Patient — search doctors with real filters backed by `doctorsApi.list()`.
- *
- * Filters:
- *   • search     → free text (matches name, specialty, bio on the backend)
- *   • specialty  → from the shared specialties list. Driven via ?specialty=
- *                  query string so dashboard cards can deep-link.
- *   • available  → boolean toggle, only shows doctors with `available = true`
- *
- * Each card links to `/patient/doctor/:id` for the full profile + booking.
+ * Tiny 3-column stat used inside each doctor card (rating / price / years).
+ * Lives inline because nothing else needs this exact shape.
+ */
+function Stat({ label, value, cls }: { label: string; value: string; cls?: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 py-2 px-1">
+      <p className={`text-sm font-semibold ${cls ?? 'text-slate-800 dark:text-white'}`}>{value}</p>
+      <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{label}</p>
+    </div>
+  );
+}
+
+/**
+ * Patient - search doctors with real filters backed by `doctorsApi.list()`.
  */
 export function SearchDoctorsPage() {
   const [params, setParams] = useSearchParams();
@@ -77,7 +78,6 @@ export function SearchDoctorsPage() {
     <div className="space-y-6">
       <PageHeader title="Buscar médicos" subtitle="Encuentra al especialista que necesitas" />
 
-      {/* Filter bar */}
       <CardContainer>
         <div className="flex flex-col sm:flex-row gap-3">
           <SearchInput
@@ -109,7 +109,6 @@ export function SearchDoctorsPage() {
         </div>
       </CardContainer>
 
-      {/* Results */}
       {state.status === 'loading' && (
         <div className="flex items-center justify-center py-20 text-slate-400">
           <Loader2 className="animate-spin" size={20} />
@@ -154,14 +153,30 @@ export function SearchDoctorsPage() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <Stat label="Rating" value={doc.rating > 0 ? `★ ${doc.rating.toFixed(1)}` : '—'} cls="text-amber-500" />
-                    <Stat label="Precio" value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(0)}` : 'Consultar'} cls="text-slate-800 dark:text-white" />
-                    <Stat label="Exp."   value={`${doc.experience}a`} cls="text-slate-800 dark:text-white" />
+                    <Stat
+                      label="Valoración"
+                      value={doc.rating > 0 ? `★ ${doc.rating.toFixed(1)}` : '—'}
+                      cls="text-amber-500"
+                    />
+                    <Stat
+                      label="Precio"
+                      value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(0)}` : 'Consultar'}
+                      cls="text-slate-800 dark:text-white"
+                    />
+                    <Stat
+                      label="Años de experiencia"
+                      value={`${doc.experience} año${doc.experience === 1 ? '' : 's'}`}
+                      cls="text-slate-800 dark:text-white"
+                    />
                   </div>
 
-                  <div className="flex items-center gap-3 mt-3 text-xs text-slate-400">
-                    <span className="flex items-center gap-1"><Clock size={12} /> {doc.consultDuration} min</span>
-                    <span className="flex items-center gap-1"><Star size={12} /> {doc.reviewCount} reseñas</span>
+                  <div className="flex items-center gap-3 mt-3 text-xs text-slate-400 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <Clock size={12} /> Duración de la consulta: {doc.consultDuration} min
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Star size={12} /> {doc.reviewCount} reseñas
+                    </span>
                   </div>
 
                   <Link
@@ -181,15 +196,6 @@ export function SearchDoctorsPage() {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, cls }: { label: string; value: string; cls: string }) {
-  return (
-    <div className="bg-slate-50 dark:bg-slate-800 rounded-xl py-2">
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className={`text-sm font-bold ${cls}`}>{value}</p>
     </div>
   );
 }

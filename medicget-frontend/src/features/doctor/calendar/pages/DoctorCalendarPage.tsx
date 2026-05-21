@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Save, CheckCircle2, AlertCircle, Loader2, Copy } from 'lucide-react';
+import { Save, CheckCircle2, AlertCircle, Loader2, Copy, Ban, Lock, Unlock } from 'lucide-react';
 import { PageHeader }  from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/context/AuthContext';
-import { doctorsApi, type AvailabilityDto } from '@/lib/api';
+import { doctorsApi, slotsApi, type AvailabilityDto, type SlotDto } from '@/lib/api';
 
 /**
  * Doctor — weekly availability editor.
@@ -64,6 +64,9 @@ export function DoctorCalendarPage() {
   const [saving,      setSaving]      = useState(false);
   const [saveError,   setSaveError]   = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // Bumped on every successful save. SlotBlockingSection lo escucha como
+  // dep del useApi → refetchea sus slots inmediatamente.
+  const [reloadKey,   setReloadKey]   = useState(0);
 
   // "Plantilla rápida" — el médico ingresa un rango y lo replica a todos
   // los días que tenga marcados. Default igual al DEFAULT_DAY para que se
@@ -156,19 +159,22 @@ export function DoctorCalendarPage() {
     setSaveSuccess(false);
 
     try {
-      // Upsert each ACTIVE day. We submit them sequentially to keep error
-      // messages tied to the failing day (a Promise.all would mask which one).
+      // Upsert TODOS los días (no solo los activos): para los desmarcados
+      // mandamos `isActive: false` así el backend los apaga. Si solo
+      // mandáramos los activos, desmarcar un día previamente guardado
+      // no tendría efecto en la DB.
       for (const { key } of DAYS) {
         const d = days[key];
-        if (!d.active) continue;
         await doctorsApi.upsertAvailability(doctorId, {
           dayOfWeek: key as AvailabilityDto['dayOfWeek'],
           startTime: d.startTime,
           endTime:   d.endTime,
-          isActive:  true,
+          isActive:  d.active,
         });
       }
       setSaveSuccess(true);
+      // Disparo refetch del SlotBlockingSection (slots dependen del horario).
+      setReloadKey((k) => k + 1);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })
@@ -325,6 +331,96 @@ export function DoctorCalendarPage() {
           )}
         </Button>
       </div>
+
+      <SlotBlockingSection doctorId={doctorId} reloadKey={reloadKey} />
     </div>
+  );
+}
+
+// ─── Slot-level blocking (puntual) ──────────────────────────────────────────
+// Lets the doctor block individual 30-min slots on a specific date when they
+// have an external commitment that doesn't justify changing weekly hours.
+function SlotBlockingSection({ doctorId, reloadKey }: { doctorId: string | null; reloadKey: number }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [date, setDate] = useState(today);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // `reloadKey` viene del padre y se incrementa cada vez que se guarda
+  // el horario semanal, así los slots de abajo reflejan la nueva
+  // configuración sin que el médico tenga que recargar la página.
+  const { state, refetch } = useApi<SlotDto[]>(
+    () => doctorId ? doctorsApi.getSlots(doctorId, date) : Promise.resolve([]),
+    [doctorId, date, reloadKey],
+  );
+
+  async function toggle(slot: SlotDto) {
+    setBusyId(slot.id);
+    try {
+      await slotsApi.toggleBlock(slot.id, {
+        blocked: !slot.isBlocked,
+        reason: !slot.isBlocked ? 'Compromiso externo' : null,
+      });
+      await refetch();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <SectionCard
+      title="Bloquear horarios puntuales"
+      subtitle="Si tenés un compromiso externo en un día específico, podés bloquear los slots de ese día sin tocar tus horarios semanales."
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <input
+          type="date"
+          min={today}
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+        />
+      </div>
+
+      {state.status === 'loading' && (
+        <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Cargando horarios...</div>
+      )}
+      {state.status === 'error' && (
+        <Alert variant="error">{state.error.message}</Alert>
+      )}
+      {state.status === 'ready' && state.data.length === 0 && (
+        <p className="text-sm text-slate-500">No hay horarios disponibles para esa fecha. Configurá tu disponibilidad semanal arriba.</p>
+      )}
+      {state.status === 'ready' && state.data.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {state.data.map((slot) => {
+            const reserved = slot.isBooked;
+            const blocked = slot.isBlocked;
+            const busy = busyId === slot.id;
+            const cls = reserved
+              ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 cursor-not-allowed'
+              : blocked
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-2 border-amber-300 dark:border-amber-700'
+                : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40';
+            return (
+              <button
+                key={slot.id}
+                type="button"
+                disabled={reserved || busy}
+                onClick={() => toggle(slot)}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition ${cls}`}
+                title={reserved ? 'Reservado por un paciente' : blocked ? 'Bloqueado — clic para desbloquear' : 'Libre — clic para bloquear'}
+              >
+                {reserved ? null : blocked ? <Lock size={12} /> : <Unlock size={12} />}
+                {slot.time}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-slate-400 mt-4 flex items-center gap-1.5">
+        <Ban size={12} /> Los slots bloqueados no son visibles para los pacientes al buscarte.
+      </p>
+    </SectionCard>
   );
 }

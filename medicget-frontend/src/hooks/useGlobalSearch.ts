@@ -14,13 +14,13 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Calendar, Stethoscope, User, Building2, ShieldCheck, BadgeCheck,
+  Calendar, Stethoscope, User, Building2, ShieldCheck,
 } from 'lucide-react';
 import {
   doctorsApi, appointmentsApi, adminApi, clinicsApi,
   type DoctorDto, type AppointmentDto, type UserDto, type PaginatedData,
 } from '@/lib/api';
-import { normalizeSearch, matchesSearch } from '@/lib/search';
+import { normalizeSearch } from '@/lib/search';
 
 export interface SearchResult {
   id:        string;
@@ -94,12 +94,8 @@ export function useGlobalSearch({ query, role, ownClinicId }: UseGlobalSearchArg
 /* ─────────────── Per-role searchers ─────────────── */
 
 async function searchAdmin(q: string): Promise<SearchResult[]> {
-  const [users, plans] = await Promise.all([
-    adminApi.users({ search: q, pageSize: 8 }).catch(() => null),
-    // Plans don't support search server-side, but we have very few; fetch all
-    // and filter client-side.
-    adminApi.listPlans().catch(() => null),
-  ]);
+  // Tras eliminar el sistema de planes, el admin solo busca usuarios.
+  const users = await adminApi.users({ search: q, pageSize: 8 }).catch(() => null);
 
   const out: SearchResult[] = [];
 
@@ -111,21 +107,6 @@ async function searchAdmin(q: string): Promise<SearchResult[]> {
       title:    `${u.profile?.firstName ?? ''} ${u.profile?.lastName ?? ''}`.trim() || u.email,
       subtitle: `${u.email} · ${u.status}`,
       href:     '/admin/users',
-    })));
-  }
-
-  if (plans) {
-    // Case + diacritic-insensitive: "premium" matchea "Premium", "PREMIUM".
-    const matching = plans.data.filter(
-      (p) => matchesSearch(q, p.name, p.code),
-    );
-    out.push(...matching.map<SearchResult>((p) => ({
-      id:       `plan-${p.id}`,
-      category: 'Planes',
-      icon:     BadgeCheck,
-      title:    `${p.name} · ${p.code}`,
-      subtitle: `${p.audience} · $${p.monthlyPrice.toFixed(2)}/mes`,
-      href:     '/admin/plans',
     })));
   }
 

@@ -24,7 +24,6 @@ export interface PatientDraft {
   email:        string;
   confirmEmail: string;
   password:     string;
-  marketing:    boolean;
 }
 
 export interface DoctorDraft {
@@ -80,7 +79,7 @@ type DraftMap = {
 };
 
 const EMPTY: DraftMap = {
-  patient: { firstName: "", lastName: "", email: "", confirmEmail: "", password: "", marketing: false },
+  patient: { firstName: "", lastName: "", email: "", confirmEmail: "", password: "" },
   doctor:  {
     name: "", lastname: "", specialty: "", location: "", phone: "",
     email: "", password: "", terms: false,

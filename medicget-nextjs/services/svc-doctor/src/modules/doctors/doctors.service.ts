@@ -59,47 +59,17 @@ function sanitize<T extends { user?: { email?: unknown; passwordHash?: unknown }
  * Hace una sola query a Subscription por todos los userIds, así no
  * disparamos N+1 al listar.
  */
+/**
+ * applyPlanGating - tras eliminar el sistema de planes, ya no hay
+ * gating por modalidades ni priority-search. Conservamos la funcion
+ * para no tocar todos los callers, pero ahora solo ordena por rating
+ * descendente y deja las modalidades del medico tal como vienen.
+ */
 async function applyPlanGating<T extends { id: string; userId: string; clinicId?: string | null; clinic?: { userId: string } | null; modalities: string[]; rating: number }>(
   doctors: T[],
 ): Promise<T[]> {
   if (doctors.length === 0) return doctors;
-  const { prisma } = await import('@medicget/shared/prisma');
-
-  // El plan efectivo vive en el user del médico (independiente) o en el
-  // user de la clínica (empleado). Recolectamos ambos sets de userIds.
-  const planUserIds = new Set<string>();
-  for (const d of doctors) {
-    planUserIds.add(d.clinic?.userId ?? d.userId);
-  }
-  const subs = await prisma.subscription.findMany({
-    where:   { userId: { in: [...planUserIds] }, status: 'ACTIVE' },
-    include: { plan: true },
-    orderBy: { expiresAt: 'desc' },
-  });
-  // Map userId → plan.modules. El primer match (más reciente) gana.
-  const moduleMap = new Map<string, string[]>();
-  for (const s of subs) if (!moduleMap.has(s.userId)) moduleMap.set(s.userId, s.plan.modules);
-
-  // Mapeamos cada doctor a sus modules efectivos (clinica → doctor).
-  const enriched = doctors.map((d) => {
-    const ownerUserId = d.clinic?.userId ?? d.userId;
-    const modules = moduleMap.get(ownerUserId) ?? ['ONLINE'];
-    return {
-      doctor:   { ...d, modalities: intersectModalities(d.modalities, modules) },
-      priority: modules.includes('PRIORITY_SEARCH'),
-    };
-  });
-
-  // Ordenamos: primero los que tienen PRIORITY_SEARCH (boost del plan
-  // Premium), después por rating descendente — preservando el orden
-  // original de cada grupo. Como `Array.prototype.sort` es estable a
-  // partir de ES2019, no necesitamos un sort manual.
-  enriched.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority ? -1 : 1;
-    return b.doctor.rating - a.doctor.rating;
-  });
-
-  return enriched.map((e) => e.doctor);
+  return [...doctors].sort((a, b) => b.rating - a.rating);
 }
 
 export const doctorsService = {
@@ -327,6 +297,46 @@ export const doctorsService = {
 
     const slots = await doctorsRepository.createSlots(doctorId, normalizedDate, times);
     return { ok: true, data: slots };
+  },
+
+  /**
+   * Toggle isBlocked en un slot. Solo el doctor dueño (o admin) puede
+   * llamar esto. Bloquea/desbloquea sin crear Appointment - simplemente
+   * saca el slot de la disponibilidad publica.
+   */
+  async toggleSlotBlock(
+    slotId:  string,
+    user:    AuthUser,
+    blocked: boolean,
+    reason?: string | null,
+  ): Promise<ServiceResult<unknown>> {
+    const slot = await doctorsRepository.findSlotById(slotId);
+    if (!slot) {
+      return { ok: false, code: 'NOT_FOUND', message: 'Slot no encontrado' };
+    }
+
+    // Auth: el doctor dueño del slot o un admin pueden modificarlo.
+    if (user.role !== 'ADMIN') {
+      if (user.role !== 'DOCTOR') {
+        return { ok: false, code: 'FORBIDDEN', message: 'Solo el medico puede bloquear sus horarios' };
+      }
+      const me = await doctorsRepository.findById(slot.doctorId);
+      if (!me || me.userId !== user.id) {
+        return { ok: false, code: 'FORBIDDEN', message: 'No podes modificar slots de otro medico' };
+      }
+    }
+
+    // Regla: no se puede bloquear un slot ya reservado.
+    if (blocked && slot.isBooked) {
+      return {
+        ok: false,
+        code: 'BAD_REQUEST',
+        message: 'No se puede bloquear un slot con cita reservada. Cancela primero la cita.',
+      };
+    }
+
+    const updated = await doctorsRepository.setSlotBlocked(slotId, blocked, reason);
+    return { ok: true, data: updated };
   },
 
   async getReviews(

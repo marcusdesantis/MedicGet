@@ -125,8 +125,8 @@ export default function AdminHome() {
             <Kpi
               icon={<BadgeCheck size={16} color="#d97706" />}
               tint="bg-amber-100 dark:bg-amber-900/30"
-              label="Suscripciones"
-              value={state.data.subscriptions.active}
+              label="Cobros pagados"
+              value={state.data.revenue.paidCount}
             />
           </View>
 
@@ -137,14 +137,9 @@ export default function AdminHome() {
               onPress={() => router.push('/(main)/(admin)/users')}
             />
             <Shortcut
-              title="Planes"
-              desc="Crear, editar y desactivar planes para médicos y clínicas."
-              onPress={() => router.push('/(main)/(admin)/plans')}
-            />
-            <Shortcut
-              title="Suscripciones"
-              desc="Auditar pagos y extender períodos manualmente."
-              onPress={() => router.push('/(main)/(admin)/subscriptions')}
+              title="Pagos"
+              desc="Historial de cobros de consulta procesados por la plataforma."
+              onPress={() => router.push('/(main)/(admin)/payments' as never)}
             />
             <Shortcut
               title="Configuración"

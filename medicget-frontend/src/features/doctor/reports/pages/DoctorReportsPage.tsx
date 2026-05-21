@@ -21,7 +21,7 @@ import { Alert }         from '@/components/ui/Alert';
 import { TrendLineChart } from '@/components/ui/TrendLineChart';
 import { useApi }        from '@/hooks/useApi';
 import {
-  appointmentsApi, subscriptionsApi,
+  appointmentsApi,
   type AppointmentDto, type PaginatedData,
 } from '@/lib/api';
 import { downloadCsv, dateStampedName } from '@/lib/csv';
@@ -47,16 +47,15 @@ function rangeStart(range: RangeKey): Date | null {
 export function DoctorReportsPage() {
   const [range, setRange] = useState<RangeKey>('90d');
 
-  const meSub = useApi(() => subscriptionsApi.me(), []);
   const appts = useApi<PaginatedData<AppointmentDto>>(
     () => appointmentsApi.list({ pageSize: 500 }),
     [],
   );
 
-  const plan = meSub.state.status === 'ready'
-    ? meSub.state.data.subscription?.plan ?? meSub.state.data.freePlan
-    : null;
-  const hasFeature = plan?.modules.includes('REPORTS') ?? false;
+  // Reportes ahora habilitados para todos los medicos (antes habia
+  // feature gate `REPORTS` ligado al plan; el sistema de planes fue
+  // eliminado).
+  const hasFeature = true;
 
   const data = useMemo(() => {
     if (appts.state.status !== 'ready') return null;
@@ -175,28 +174,8 @@ export function DoctorReportsPage() {
     <div className="space-y-6">
       <PageHeader title="Reportes" subtitle="Analítica de tu actividad clínica" />
 
-      {meSub.state.status === 'ready' && !hasFeature && (
-        <SectionCard>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center flex-shrink-0">
-              <Lock size={20} />
-            </div>
-            <div className="flex-1">
-              <p className="font-bold text-slate-800 dark:text-white">Reportes avanzados — Plan Premium</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Tu plan actual ({plan?.name}) no incluye reportes. Actualizá para ver
-                analítica de citas, ingresos y comportamiento de pacientes.
-              </p>
-            </div>
-            <Link
-              to="/doctor/plan"
-              className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition flex-shrink-0"
-            >
-              Mejorar plan
-            </Link>
-          </div>
-        </SectionCard>
-      )}
+      {/* Antes habia un upsell aqui cuando el plan no incluia REPORTS.
+          Eliminado tras quitar el sistema de planes. */}
 
       {appts.state.status === 'loading' && (
         <div className="flex items-center justify-center py-16 text-slate-400"><Loader2 className="animate-spin" size={20} /></div>

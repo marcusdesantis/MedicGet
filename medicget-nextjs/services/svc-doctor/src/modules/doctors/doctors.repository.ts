@@ -164,6 +164,35 @@ export const doctorsRepository = {
   },
 
   /**
+   * Marca/desmarca un slot como bloqueado por el medico. Bloquear un slot
+   * lo saca de la disponibilidad para pacientes (igual que isBooked) pero
+   * NO crea Appointment. Util cuando el medico tiene un compromiso fuera
+   * de MedicGet en ese horario.
+   *
+   * Reglas:
+   *  - No se puede bloquear un slot que ya tiene appointment (isBooked).
+   *  - Se puede desbloquear (isBlocked false) en cualquier momento.
+   *  - El reason es opcional - solo lo ve el doctor.
+   */
+  async setSlotBlocked(
+    slotId:  string,
+    blocked: boolean,
+    reason?: string | null,
+  ) {
+    return prisma.appointmentSlot.update({
+      where: { id: slotId },
+      data:  {
+        isBlocked:   blocked,
+        blockReason: blocked ? (reason ?? null) : null,
+      },
+    });
+  },
+
+  async findSlotById(slotId: string) {
+    return prisma.appointmentSlot.findUnique({ where: { id: slotId } });
+  },
+
+  /**
    * Borra todos los slots NO reservados desde hoy hacia adelante. Se llama
    * cuando el médico cambia su disponibilidad para que `getSlots` los
    * regenere a partir del nuevo horario en la próxima consulta del paciente.

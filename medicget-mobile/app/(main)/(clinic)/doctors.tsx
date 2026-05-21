@@ -355,11 +355,11 @@ function AddDoctorModal({
   const [tab, setTab] = useState<'existing' | 'create'>('existing');
   const router = useRouter();
 
-  // Cuando una de las dos pestanas detecta PLAN_LIMIT_REACHED, cerramos
-  // el modal y navegamos a /clinic/plan para que el admin suba de plan.
+  // Plan eliminado - el handler queda como no-op por compatibilidad
+  // con los hijos. Si el backend devuelve PLAN_LIMIT_REACHED solo
+  // cerramos el modal.
   const handleUpgrade = () => {
     onClose();
-    router.push('/(main)/(clinic)/plan' as never);
   };
 
   return (

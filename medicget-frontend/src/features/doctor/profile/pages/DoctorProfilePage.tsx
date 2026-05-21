@@ -15,7 +15,7 @@ import { LocationPicker, type LocationValue } from '@/components/ui/LocationPick
 import { PhoneField } from '@/components/ui/PhoneField';
 import { useAuth }      from '@/context/AuthContext';
 import { useApi }       from '@/hooks/useApi';
-import { doctorsApi, usersApi, subscriptionsApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
+import { doctorsApi, usersApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
 
 /**
  * Doctor profile — edits BOTH the User.Profile (firstName, lastName, phone)
@@ -43,19 +43,14 @@ export function DoctorProfilePage() {
     [doctorId],
   );
 
-  // Plan actual — se usa para gatear las modalidades que el médico
-  // puede activar. Si no hay suscripción, asumimos FREE (sólo ONLINE).
-  const subQ = useApi(() => subscriptionsApi.me(), []);
-  const planModules = useMemo<string[]>(() => {
-    if (subQ.state.status !== 'ready') return ['ONLINE'];
-    return subQ.state.data.subscription?.plan?.modules
-        ?? subQ.state.data.freePlan?.modules
-        ?? ['ONLINE'];
-  }, [subQ.state]);
-  const planName = subQ.state.status === 'ready'
-    ? (subQ.state.data.subscription?.plan?.name ?? subQ.state.data.freePlan?.name ?? 'Free')
-    : 'Free';
-  const isFreePlan = !planModules.includes('PRESENCIAL') && !planModules.includes('CHAT');
+  // Modalidades — tras eliminar el sistema de planes, todos los
+  // medicos pueden ofrecer cualquier modalidad sin restricciones.
+  const planModules = useMemo<string[]>(
+    () => ['ONLINE', 'PRESENCIAL', 'CHAT'],
+    [],
+  );
+  const planName    = 'Cuenta gratis';
+  const isFreePlan  = false;
 
   const [form, setForm] = useState({
     // Profile fields
@@ -393,7 +388,7 @@ export function DoctorProfilePage() {
               <Alert variant="info">
                 <span className="text-sm">
                   Estás en <strong>{planName}</strong>. Las modalidades <strong>Presencial</strong> y <strong>Chat en vivo</strong> requieren plan Pro o superior.{' '}
-                  <Link to="/doctor/plan" className="font-semibold underline">Mejorá tu plan →</Link>
+                  <Link to="/doctor" className="font-semibold underline">Ir al panel →</Link>
                 </span>
               </Alert>
             )}
@@ -545,7 +540,7 @@ function ModalityToggle({
   if (locked) {
     return (
       <Link
-        to="/doctor/plan"
+        to="/doctor"
         className="block text-left p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition group relative"
       >
         <div className="flex items-center justify-between mb-2">

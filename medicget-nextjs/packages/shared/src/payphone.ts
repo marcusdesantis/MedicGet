@@ -270,13 +270,20 @@ export const payphone = {
 /* ───────────────────────── Money / fee helpers ─────────────────────────── */
 
 /**
- * Resolve the platform retention percentage. Defaults to 10% if the
- * setting/env is missing or unparseable. Clamped 0..100 to prevent
- * obvious mis-configuration from charging more than 100%.
+ * Resolve the platform retention percentage.
+ *
+ * MODELO ACTUAL: la plataforma NO descuenta comisión automáticamente al
+ * procesar el cobro. El médico recibe el 100% del monto en la
+ * contabilidad y el split con la plataforma se acuerda offline. Por eso
+ * el default cambió de 10% a 0%.
+ *
+ * El admin puede subirlo desde /admin/settings (campo oculto en UI por
+ * ahora, pero conservado por compatibilidad) si en el futuro decide
+ * volver a un modelo de fee automático.
  */
 export async function getPlatformFeePct(): Promise<number> {
-  const n = await getSettingNumber('PLATFORM_FEE_PCT', 10);
-  if (n < 0) return 10;
+  const n = await getSettingNumber('PLATFORM_FEE_PCT', 0);
+  if (n < 0) return 0;
   return Math.min(100, n);
 }
 

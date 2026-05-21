@@ -1,20 +1,14 @@
 /**
  * Layout del superadmin - tabs inferiores + ruteo protegido.
  *
- * Seis tabs principales: Inicio, Usuarios, Planes, Suscripciones,
- * Pagos, Configuracion. Notificaciones queda como hidden (se navega
- * desde el header).
+ * Tras eliminar el sistema de planes/suscripciones, los tabs son:
+ * Inicio, Usuarios, Pagos, Configuracion. Las pantallas viejas de
+ * plans/subscriptions/notifications quedan como rutas hidden con
+ * stub que redirige.
  */
 
 import { Tabs } from 'expo-router';
-import {
-  CreditCard,
-  Home,
-  Receipt,
-  Settings,
-  Tag,
-  Users,
-} from 'lucide-react-native';
+import { Home, Receipt, Settings, Users } from 'lucide-react-native';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useTabBarStyle } from '@/components/layout/useTabBarStyle';
 
@@ -42,22 +36,6 @@ export default function AdminLayout() {
           }}
         />
         <Tabs.Screen
-          name="plans"
-          options={{
-            title: 'Planes',
-            tabBarIcon: ({ color, size }) => <Tag color={color} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="subscriptions"
-          options={{
-            title: 'Subs',
-            tabBarIcon: ({ color, size }) => (
-              <CreditCard color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
           name="payments"
           options={{
             title: 'Pagos',
@@ -75,6 +53,8 @@ export default function AdminLayout() {
             ),
           }}
         />
+        <Tabs.Screen name="plans"         options={{ href: null }} />
+        <Tabs.Screen name="subscriptions" options={{ href: null }} />
         <Tabs.Screen name="notifications" options={{ href: null }} />
       </Tabs>
     </ProtectedRoute>

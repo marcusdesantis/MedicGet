@@ -218,12 +218,6 @@ export const RegisterPatientPage = () => {
                         )}
                     </FormField>
 
-                    <Checkbox
-                        checked={draft.marketing}
-                        onChange={(value: boolean) => setDraft({ marketing: value })}
-                    >
-                        Quiero recibir consejos de salud y ofertas exclusivas.
-                    </Checkbox>
                 </div>
 
                 <Button

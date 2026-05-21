@@ -2,7 +2,6 @@ import { Users, Calendar, DollarSign, TrendingUp, UserCheck, ArrowRight } from '
 import { Link } from 'react-router-dom';
 import { StatCard }    from '@/components/ui/StatCard';
 import { PageHeader }  from '@/components/ui/PageHeader';
-import { PlanBadge }   from '@/components/ui/PlanBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar }      from '@/components/ui/Avatar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -79,7 +78,6 @@ export function ClinicDashboardPage() {
             </Link>
           }
         />
-        <PlanBadge managePath="/clinic/plan" />
       </div>
 
       {/* KPIs */}

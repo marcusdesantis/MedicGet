@@ -32,12 +32,6 @@ export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, pa
           clinic:  true,
         },
       },
-      subscription: {
-        include: {
-          plan: true,
-          user: { include: { profile: true } },
-        },
-      },
     },
   });
   if (!payment) return apiError('NOT_FOUND', 'Pago no encontrado.');
@@ -60,13 +54,8 @@ export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, pa
       } else {
         return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
       }
-    } else if (payment.subscription) {
-      // Recibo de pago de SUSCRIPCIÓN: solo el dueño del plan puede verlo.
-      if (payment.subscription.userId !== user.id) {
-        return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
-      }
     } else {
-      // Pago huérfano (no debería existir). Bloqueamos.
+      // Pago huérfano (no debería existir tras quitar suscripciones). Bloqueamos.
       return apiError('FORBIDDEN', 'Sin permiso para ver este recibo.');
     }
   }
@@ -185,83 +174,13 @@ export const GET = withAuth<{ id: string }>(async (_req: NextRequest, { user, pa
   </div>
 </body>
 </html>`;
-  } else if (payment.subscription) {
-    // ─── Recibo de suscripción ───────────────────────────────────────
-    const s         = payment.subscription;
-    const subscriberName = `${s.user.profile?.firstName ?? ''} ${s.user.profile?.lastName ?? ''}`.trim();
-    const audience  = s.plan.audience === 'CLINIC' ? 'Clínica' : 'Especialista';
-    const startsAt  = new Date(s.startsAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
-    const expiresAt = new Date(s.expiresAt).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-
-    html = `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>Recibo de suscripción #${payment.id.slice(-8).toUpperCase()} · MedicGet</title>
-  <style>${sharedStyles}</style>
-</head>
-<body>
-  <div class="receipt">
-    <div class="header">
-      <div class="brand">
-        <h1>MedicGet</h1>
-        <p>Comprobante de pago de suscripción</p>
-      </div>
-      <div class="meta">
-        Recibo Nº <span class="num">${payment.id.slice(-8).toUpperCase()}</span><br/>
-        Emitido el ${paidAtStr}<br/>
-        <span class="status ${payment.status.toLowerCase()}">${statusCopy}</span>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button onclick="window.print()">Imprimir / Guardar como PDF</button>
-    </div>
-
-    <h2>Detalle de la suscripción</h2>
-    <table>
-      <tr><td class="label">Titular</td><td class="value">${subscriberName || '—'}</td></tr>
-      <tr><td class="label">Email</td><td class="value" style="text-transform:none">${s.user.email}</td></tr>
-      <tr><td class="label">Tipo de cuenta</td><td class="value">${audience}</td></tr>
-      <tr><td class="label">Plan</td><td class="value">${s.plan.name} (${s.plan.code})</td></tr>
-      <tr><td class="label">Inicio del período</td><td class="value">${startsAt}</td></tr>
-      <tr><td class="label">Próxima renovación</td><td class="value">${expiresAt}</td></tr>
-    </table>
-
-    <div class="total-box">
-      <div class="label">Total cobrado</div>
-      <div class="amount">$${payment.amount.toFixed(2)} USD</div>
-      <div class="split">
-        <div><span>Período</span><strong>30 días</strong></div>
-        <div><span>Plan</span><strong>${s.plan.name}</strong></div>
-      </div>
-    </div>
-
-    <h2>Datos del pago</h2>
-    <table>
-      <tr><td class="label">Método</td><td class="value">${payment.method}</td></tr>
-      ${payment.transactionId ? `<tr><td class="label">ID de transacción</td><td class="value" style="text-transform:none;font-family:monospace;font-size:12px">${payment.transactionId}</td></tr>` : ''}
-      ${payment.notes ? `<tr><td class="label">Notas</td><td class="value" style="text-transform:none">${payment.notes}</td></tr>` : ''}
-      ${payment.paidAt ? `<tr><td class="label">Pagado el</td><td class="value">${paidAtStr}</td></tr>` : ''}
-      ${payment.refundedAt ? `<tr><td class="label">Reembolsado el</td><td class="value">${new Date(payment.refundedAt).toLocaleDateString('es-ES')}</td></tr>` : ''}
-    </table>
-
-    <div class="footer">
-      Procesado por PayPhone. Este recibo es un comprobante automático sin valor fiscal.<br/>
-      MedicGet · ${new Date().getFullYear()}
-    </div>
-  </div>
-</body>
-</html>`;
   } else {
-    // Pago huérfano — no debería existir. Devolvemos 404 lógico.
-    return apiError('NOT_FOUND', 'Pago sin cita ni suscripción asociada.');
+    return apiError('NOT_FOUND', 'Pago sin cita asociada.');
   }
 
   return new NextResponse(html, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      // Inline para que abra en la pestaña, no force download.
       'Content-Disposition': `inline; filename="recibo-${payment.id.slice(-8)}.html"`,
     },
   });

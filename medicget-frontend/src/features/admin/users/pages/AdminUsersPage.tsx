@@ -151,7 +151,6 @@ export function AdminUsersPage() {
                   <th className="text-left px-5 py-3">Usuario</th>
                   <th className="text-left px-5 py-3">Email</th>
                   <th className="text-left px-5 py-3">Rol</th>
-                  <th className="text-left px-5 py-3">Plan</th>
                   <th className="text-left px-5 py-3">Estado</th>
                   <th className="text-right px-5 py-3">Acciones</th>
                 </tr>
@@ -159,7 +158,6 @@ export function AdminUsersPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {state.data.data.map((u) => {
                   const initials = ((u.profile?.firstName?.[0] ?? '') + (u.profile?.lastName?.[0] ?? '')).toUpperCase() || '··';
-                  const sub = (u as unknown as { subscriptions?: { plan: { name: string } }[] }).subscriptions?.[0];
                   return (
                     <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                       <td className="px-5 py-3">
@@ -176,7 +174,6 @@ export function AdminUsersPage() {
                           {ROLE_LABEL[u.role] ?? u.role}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-slate-500">{sub?.plan.name ?? '—'}</td>
                       <td className="px-5 py-3">
                         <StatusBadge
                           status={u.status.toLowerCase()}

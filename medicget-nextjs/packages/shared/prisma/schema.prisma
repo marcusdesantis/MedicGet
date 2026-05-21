@@ -21,27 +21,9 @@ enum Role {
   ADMIN
 }
 
-enum PlanAudience {
-  DOCTOR
-  CLINIC
-}
-
-enum PlanCode {
-  FREE
-  PRO
-  PREMIUM
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  EXPIRED
-  CANCELLED
-  PENDING_PAYMENT
-  /// El plan personal de un médico cuando se une a una clínica. No se
-  /// renueva ni cobra. Se reactiva si el médico se desvincula y el plan
-  /// no había expirado.
-  PAUSED
-}
+// Los enums PlanAudience / PlanCode / SubscriptionStatus se eliminaron
+// junto con los modelos Plan / Subscription tras pasar a "registro 100%
+// gratis + comision por consulta acordada offline".
 
 enum UserStatus {
   ACTIVE
@@ -128,7 +110,6 @@ model User {
   doctor        Doctor?
   patient       Patient?
   notifications Notification[]
-  subscriptions Subscription[]
   pushSubscriptions PushSubscription[]
   passwordResetTokens PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
@@ -263,6 +244,15 @@ model AppointmentSlot {
   date          DateTime @db.Date
   time          String
   isBooked      Boolean  @default(false)
+  /// Marca el slot como bloqueado por el medico (compromiso fuera de
+  /// MedicGet, dia personal, etc). NO se reserva ni aparece como libre
+  /// en la busqueda del paciente. Es independiente de isBooked:
+  ///   - isBooked = true   -> ya hay un appointment asociado
+  ///   - isBlocked = true  -> el medico lo cerro manualmente
+  /// El motivo (opcional) se guarda en `blockReason` para mostrar al
+  /// medico cuando vuelva a su agenda ("Cita Hospital X").
+  isBlocked     Boolean  @default(false)
+  blockReason   String?
   appointmentId String?  @unique
   createdAt     DateTime @default(now())
 
@@ -273,6 +263,7 @@ model AppointmentSlot {
   @@index([doctorId])
   @@index([date])
   @@index([isBooked])
+  @@index([isBlocked])
 }
 
 // ─── Patient ──────────────────────────────────────────────────────────────────
@@ -388,38 +379,20 @@ model Review {
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
 model Payment {
-  id            String        @id @default(cuid())
-  // ─── Tipo de pago (polimórfico) ────────────────────────────────────
-  // Una fila de Payment representa O un pago de cita (paciente → médico/clínica)
-  // O un pago de suscripción (médico/clínica → MedicGet). Exactamente
-  // UNO de estos dos campos debe estar seteado:
-  //   - appointmentId  → pago de cita
-  //   - subscriptionId → pago de suscripción de plan
-  // (Antes Payment.appointmentId era requerido y único; ahora ambos son
-  // opcionales para soportar ambos casos sin duplicar tablas.)
-  appointmentId  String? @unique
-  subscriptionId String? @unique
-  amount        Float
-  // ─── Platform fee split ────────────────────────────────────────────
-  // `platformFee`  → what MedicGet retains. Calculated on confirm using
-  //                   PLATFORM_FEE_PCT env var (default 10%).
-  // `doctorAmount` → what gets credited to the doctor/clinic.
-  //                   Always equals `amount - platformFee`.
-  // En pagos de suscripción, doctorAmount = 0 (todo va a MedicGet).
-  platformFee   Float         @default(0)
-  doctorAmount  Float         @default(0)
-  method        PaymentMethod @default(PENDING)
-  status        PaymentStatus @default(PENDING)
-  // PayPhone integration fields
-  // `payphonePaymentId`   → numeric id returned by PayPhone /Sale (used to
-  //                         confirm and to issue refunds)
-  // `paymentToken`        → opaque token from PayPhone /Sale, included in
-  //                         the redirect URL the patient opens
-  // `paymentUrl`          → the URL we redirect the patient to. Cached so
-  //                         they can reopen the same checkout if they
-  //                         close the tab before paying.
-  // `expiresAt`           → after this timestamp, the unpaid appointment
-  //                         is auto-cancelled and the slot freed.
+  id             String        @id @default(cuid())
+  // Pago de consulta - la unica forma de Payment ahora que el sistema
+  // de planes/suscripciones fue eliminado. La columna `subscriptionId`
+  // se quito junto con la tabla Subscription.
+  appointmentId  String?       @unique
+  amount         Float
+  // platformFee / doctorAmount se conservan por compatibilidad con
+  // codigo existente. En el modelo actual platformFee siempre vale 0
+  // (la comision se acuerda offline) y doctorAmount = amount.
+  platformFee    Float         @default(0)
+  doctorAmount   Float         @default(0)
+  method         PaymentMethod @default(PENDING)
+  status         PaymentStatus @default(PENDING)
+  // PayPhone integration fields (idem que antes).
   payphonePaymentId String?
   paymentToken      String?
   paymentUrl        String?
@@ -433,12 +406,10 @@ model Payment {
   updatedAt     DateTime      @updatedAt
 
   appointment  Appointment?  @relation(fields: [appointmentId],  references: [id])
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
 
   @@index([status])
   @@index([method])
   @@index([expiresAt])
-  @@index([subscriptionId])
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -594,67 +565,10 @@ model MedicalRecord {
 // `limits` is a JSON bag (`{ maxAppointmentsPerMonth: 5, maxDoctors: 1 }`) —
 // kept as JSON so the superadmin can add new dimensions without migrating.
 
-model Plan {
-  id               String        @id @default(cuid())
-  code             PlanCode      // FREE / PRO / PREMIUM
-  audience         PlanAudience  // DOCTOR / CLINIC
-  name             String
-  description      String?
-  monthlyPrice     Float         @default(0)
-  modules          String[]      @default([])
-  limits           Json?
-  /// Cupo máximo de médicos cubiertos por el plan. Sólo se interpreta
-  /// para planes de audiencia CLINIC. NULL = sin límite (planes
-  /// enterprise futuros). Los médicos por encima del cupo se "soft-pause"
-  /// (no aparecen en directorio) hasta que la clínica suba de plan o
-  /// desvincule médicos manualmente.
-  maxDoctors       Int?
-  isActive         Boolean       @default(true)
-  /// Display order in pricing UI. Lower = first.
-  sortOrder        Int           @default(0)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  subscriptions Subscription[]
-
-  @@unique([audience, code])
-  @@index([isActive])
-}
-
-model Subscription {
-  id            String              @id @default(cuid())
-  userId        String              // The DOCTOR or CLINIC user that owns it
-  planId        String
-  status        SubscriptionStatus  @default(ACTIVE)
-  /// When the current paid period started.
-  startsAt      DateTime            @default(now())
-  /// When the current paid period ends. After this we degrade to FREE
-  /// unless renewed.
-  expiresAt     DateTime
-  /// Last PayPhone payment that funded this subscription. Null on FREE.
-  lastPaymentId String?
-  /// Whether the user has expressed intent to auto-renew. We don't
-  /// auto-charge yet (PayPhone tokenisation is a later piece) but we
-  /// surface this in the UI as a reminder/email trigger.
-  autoRenew     Boolean             @default(true)
-  cancelledAt   DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan Plan @relation(fields: [planId], references: [id])
-
-  // Relación 1:1 con Payment para suscripciones cobradas. Cada
-  // Subscription confirmada tiene su Payment correspondiente (creado
-  // en /api/v1/subscriptions/confirm cuando PayPhone aprueba). Las
-  // suscripciones FREE o PENDING_PAYMENT no tienen Payment asociado.
-  payment Payment?
-
-  @@index([userId])
-  @@index([planId])
-  @@index([status])
-  @@index([expiresAt])
-}
+// Los modelos Plan y Subscription se eliminaron tras pasar al modelo
+// "registro 100% gratis + comision por consulta acordada offline".
+// El % informativo vive ahora en AppSettings (clave COMMISSION_PCT) y
+// se publica via /api/v1/public/commission para la landing/terminos.
 
 // ─── App Settings (runtime-editable config) ───────────────────────────────────
 //

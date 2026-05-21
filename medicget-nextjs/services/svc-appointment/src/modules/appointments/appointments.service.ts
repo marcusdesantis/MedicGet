@@ -189,15 +189,37 @@ export const appointmentsService = {
       } as { ok: false; code: string; message: string };
     }
 
-    // Find slot if available
+    // Find slot if available. NO podemos usar slots ya reservados
+    // (isBooked) ni bloqueados manualmente por el medico (isBlocked).
     const slot = await prisma.appointmentSlot.findFirst({
       where: {
-        doctorId: body.doctorId,
-        date: new Date(body.date),
-        time: body.time,
-        isBooked: false,
+        doctorId:  body.doctorId,
+        date:      new Date(body.date),
+        time:      body.time,
+        isBooked:  false,
+        isBlocked: false,
       },
     });
+
+    // Si el slot solicitado existe pero esta bloqueado, devolvemos un
+    // error claro en lugar de "slot no encontrado".
+    if (!slot) {
+      const conflict = await prisma.appointmentSlot.findFirst({
+        where: {
+          doctorId: body.doctorId,
+          date:     new Date(body.date),
+          time:     body.time,
+        },
+        select: { isBlocked: true, isBooked: true },
+      });
+      if (conflict?.isBlocked) {
+        return {
+          ok: false,
+          code: 'CONFLICT',
+          message: 'Ese horario ya no esta disponible. Por favor elegi otro.',
+        };
+      }
+    }
 
     const appointment = await appointmentsRepository.createWithSideEffects(
       {

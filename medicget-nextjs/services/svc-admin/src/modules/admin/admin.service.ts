@@ -70,7 +70,7 @@ export const adminService = {
   async stats() {
     const [
       totalUsers, totalPatients, totalDoctors, totalClinics,
-      totalAppointments, paidPayments, activeSubs,
+      totalAppointments, paidPayments,
     ] = await Promise.all([
       prisma.user.count({ where: { status: 'ACTIVE' } }),
       prisma.user.count({ where: { role: 'PATIENT', status: 'ACTIVE' } }),
@@ -82,7 +82,6 @@ export const adminService = {
         _sum:   { amount: true, platformFee: true },
         _count: true,
       }),
-      prisma.subscription.count({ where: { status: 'ACTIVE' } }),
     ]);
 
     return {
@@ -92,13 +91,12 @@ export const adminService = {
         doctors:  totalDoctors,
         clinics:  totalClinics,
       },
-      appointments:    { total: totalAppointments },
+      appointments: { total: totalAppointments },
       revenue: {
         gross:        paidPayments._sum.amount      ?? 0,
         platformFees: paidPayments._sum.platformFee ?? 0,
         paidCount:    paidPayments._count           ?? 0,
       },
-      subscriptions: { active: activeSubs },
     };
   },
 
@@ -123,12 +121,6 @@ export const adminService = {
           clinic:  true,
           doctor:  true,
           patient: true,
-          subscriptions: {
-            where: { status: 'ACTIVE' },
-            include: { plan: true },
-            orderBy: { expiresAt: 'desc' },
-            take: 1,
-          },
         },
         orderBy: { createdAt: 'desc' },
         skip:    (params.page - 1) * params.pageSize,
@@ -272,99 +264,13 @@ export const adminService = {
     });
   },
 
-  /* ─────────────── Plans CRUD ─────────────── */
-
-  async listPlans() {
-    return prisma.plan.findMany({ orderBy: [{ audience: 'asc' }, { sortOrder: 'asc' }] });
-  },
-
-  async createPlan(input: PlanInput) {
-    // Normalise optional fields so Prisma.PlanCreateInput is happy regardless
-    // of how the Zod schema inferred the parsed object. Prisma's JSON columns
-    // require `Prisma.InputJsonValue`; we cast `limits` because Zod gives us
-    // a generic Record.
-    return prisma.plan.create({
-      data: {
-        code:         input.code,
-        audience:     input.audience,
-        name:         input.name,
-        description:  input.description ?? null,
-        monthlyPrice: input.monthlyPrice,
-        modules:      input.modules ?? [],
-        limits:       (input.limits ?? undefined) as Prisma.InputJsonValue | undefined,
-        isActive:     input.isActive ?? true,
-        sortOrder:    input.sortOrder ?? 0,
-      },
-    });
-  },
-
-  async updatePlan(id: string, input: Partial<PlanInput>) {
-    // Same JSON dance as createPlan — strip the field if undefined so we
-    // don't blow away `limits` on a partial update that only touches
-    // other columns.
-    const data: Prisma.PlanUpdateInput = {
-      ...(input.name         !== undefined && { name:         input.name }),
-      ...(input.description  !== undefined && { description:  input.description }),
-      ...(input.monthlyPrice !== undefined && { monthlyPrice: input.monthlyPrice }),
-      ...(input.modules      !== undefined && { modules:      input.modules }),
-      ...(input.isActive     !== undefined && { isActive:     input.isActive }),
-      ...(input.sortOrder    !== undefined && { sortOrder:    input.sortOrder }),
-      ...(input.limits       !== undefined && {
-        limits: input.limits === null
-          ? Prisma.JsonNull
-          : (input.limits as Prisma.InputJsonValue),
-      }),
-    };
-    return prisma.plan.update({ where: { id }, data });
-  },
-
-  async deletePlan(id: string) {
-    // Soft-delete by setting isActive=false to preserve subscription FK integrity.
-    return prisma.plan.update({ where: { id }, data: { isActive: false } });
-  },
-
-  /* ─────────────── Subscriptions ─────────────── */
-
-  async listSubscriptions(params: {
-    page:     number;
-    pageSize: number;
-    status?:  string;
-    /** Filtra por audiencia del plan (DOCTOR | CLINIC). El admin lo usa
-     *  para tener tabs separadas "Especialistas" vs "Clínicas". */
-    audience?: 'DOCTOR' | 'CLINIC';
-  }) {
-    const where: Record<string, unknown> = {};
-    if (params.status)   where.status = params.status;
-    if (params.audience) where.plan   = { audience: params.audience };
-    const [data, total] = await Promise.all([
-      prisma.subscription.findMany({
-        where,
-        include: {
-          plan: true,
-          user: { include: { profile: true, clinic: true, doctor: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip:    (params.page - 1) * params.pageSize,
-        take:    params.pageSize,
-      }),
-      prisma.subscription.count({ where }),
-    ]);
-    return { data, total };
-  },
-
-  /**
-   * Manually extend a subscription by N days. Used by the superadmin to
-   * gift / fix issues without going through PayPhone.
-   */
-  async extendSubscription(id: string, days: number) {
-    const sub = await prisma.subscription.findUnique({ where: { id } });
-    if (!sub) throw new Error('Subscription not found');
-    const newExpires = new Date(Math.max(sub.expiresAt.getTime(), Date.now()) + days * 24 * 60 * 60 * 1000);
-    return prisma.subscription.update({
-      where: { id },
-      data:  { expiresAt: newExpires, status: 'ACTIVE', cancelledAt: null },
-    });
-  },
+  /* ─── Plans / Subscriptions CRUD removidos ───────────────────────────
+   * El sistema de planes / suscripciones fue eliminado. Los endpoints
+   * publicos correspondientes responden 404 (ver
+   * services/svc-admin/src/app/api/v1/{plans,subscriptions,admin/plans,
+   * admin/subscriptions}/route.ts) y las funciones del servicio
+   * tambien se borraron. Si necesitas re-introducir gating por plan,
+   * empezar por el bloque que estaba aca antes del refactor. */
 
   /* ─────────────── App Settings ─────────────── */
 
@@ -390,20 +296,4 @@ export const adminService = {
   },
 };
 
-export interface PlanInput {
-  code:         'FREE' | 'PRO' | 'PREMIUM';
-  audience:     'DOCTOR' | 'CLINIC';
-  name:         string;
-  /** Nullable so PATCH bodies can clear the description (Zod accepts null). */
-  description?: string | null;
-  monthlyPrice: number;
-  /**
-   * Zod's `.default([])` infers `string[] | undefined` on the parsed object,
-   * not `string[]`, so we accept undefined here and coerce to `[]` inside
-   * `createPlan`/`updatePlan`.
-   */
-  modules?:     string[];
-  limits?:      Record<string, unknown> | null;
-  isActive?:    boolean;
-  sortOrder?:   number;
-}
+// PlanInput interface removida con el sistema de planes.

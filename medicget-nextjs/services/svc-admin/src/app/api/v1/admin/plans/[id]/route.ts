@@ -1,30 +1,12 @@
-import { NextRequest } from 'next/server';
-import { withRole } from '@medicget/shared/auth';
-import { apiOk } from '@medicget/shared/response';
-import { parseBody } from '@medicget/shared/validate';
-import { z } from 'zod';
-import { adminService } from '@/modules/admin/admin.service';
-
+/**
+ * Endpoint removido tras eliminar el sistema de planes/suscripciones.
+ * Cualquier llamada devuelve 404.
+ */
+import { apiError } from '@medicget/shared/response';
 export const dynamic = 'force-dynamic';
-
-const updateSchema = z.object({
-  name:         z.string().min(1).optional(),
-  description:  z.string().nullable().optional(),
-  monthlyPrice: z.number().nonnegative().optional(),
-  modules:      z.array(z.string()).optional(),
-  limits:       z.record(z.unknown()).nullable().optional(),
-  /** Cupo de médicos — sólo se interpreta para planes CLINIC. null = sin límite. */
-  maxDoctors:   z.number().int().min(0).nullable().optional(),
-  isActive:     z.boolean().optional(),
-  sortOrder:    z.number().int().optional(),
-});
-
-export const PATCH = withRole<{ id: string }>(['ADMIN'], async (req: NextRequest, { params }) => {
-  const parsed = await parseBody(req, updateSchema);
-  if ('error' in parsed) return parsed.error;
-  return apiOk(await adminService.updatePlan(params.id, parsed.data));
-});
-
-export const DELETE = withRole<{ id: string }>(['ADMIN'], async (_req: NextRequest, { params }) =>
-  apiOk(await adminService.deletePlan(params.id), 'Plan desactivado'),
-);
+const removed = () =>
+  apiError('NOT_FOUND', 'Funcionalidad removida.');
+export const GET    = removed;
+export const POST   = removed;
+export const PATCH  = removed;
+export const DELETE = removed;

@@ -38,8 +38,6 @@ import { DoctorReportsPage }  from '@/features/doctor/reports/pages/DoctorReport
 // Admin pages
 import { AdminDashboardPage }     from '@/features/admin/dashboard/pages/AdminDashboardPage';
 import { AdminUsersPage }         from '@/features/admin/users/pages/AdminUsersPage';
-import { AdminPlansPage }         from '@/features/admin/plans/pages/AdminPlansPage';
-import { AdminSubscriptionsPage } from '@/features/admin/subscriptions/pages/AdminSubscriptionsPage';
 import { AdminPaymentsPage }      from '@/features/admin/payments/pages/AdminPaymentsPage';
 import { AdminSettingsPage }      from '@/features/admin/settings/pages/AdminSettingsPage';
 
@@ -52,14 +50,11 @@ import {
 } from '@/features/shared/appointment/pages/AppointmentDetailPage';
 import { PaymentCheckoutPage } from '@/features/shared/payment/pages/PaymentCheckoutPage';
 import { PaymentReturnPage }   from '@/features/shared/payment/pages/PaymentReturnPage';
-import { SubscribePage, SubscribeReturnPage } from '@/features/shared/subscription/pages/SubscribePage';
+import { TermsPage } from '@/features/legal/terms/pages/TermsPage';
 
 // Public directory + detail
 import { PublicDoctorsDirectoryPage } from '@/features/public/doctors/pages/PublicDoctorsDirectoryPage';
 import { PublicDoctorDetailPage }     from '@/features/public/doctors/pages/PublicDoctorDetailPage';
-
-// Plan management (shared by doctor + clinic)
-import { ManagePlanPage } from '@/features/shared/plan/pages/ManagePlanPage';
 
 // Clinic pages
 import { ClinicDashboardPage } from '@/features/clinic/dashboard/pages/ClinicDashboardPage';
@@ -75,7 +70,7 @@ import { SpecialtiesPage } from '@/features/clinic/specialties/pages/Specialties
 import {
   LayoutDashboard, Search, CalendarDays, FileText, User,
   Stethoscope, Calendar, Users, BarChart2, CreditCard, BookOpen,
-  ShieldCheck, BadgeCheck, Settings as SettingsIcon, Sparkles, Building2,
+  Settings as SettingsIcon, Building2,
 } from 'lucide-react';
 import type { NavItem } from '@/components/layout/Sidebar';
 
@@ -95,7 +90,6 @@ const doctorNav: NavItem[] = [
   { label: 'Pacientes',       path: '/doctor/patients',      icon: Users },
   { label: 'Pagos',           path: '/doctor/payments',      icon: CreditCard },
   { label: 'Reportes',        path: '/doctor/reports',       icon: BarChart2 },
-  { label: 'Mi plan',         path: '/doctor/plan',          icon: Sparkles },
 ];
 
 const clinicNav: NavItem[] = [
@@ -107,14 +101,11 @@ const clinicNav: NavItem[] = [
   { label: 'Pagos',           path: '/clinic/payments',      icon: CreditCard },
   { label: 'Informes',        path: '/clinic/reports',       icon: BarChart2 },
   { label: 'Especialidades',  path: '/clinic/specialties',   icon: BookOpen },
-  { label: 'Mi plan',         path: '/clinic/plan',          icon: Sparkles },
 ];
 
 const adminNav: NavItem[] = [
   { label: 'Panel general',  path: '/admin',               icon: LayoutDashboard },
   { label: 'Usuarios',       path: '/admin/users',         icon: Users },
-  { label: 'Planes',         path: '/admin/plans',         icon: BadgeCheck },
-  { label: 'Suscripciones',  path: '/admin/subscriptions', icon: ShieldCheck },
   { label: 'Pagos',          path: '/admin/payments',      icon: CreditCard },
   { label: 'Configuración',  path: '/admin/settings',      icon: SettingsIcon },
 ];
@@ -133,18 +124,13 @@ export const router = createBrowserRouter([
   { path: '/register/clinic', element: <RegisterClinicPage /> },
   { path: '/register/clinic/details', element: <RegisterClinicDetailsPage /> },
 
-  // ── Subscription checkout (público — requiere login al hacer click) ──
-  { path: '/subscribe/:planId',  element: <SubscribePage /> },
-  { path: '/subscribe/return',   element: <SubscribeReturnPage /> },
+  // ── Pagina legal publica ──
+  { path: '/terminos', element: <TermsPage /> },
 
-  // ── Payment return (callback de PayPhone, accesible para cualquier rol) ──
-  // Doctores y clínicas compran suscripciones, así que PayPhone los redirige
-  // acá pero ANTES estaba dentro de un ProtectedRoute con allowedRole="patient"
-  // y se les bloqueaba la página → la subscripción quedaba en PENDING_PAYMENT
-  // para siempre porque nunca se ejecutaba el confirm. Acá la sacamos del
-  // shell del paciente y la dejamos sin role guard. La página misma detecta
-  // si es una suscripción (clientTransactionId comienza con "sub-") y
-  // re-dirige internamente a /subscribe/return.
+  // ── Payment return (callback de PayPhone) ──
+  // Endpoint compartido fuera del ProtectedRoute para que cualquier rol
+  // que vuelva del PayPhone aterrice limpio. La pagina detecta el
+  // payment id en query y confirma con el backend.
   { path: '/payment/return', element: <PaymentReturnPage /> },
 
   // ── Public directory ──
@@ -210,7 +196,6 @@ export const router = createBrowserRouter([
       { path: 'patients', element: <PatientHistoryPage /> },
       { path: 'payments', element: <DoctorPaymentsPage /> },
       { path: 'reports',  element: <DoctorReportsPage /> },
-      { path: 'plan',     element: <ManagePlanPage /> },
     ],
   },
 
@@ -225,8 +210,6 @@ export const router = createBrowserRouter([
     children: [
       { index: true,                 element: <AdminDashboardPage /> },
       { path:  'users',              element: <AdminUsersPage /> },
-      { path:  'plans',              element: <AdminPlansPage /> },
-      { path:  'subscriptions',      element: <AdminSubscriptionsPage /> },
       { path:  'payments',           element: <AdminPaymentsPage /> },
       { path:  'settings',           element: <AdminSettingsPage /> },
     ],
@@ -249,7 +232,6 @@ export const router = createBrowserRouter([
       { path: 'payments', element: <PaymentsPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'specialties', element: <SpecialtiesPage /> },
-      { path: 'plan',     element: <ManagePlanPage /> },
     ],
   },
 
