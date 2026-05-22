@@ -12,6 +12,7 @@ import { Alert }        from '@/components/ui/Alert';
 import { EmptyState }   from '@/components/ui/EmptyState';
 import { Button }       from '@/components/ui/Button';
 import { Input }        from '@/components/ui/Input';
+import { DatePicker }   from '@/components/ui/DatePicker';
 import { StatusBadge }  from '@/components/ui/StatusBadge';
 import { Avatar }       from '@/components/ui/Avatar';
 import { useApi }       from '@/hooks/useApi';
@@ -290,12 +291,12 @@ function DemographicsCard({
             <Cake size={11} /> Fecha de nacimiento
           </p>
           {editing ? (
-            <input
-              type="date"
+            <DatePicker
               value={dob}
               max={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => setDob(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={setDob}
+              placeholder="Fecha de nacimiento"
+              className="w-full"
             />
           ) : (
             <div>

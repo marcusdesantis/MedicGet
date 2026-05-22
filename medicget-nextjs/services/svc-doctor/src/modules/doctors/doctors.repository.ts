@@ -60,20 +60,23 @@ export const doctorsRepository = {
       where.OR = [...((where.OR as unknown[] | undefined) ?? []), ...conditions];
     }
     if (filters.search) {
-      where.OR = [
-        {
-          user: {
-            profile: {
-              OR: [
-                { firstName: { contains: filters.search, mode: 'insensitive' } },
-                { lastName: { contains: filters.search, mode: 'insensitive' } },
-              ],
-            },
-          },
-        },
-        { specialty: { contains: filters.search, mode: 'insensitive' } },
-        { bio: { contains: filters.search, mode: 'insensitive' } },
-      ];
+      // Tokenizamos por whitespace para que "Erika Velez" matchee
+      // firstName="Erika" + lastName="Velez". Cada token debe matchear
+      // al menos un campo (OR) y TODOS los tokens deben aparecer (AND).
+      // Si la búsqueda llega vacía después de trim, no filtramos.
+      const tokens = filters.search.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length > 0) {
+        where.AND = tokens.map((tok) => ({
+          OR: [
+            { user: { profile: { firstName: { contains: tok, mode: 'insensitive' } } } },
+            { user: { profile: { lastName:  { contains: tok, mode: 'insensitive' } } } },
+            { user: { email:    { contains: tok, mode: 'insensitive' } } },
+            { specialty:        { contains: tok, mode: 'insensitive' } },
+            { bio:              { contains: tok, mode: 'insensitive' } },
+            { clinic: { name:   { contains: tok, mode: 'insensitive' } } },
+          ],
+        }));
+      }
     }
 
     const [data, total] = await Promise.all([
@@ -133,11 +136,12 @@ export const doctorsRepository = {
     dayOfWeek: string,
     startTime: string,
     endTime: string,
+    isActive: boolean = true,
   ) {
     return prisma.doctorAvailability.upsert({
       where: { doctorId_dayOfWeek: { doctorId, dayOfWeek: dayOfWeek as never } },
-      update: { startTime, endTime, isActive: true },
-      create: { doctorId, dayOfWeek: dayOfWeek as never, startTime, endTime, isActive: true },
+      update: { startTime, endTime, isActive },
+      create: { doctorId, dayOfWeek: dayOfWeek as never, startTime, endTime, isActive },
     });
   },
 

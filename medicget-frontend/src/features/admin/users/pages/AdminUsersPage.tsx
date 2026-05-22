@@ -7,6 +7,7 @@ import { Alert }         from '@/components/ui/Alert';
 import { Avatar }        from '@/components/ui/Avatar';
 import { StatusBadge }   from '@/components/ui/StatusBadge';
 import { Input }         from '@/components/ui/Input';
+import { DatePicker }    from '@/components/ui/DatePicker';
 import { PhoneField }    from '@/components/ui/PhoneField';
 import { Button }        from '@/components/ui/Button';
 import { useApi }        from '@/hooks/useApi';
@@ -58,11 +59,9 @@ export function AdminUsersPage() {
    * `admin@gmail.com`.
    */
   const handleImpersonate = async (u: UserDto) => {
-    const name = `${u.profile?.firstName ?? ''} ${u.profile?.lastName ?? ''}`.trim() || u.email;
-    if (!confirm(
-      `¿Iniciar sesión como ${name} (${u.email})?\n\n` +
-      `Tu sesión de admin se reemplazará. Para volver, cerrá sesión y volvé a entrar como admin.`,
-    )) return;
+    // Sin confirmación: el admin click → impersona directo. Mucho más ágil
+    // para los super-admins que están auditando cuentas. Para volver, cerrá
+    // sesión y volvé a entrar como admin.
     setActing(u.id);
     try {
       const res = await adminApi.impersonate(u.id);
@@ -794,7 +793,16 @@ function EditUserModal({
             <section className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Datos clínicos</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <LabeledInput label="Fecha nacimiento" type="date" value={form.patient.dateOfBirth?.slice(0,10) ?? ''} onChange={(e) => updPatient('dateOfBirth', e.target.value)} />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Fecha nacimiento</label>
+                  <DatePicker
+                    value={form.patient.dateOfBirth?.slice(0,10) ?? ''}
+                    onChange={(v) => updPatient('dateOfBirth', v)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    placeholder="Fecha de nacimiento"
+                    className="w-full"
+                  />
+                </div>
                 <LabeledInput label="Grupo sanguíneo"  value={form.patient.bloodType} onChange={(e) => updPatient('bloodType', e.target.value)} />
                 {(['allergies','conditions','medications'] as const).map((k) => (
                   <div key={k} className="sm:col-span-2">
@@ -830,10 +838,9 @@ function EditUserModal({
           <Button
             onClick={submit}
             disabled={saving}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl disabled:opacity-50"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm"
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-            Guardar cambios
+            {saving ? <><Loader2 size={14} className="animate-spin" /> Guardando…</> : <>Guardar cambios</>}
           </Button>
         </div>
       </div>

@@ -34,7 +34,11 @@ export const availabilitySchema = z.object({
     'SUNDAY',
   ]),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  endTime:   z.string().regex(/^\d{2}:\d{2}$/),
+  // Optional para compat con clientes viejos; default true.
+  // Cuando viene `false`, el día queda desactivado (no genera slots
+  // y los pacientes no lo ven al buscar horarios).
+  isActive:  z.boolean().optional(),
 });
 
 export type UpdateDoctorInput = z.infer<typeof updateDoctorSchema>;

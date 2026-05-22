@@ -210,6 +210,7 @@ export const doctorsService = {
       input.dayOfWeek,
       input.startTime,
       input.endTime,
+      input.isActive ?? true,
     );
     // Invalida los slots cacheados a futuro para que se regeneren desde
     // el nuevo horario. Sin esto el paciente seguiría viendo los slots

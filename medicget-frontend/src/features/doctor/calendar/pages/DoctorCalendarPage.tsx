@@ -4,6 +4,7 @@ import { PageHeader }  from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/context/AuthContext';
 import { doctorsApi, slotsApi, type AvailabilityDto, type SlotDto } from '@/lib/api';
@@ -372,12 +373,11 @@ function SlotBlockingSection({ doctorId, reloadKey }: { doctorId: string | null;
       subtitle="Si tenés un compromiso externo en un día específico, podés bloquear los slots de ese día sin tocar tus horarios semanales."
     >
       <div className="flex items-center gap-3 mb-4">
-        <input
-          type="date"
-          min={today}
+        <DatePicker
           value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          onChange={setDate}
+          min={today}
+          placeholder="Elegir fecha"
         />
       </div>
 

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Activity, ArrowRight, Calendar, ShieldCheck, Stethoscope, Building2, Users,
   Video, MessageSquare, CreditCard, Clock, Star, CheckCircle2, ChevronDown,
-  Heart, Sparkles, Zap, Lock, BarChart3, Globe2, Loader2,
+  Heart, Sparkles, Zap, BarChart3, Globe2, Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useApi }  from '@/hooks/useApi';
@@ -589,63 +589,50 @@ function HeroVisual() {
         </div>
       </div>
 
-      {/* Floating "Reserva tu cita" card —
-       *  En vez de un timetable suelto, mostramos un mini-flujo de reserva:
-       *  doctor + indicador de disponibilidad en vivo + 4 slots con uno
-       *  pre-seleccionado + CTA. Lee de un vistazo como "el paciente ya
-       *  está a 1 click de confirmar". */}
+      {/* Floating "Cómo funciona" card —
+       *  Reemplaza el mini-booking interactivo. Ahora muestra los 3 pasos
+       *  del flujo (Elegí → Reservá → Atendete) como una infografía vertical
+       *  con iconos y conectores. Es 100% informativo, no parece accionable,
+       *  y refuerza la propuesta de valor de un vistazo. */}
       <div className="absolute right-4 lg:right-12 -bottom-4 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl shadow-slate-900/15 p-4 hidden sm:block">
-        {/* Header — doctor mini-row */}
-        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
-            CV
-          </div>
-          <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-slate-800 dark:text-white truncate">Dr. Carlos Vega</p>
-            <p className="text-[10px] text-blue-600 dark:text-blue-400">Cardiología</p>
-          </div>
-        </div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-3">
+          Cómo funciona
+        </p>
 
-        {/* Live availability strip */}
-        <div className="flex items-center justify-between mt-3 mb-2">
-          <div className="flex items-center gap-1.5">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-            </span>
-            <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">5 horarios libres hoy</p>
-          </div>
-        </div>
+        <ol className="relative space-y-3">
+          {/* Línea conectora vertical que une los íconos */}
+          <span aria-hidden className="absolute left-[15px] top-6 bottom-6 w-px bg-gradient-to-b from-blue-200 via-blue-200 to-emerald-200 dark:from-blue-900 dark:via-blue-900 dark:to-emerald-900" />
 
-        {/* Slots — 4 visibles, el seleccionado destacado */}
-        <div className="grid grid-cols-4 gap-1.5">
           {[
-            { t: '11:30', taken: false },
-            { t: '14:00', taken: false },
-            { t: '16:30', taken: false, active: true },
-            { t: '18:00', taken: false },
-          ].map((s) => (
-            <span
-              key={s.t}
-              className={`text-[11px] font-semibold rounded-md py-1.5 text-center transition ${
-                s.active
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30 ring-2 ring-blue-200 dark:ring-blue-900/60'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              {s.t}
-            </span>
-          ))}
-        </div>
+            { icon: Stethoscope, color: 'blue',    title: 'Elegí especialista', desc: 'Filtrá por especialidad, precio o disponibilidad.' },
+            { icon: Calendar,    color: 'indigo',  title: 'Reservá horario',    desc: 'Mirás los slots libres y pagás online.' },
+            { icon: Video,       color: 'emerald', title: 'Atendete',           desc: 'Videollamada o presencial, vos elegís.' },
+          ].map((step, i) => {
+            const Icon = step.icon;
+            const bg   = step.color === 'blue'    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+                       : step.color === 'indigo'  ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                  : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400';
+            return (
+              <li key={i} className="relative flex items-start gap-2.5">
+                <div className={`relative z-10 h-[30px] w-[30px] rounded-full flex items-center justify-center flex-shrink-0 ${bg}`}>
+                  <Icon size={14} />
+                </div>
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <p className="text-[12px] font-semibold text-slate-800 dark:text-white leading-tight">
+                    {step.title}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                    {step.desc}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
 
-        {/* CTA simulation — refuerza "es un solo click" */}
-        <div className="mt-3 flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
-          <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
-            <Lock size={9} /> Pago seguro
-          </span>
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600">
-            Reservar <ArrowRight size={10} />
-          </span>
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] text-slate-400">
+          <ShieldCheck size={11} className="text-emerald-500" />
+          <span>Pagos cifrados · Sin suscripciones</span>
         </div>
       </div>
     </div>
