@@ -100,6 +100,22 @@ pipeline {
       }
     }
 
+    stage('Restart nginx') {
+      // Cuando los backends se recrean con un container_id nuevo, el nginx
+      // sigue resolviendo el upstream al ID viejo y devuelve 502 hasta
+      // que se reinicia. Lo hacíamos a mano después de cada deploy —
+      // ahora se hace solo acá.
+      steps {
+        dir("${DEPLOY_DIR}") {
+          sh '''
+            docker compose restart nginx
+            sleep 2
+            docker compose ps nginx
+          '''
+        }
+      }
+    }
+
     stage('Health check') {
       steps {
         // Esperamos a que el gateway responda. Si no levanta en 60s, falla.
@@ -135,7 +151,6 @@ pipeline {
     }
     always {
       // Cleanup de imágenes huérfanas (capas viejas) para no llenar el disco.
-      // Mantiene la última imagen de cada servicio, borra layers no usados.
       sh 'docker image prune -f || true'
     }
   }
