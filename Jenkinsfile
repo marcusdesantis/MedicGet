@@ -99,25 +99,74 @@ pipeline {
 
     stage('Build & deploy') {
       steps {
-        // El docker-compose.yml vive en la raíz; lo ejecutamos desde
-        // /proyectos/opt/medicget para que respete las rutas relativas y el .env.
+        // ─── Smart Build: solo rebuildea servicios cambiados ───────────
+        // En vez de hacer `docker compose build` (que toca los 9), usamos
+        // `git diff` entre el commit anterior deployado y el actual, y
+        // mapeamos paths a servicios. Si solo cambió medicget-frontend/,
+        // solo buildeamos `frontend`. Si tocaste packages/shared/ o el
+        // root package-lock.json, sí buildeamos todo (porque todos lo
+        // importan).
         //
-        // BuildKit activado via env vars en environment{}. Para cada
-        // imagen el build:
-        //   1. Mira la imagen anterior (tag :latest local) como cache source.
-        //   2. Reusa layers idénticas → npm ci no re-corre si package*.json
-        //      no cambió, prisma generate no re-corre si schema no cambió.
-        //   3. Solo rebuildea las layers afectadas por archivos modificados.
-        //
-        // `--build` sigue ahí porque queremos que detecte cambios; con cache
-        // hot esto es rapidísimo (~10-30s para servicios sin cambios).
+        // La primera vez que corre (o si el git diff falla por commits
+        // shallow), fall-backea a buildear todo para no romper.
         dir("${DEPLOY_DIR}") {
           sh '''
-            # Pre-build con cache explícito; --pull mantiene base images al día
-            docker compose build --pull
-            # Up sin --build (ya buildeamos arriba) — recrea contenedores
+            set -e
+
+            # Archivo donde guardamos el SHA del último deploy exitoso.
+            LAST_SHA_FILE=".last-deployed-sha"
+            CURRENT_SHA=$(git rev-parse HEAD)
+            LAST_SHA=""
+            [ -f "$LAST_SHA_FILE" ] && LAST_SHA=$(cat "$LAST_SHA_FILE" 2>/dev/null || true)
+
+            # Determinar qué archivos cambiaron desde el último deploy.
+            # Si es el primer deploy o el SHA viejo ya no existe en git,
+            # forzamos build de TODO (modo seguro).
+            CHANGED_FILES=""
+            if [ -n "$LAST_SHA" ] && git cat-file -e "$LAST_SHA" 2>/dev/null; then
+              CHANGED_FILES=$(git diff --name-only "$LAST_SHA" "$CURRENT_SHA" || true)
+              echo "[smart-build] $(echo "$CHANGED_FILES" | wc -l) archivos cambiados desde $LAST_SHA"
+            else
+              echo "[smart-build] No hay SHA previo o cambió el historial — buildeando todo."
+            fi
+
+            # Mapeo path → servicio. Si algún archivo crítico cambió,
+            # buildeamos todo (paths "globales").
+            BUILD_ALL=false
+            if [ -z "$CHANGED_FILES" ]; then
+              BUILD_ALL=true
+            elif echo "$CHANGED_FILES" | grep -qE '^(packages/shared/|package-lock\\.json$|package\\.json$|docker-compose\\.yml$|Dockerfile\\.service$|nginx/|prisma/)'; then
+              echo "[smart-build] Cambio en archivo crítico → build de todo"
+              BUILD_ALL=true
+            fi
+
+            SERVICES_TO_BUILD=""
+            if [ "$BUILD_ALL" = "true" ]; then
+              SERVICES_TO_BUILD="frontend svc-admin svc-appointment svc-auth svc-clinic svc-dashboard svc-doctor svc-patient svc-users"
+            else
+              echo "$CHANGED_FILES" | grep -q '^medicget-frontend/'                 && SERVICES_TO_BUILD="$SERVICES_TO_BUILD frontend"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-admin/'                && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-admin"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-appointment/'          && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-appointment"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-auth/'                 && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-auth"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-clinic/'               && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-clinic"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-dashboard/'            && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-dashboard"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-doctor/'               && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-doctor"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-patient/'              && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-patient"
+              echo "$CHANGED_FILES" | grep -q '^services/svc-users/'                && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-users"
+              SERVICES_TO_BUILD=$(echo "$SERVICES_TO_BUILD" | xargs)
+            fi
+
+            if [ -z "$SERVICES_TO_BUILD" ]; then
+              echo "[smart-build] Nada que buildear — solo recreamos contenedores con imágenes existentes."
+            else
+              echo "[smart-build] Buildeando: $SERVICES_TO_BUILD"
+              docker compose build --pull $SERVICES_TO_BUILD
+            fi
+
             docker compose up -d --remove-orphans
             docker compose ps
+
+            echo "$CURRENT_SHA" > "$LAST_SHA_FILE"
           '''
         }
       }
@@ -126,8 +175,7 @@ pipeline {
     stage('Restart nginx') {
       // Cuando los backends se recrean con un container_id nuevo, el nginx
       // sigue resolviendo el upstream al ID viejo y devuelve 502 hasta
-      // que se reinicia. Lo hacíamos a mano después de cada deploy —
-      // ahora se hace solo acá.
+      // que se reinicia.
       steps {
         dir("${DEPLOY_DIR}") {
           sh '''
@@ -141,7 +189,6 @@ pipeline {
 
     stage('Health check') {
       steps {
-        // Esperamos a que el gateway responda. Si no levanta en 60s, falla.
         sh '''
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/health > /dev/null 2>&1; then
@@ -172,12 +219,6 @@ pipeline {
       '''
     }
     always {
-      // Cleanup conservador de imágenes huérfanas — borra solo "dangling"
-      // (las que ya no tienen tag). NO usamos `docker image prune -af`
-      // porque eso borraría el cache de capas que BuildKit reusa entre
-      // builds. Cada ~30 días corremos un prune más agresivo a mano si
-      // hace falta espacio:
-      //   docker builder prune --filter until=720h
       sh 'docker image prune -f || true'
     }
   }
