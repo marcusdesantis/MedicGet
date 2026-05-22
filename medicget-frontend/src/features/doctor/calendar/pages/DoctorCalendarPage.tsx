@@ -349,19 +349,42 @@ function SlotBlockingSection({ doctorId, reloadKey }: { doctorId: string | null;
   // `reloadKey` viene del padre y se incrementa cada vez que se guarda
   // el horario semanal, así los slots de abajo reflejan la nueva
   // configuración sin que el médico tenga que recargar la página.
-  const { state, refetch } = useApi<SlotDto[]>(
+  const { state } = useApi<SlotDto[]>(
     () => doctorId ? doctorsApi.getSlots(doctorId, date) : Promise.resolve([]),
     [doctorId, date, reloadKey],
   );
 
+  // Copia local de los slots que controlamos al instante para evitar
+  // el flicker de "loading → ready" del useApi cuando hacemos toggle.
+  // Se sincroniza con state.data cuando llega data nueva del backend.
+  const [slots, setSlots] = useState<SlotDto[]>([]);
+  useEffect(() => {
+    if (state.status === 'ready') setSlots(state.data);
+  }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Cuando cambia la fecha o reloadKey, limpiamos slots viejos así no se ven
+  // los del día anterior mientras el backend trae los del día nuevo.
+  useEffect(() => {
+    setSlots([]);
+  }, [date, reloadKey]);
+
   async function toggle(slot: SlotDto) {
+    // Optimistic update — actualizo la grilla ANTES de pegarle al backend
+    // así no hay parpadeo. Si el backend devuelve error, rollback.
+    const newBlocked = !slot.isBlocked;
+    const prev = slots;
+    setSlots((curr) => curr.map((s) =>
+      s.id === slot.id ? { ...s, isBlocked: newBlocked } : s,
+    ));
     setBusyId(slot.id);
     try {
       await slotsApi.toggleBlock(slot.id, {
-        blocked: !slot.isBlocked,
-        reason: !slot.isBlocked ? 'Compromiso externo' : null,
+        blocked: newBlocked,
+        reason: newBlocked ? 'Compromiso externo' : null,
       });
-      await refetch();
+    } catch {
+      // Rollback si falló — el slot vuelve a su estado previo y el médico
+      // ve que algo no funcionó (no hay toast porque slotsApi ya lo dispara).
+      setSlots(prev);
     } finally {
       setBusyId(null);
     }
@@ -381,18 +404,20 @@ function SlotBlockingSection({ doctorId, reloadKey }: { doctorId: string | null;
         />
       </div>
 
-      {state.status === 'loading' && (
+      {/* Cargando solo en el primer fetch — cuando ya tenemos data local
+          mostramos siempre la grilla, así el toggle no parpadea. */}
+      {state.status === 'loading' && slots.length === 0 && (
         <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Cargando horarios...</div>
       )}
       {state.status === 'error' && (
         <Alert variant="error">{state.error.message}</Alert>
       )}
-      {state.status === 'ready' && state.data.length === 0 && (
+      {state.status === 'ready' && slots.length === 0 && (
         <p className="text-sm text-slate-500">No hay horarios disponibles para esa fecha. Configurá tu disponibilidad semanal arriba.</p>
       )}
-      {state.status === 'ready' && state.data.length > 0 && (
+      {slots.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {state.data.map((slot) => {
+          {slots.map((slot) => {
             const reserved = slot.isBooked;
             const blocked = slot.isBlocked;
             const busy = busyId === slot.id;
