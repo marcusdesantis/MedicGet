@@ -100,75 +100,74 @@ pipeline {
     stage('Build & deploy') {
       steps {
         // ─── Smart Build: solo rebuildea servicios cambiados ───────────
-        // En vez de hacer `docker compose build` (que toca los 9), usamos
-        // `git diff` entre el commit anterior deployado y el actual, y
-        // mapeamos paths a servicios. Si solo cambió medicget-frontend/,
-        // solo buildeamos `frontend`. Si tocaste packages/shared/ o el
-        // root package-lock.json, sí buildeamos todo (porque todos lo
-        // importan).
-        //
-        // La primera vez que corre (o si el git diff falla por commits
-        // shallow), fall-backea a buildear todo para no romper.
-        dir("${DEPLOY_DIR}") {
-          sh '''
-            set -e
+        // Hacemos el `git diff` en el WORKSPACE de Jenkins (donde el repo
+        // tiene el dueño correcto), no en DEPLOY_DIR (que es propiedad
+        // del user `deploy` y dispara "dubious ownership" de git).
+        // El SHA del último deploy lo guardamos como archivo en
+        // DEPLOY_DIR/.last-deployed-sha (que no requiere git).
+        sh '''
+          set -e
 
-            # Archivo donde guardamos el SHA del último deploy exitoso.
-            LAST_SHA_FILE=".last-deployed-sha"
-            CURRENT_SHA=$(git rev-parse HEAD)
-            LAST_SHA=""
-            [ -f "$LAST_SHA_FILE" ] && LAST_SHA=$(cat "$LAST_SHA_FILE" 2>/dev/null || true)
+          # 1. SHA actual del workspace (Jenkins checkout)
+          CURRENT_SHA=$(git rev-parse HEAD)
 
-            # Determinar qué archivos cambiaron desde el último deploy.
-            # Si es el primer deploy o el SHA viejo ya no existe en git,
-            # forzamos build de TODO (modo seguro).
-            CHANGED_FILES=""
-            if [ -n "$LAST_SHA" ] && git cat-file -e "$LAST_SHA" 2>/dev/null; then
-              CHANGED_FILES=$(git diff --name-only "$LAST_SHA" "$CURRENT_SHA" || true)
-              echo "[smart-build] $(echo "$CHANGED_FILES" | wc -l) archivos cambiados desde $LAST_SHA"
-            else
-              echo "[smart-build] No hay SHA previo o cambió el historial — buildeando todo."
-            fi
+          # 2. SHA anterior — leído del archivo en DEPLOY_DIR
+          LAST_SHA_FILE="${DEPLOY_DIR}/.last-deployed-sha"
+          LAST_SHA=""
+          [ -f "$LAST_SHA_FILE" ] && LAST_SHA=$(cat "$LAST_SHA_FILE" 2>/dev/null || true)
 
-            # Mapeo path → servicio. Si algún archivo crítico cambió,
-            # buildeamos todo (paths "globales").
-            BUILD_ALL=false
-            if [ -z "$CHANGED_FILES" ]; then
-              BUILD_ALL=true
-            elif echo "$CHANGED_FILES" | grep -qE '^(packages/shared/|package-lock\\.json$|package\\.json$|docker-compose\\.yml$|Dockerfile\\.service$|nginx/|prisma/)'; then
-              echo "[smart-build] Cambio en archivo crítico → build de todo"
-              BUILD_ALL=true
-            fi
+          # 3. Archivos cambiados — diff en el workspace de Jenkins
+          CHANGED_FILES=""
+          if [ -n "$LAST_SHA" ] && git cat-file -e "$LAST_SHA" 2>/dev/null; then
+            CHANGED_FILES=$(git diff --name-only "$LAST_SHA" "$CURRENT_SHA" || true)
+            COUNT=$(echo "$CHANGED_FILES" | grep -c . || true)
+            echo "[smart-build] $COUNT archivos cambiados desde ${LAST_SHA:0:7}"
+          else
+            echo "[smart-build] No hay SHA previo o cambió el historial — buildeando todo."
+          fi
 
-            SERVICES_TO_BUILD=""
-            if [ "$BUILD_ALL" = "true" ]; then
-              SERVICES_TO_BUILD="frontend svc-admin svc-appointment svc-auth svc-clinic svc-dashboard svc-doctor svc-patient svc-users"
-            else
-              echo "$CHANGED_FILES" | grep -q '^medicget-frontend/'                 && SERVICES_TO_BUILD="$SERVICES_TO_BUILD frontend"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-admin/'                && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-admin"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-appointment/'          && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-appointment"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-auth/'                 && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-auth"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-clinic/'               && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-clinic"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-dashboard/'            && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-dashboard"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-doctor/'               && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-doctor"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-patient/'              && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-patient"
-              echo "$CHANGED_FILES" | grep -q '^services/svc-users/'                && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-users"
-              SERVICES_TO_BUILD=$(echo "$SERVICES_TO_BUILD" | xargs)
-            fi
+          # 4. Determinar si necesitamos buildear todo
+          BUILD_ALL=false
+          if [ -z "$CHANGED_FILES" ]; then
+            BUILD_ALL=true
+          elif echo "$CHANGED_FILES" | grep -qE '^(packages/shared/|package-lock\\.json$|package\\.json$|docker-compose\\.yml$|Dockerfile\\.service$|nginx/|prisma/)'; then
+            echo "[smart-build] Cambio en archivo crítico → build de todo"
+            BUILD_ALL=true
+          fi
 
-            if [ -z "$SERVICES_TO_BUILD" ]; then
-              echo "[smart-build] Nada que buildear — solo recreamos contenedores con imágenes existentes."
-            else
-              echo "[smart-build] Buildeando: $SERVICES_TO_BUILD"
-              docker compose build --pull $SERVICES_TO_BUILD
-            fi
+          # 5. Lista de servicios a buildear
+          SERVICES_TO_BUILD=""
+          if [ "$BUILD_ALL" = "true" ]; then
+            SERVICES_TO_BUILD="frontend svc-admin svc-appointment svc-auth svc-clinic svc-dashboard svc-doctor svc-patient svc-users"
+          else
+            echo "$CHANGED_FILES" | grep -q '^medicget-frontend/'                 && SERVICES_TO_BUILD="$SERVICES_TO_BUILD frontend"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-admin/'                && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-admin"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-appointment/'          && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-appointment"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-auth/'                 && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-auth"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-clinic/'               && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-clinic"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-dashboard/'            && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-dashboard"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-doctor/'               && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-doctor"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-patient/'              && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-patient"
+            echo "$CHANGED_FILES" | grep -q '^services/svc-users/'                && SERVICES_TO_BUILD="$SERVICES_TO_BUILD svc-users"
+            SERVICES_TO_BUILD=$(echo "$SERVICES_TO_BUILD" | xargs)
+          fi
 
-            docker compose up -d --remove-orphans
-            docker compose ps
+          # 6. Build & deploy desde DEPLOY_DIR
+          cd "$DEPLOY_DIR"
 
-            echo "$CURRENT_SHA" > "$LAST_SHA_FILE"
-          '''
-        }
+          if [ -z "$SERVICES_TO_BUILD" ]; then
+            echo "[smart-build] Nada que buildear — solo recreamos contenedores con imágenes existentes."
+          else
+            echo "[smart-build] Buildeando: $SERVICES_TO_BUILD"
+            docker compose build --pull $SERVICES_TO_BUILD
+          fi
+
+          docker compose up -d --remove-orphans
+          docker compose ps
+
+          # 7. Guardar SHA actual para el próximo deploy
+          echo "$CURRENT_SHA" > "$LAST_SHA_FILE"
+        '''
       }
     }
 
