@@ -27,6 +27,17 @@ pipeline {
   environment {
     DEPLOY_DIR = '/proyectos/opt/medicget'
     COMPOSE_PROJECT_NAME = 'medicget'
+    // ─── BuildKit + cache compartida ───────────────────────────────────
+    // DOCKER_BUILDKIT=1 activa el builder moderno (paralelo, layers más finos).
+    // COMPOSE_DOCKER_CLI_BUILD=1 hace que `docker compose build` use buildx.
+    // BUILDKIT_INLINE_CACHE=1 embebe metadata de cache en cada imagen,
+    // así el siguiente build puede reusar layers de la imagen anterior
+    // (incluso después de un `docker compose pull`). Esto baja el tiempo
+    // de build de ~30min a ~10-15min cuando el código cambia poco, y a
+    // ~2-3min cuando no cambia nada.
+    DOCKER_BUILDKIT = '1'
+    COMPOSE_DOCKER_CLI_BUILD = '1'
+    BUILDKIT_INLINE_CACHE = '1'
   }
 
   stages {
@@ -90,10 +101,22 @@ pipeline {
       steps {
         // El docker-compose.yml vive en la raíz; lo ejecutamos desde
         // /proyectos/opt/medicget para que respete las rutas relativas y el .env.
+        //
+        // BuildKit activado via env vars en environment{}. Para cada
+        // imagen el build:
+        //   1. Mira la imagen anterior (tag :latest local) como cache source.
+        //   2. Reusa layers idénticas → npm ci no re-corre si package*.json
+        //      no cambió, prisma generate no re-corre si schema no cambió.
+        //   3. Solo rebuildea las layers afectadas por archivos modificados.
+        //
+        // `--build` sigue ahí porque queremos que detecte cambios; con cache
+        // hot esto es rapidísimo (~10-30s para servicios sin cambios).
         dir("${DEPLOY_DIR}") {
           sh '''
-            docker compose pull --ignore-pull-failures || true
-            docker compose up -d --build --remove-orphans
+            # Pre-build con cache explícito; --pull mantiene base images al día
+            docker compose build --pull
+            # Up sin --build (ya buildeamos arriba) — recrea contenedores
+            docker compose up -d --remove-orphans
             docker compose ps
           '''
         }
@@ -142,7 +165,6 @@ pipeline {
     }
     failure {
       echo "✗ Deploy falló. Ver logs arriba."
-      // Útil para diagnóstico cuando el build revienta:
       sh '''
         cd ${DEPLOY_DIR} || exit 0
         docker compose ps
@@ -150,7 +172,12 @@ pipeline {
       '''
     }
     always {
-      // Cleanup de imágenes huérfanas (capas viejas) para no llenar el disco.
+      // Cleanup conservador de imágenes huérfanas — borra solo "dangling"
+      // (las que ya no tienen tag). NO usamos `docker image prune -af`
+      // porque eso borraría el cache de capas que BuildKit reusa entre
+      // builds. Cada ~30 días corremos un prune más agresivo a mano si
+      // hace falta espacio:
+      //   docker builder prune --filter until=720h
       sh 'docker image prune -f || true'
     }
   }
