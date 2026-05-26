@@ -88,19 +88,22 @@ ufw status
 
 # ─── 6. Jenkins en docker ────────────────────────────────────────────────────
 echo ""
-echo "[6/7] Levantando Jenkins en :8081..."
+echo "[6/7] Levantando Jenkins en :9090..."
 mkdir -p /proyectos/opt/jenkins
 chown 1000:1000 /proyectos/opt/jenkins
 
 # El container `jenkins-medicget` corre como UID 1000 con acceso al
 # socket de docker del host. Eso permite que las jobs hagan
 # `docker compose build` sin docker-in-docker.
+# Puerto 9090 en host (debe coincidir con deploy/nginx-host.conf que
+# proxiea ci.medicget.io → 127.0.0.1:9090). Bind a 127.0.0.1 porque el
+# tráfico externo entra por el nginx HOST con TLS.
 docker rm -f jenkins-medicget 2>/dev/null || true
 
 docker run -d \
   --name jenkins-medicget \
   --restart unless-stopped \
-  -p 127.0.0.1:8081:8080 \
+  -p 127.0.0.1:9090:8080 \
   -p 127.0.0.1:50000:50000 \
   -v /proyectos/opt/jenkins:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -113,7 +116,7 @@ docker run -d \
 echo ""
 echo "Esperando a que Jenkins arranque (puede tardar ~60s)..."
 for i in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:8081/login &>/dev/null; then
+  if curl -fsS http://127.0.0.1:9090/login &>/dev/null; then
     echo "✓ Jenkins UP"
     break
   fi

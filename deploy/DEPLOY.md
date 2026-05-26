@@ -11,7 +11,7 @@ Internet
    ▼
 Nginx (host, :80/:443) — SSL termination, reverse proxy
    ├─→ 127.0.0.1:8080  Docker compose interno (nginx → microservicios + frontend)
-   └─→ 127.0.0.1:8081  Jenkins
+   └─→ 127.0.0.1:9090  Jenkins
 ```
 
 **Rutas en el VPS:**
@@ -81,7 +81,7 @@ El script hace todo automáticamente:
 - Instala Nginx + Certbot
 - Crea usuario `deploy` (con permisos para docker)
 - Configura firewall (abre solo 22, 80, 443)
-- Levanta Jenkins en `127.0.0.1:8081`
+- Levanta Jenkins en `127.0.0.1:9090`
 - Deja una config Nginx mínima para que Certbot funcione
 
 Al final imprime los siguientes pasos. No los saltes.
