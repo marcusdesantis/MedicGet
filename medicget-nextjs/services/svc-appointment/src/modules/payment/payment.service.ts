@@ -252,28 +252,52 @@ export const paymentService = {
   },
 
   /**
-   * Step 3 — issue a refund. Both clinic admins and the auto-cancel
-   * flow call this. Returns the amount actually refunded.
+   * Step 3 — abre una solicitud de reembolso. NO ejecuta el reverso real
+   * en PayPhone (Cajita no expone API de reverso); en cambio crea un
+   * `RefundRequest(PENDING)` que el superadmin procesa manualmente desde
+   * /admin/refunds tras hacer el reverso en PayPhone Business.
+   *
+   * Resultado para el caller:
+   *   • `queued: true`  → solicitud creada, Payment quedó en PENDING_REFUND.
+   *   • `queued: false` → no aplica reembolso (sin pago aprobado, fuera
+   *     de ventana <24h, etc) — el motivo está en `reason`.
    *
    * Refund eligibility:
-   *   • caller is CLINIC of this appointment, OR
-   *   • caller is the PATIENT and cancellation is >24h before the cita.
+   *   • caller es CLINIC dueña de la cita → siempre eligible.
+   *   • caller es el PATIENT y faltan >=24h para la cita → eligible.
+   *   • cualquier otro caso → no eligible (returns queued:false).
+   *
+   * Idempotente: si ya hay una RefundRequest en PENDING/PROCESSED para
+   * este Payment, devuelve esa misma sin crear otra.
    */
   async refund(
     appointmentId: string,
     user:          AuthUser,
-  ): Promise<ServiceResult<{ refunded: boolean; reason: string }>> {
+    requestReason?: string,
+  ): Promise<ServiceResult<{ queued: boolean; reason: string; refundRequestId?: string }>> {
     const { prisma } = await import('@medicget/shared/prisma');
     const appt = await prisma.appointment.findUnique({
       where:   { id: appointmentId },
-      include: { patient: true, payment: true, clinic: true },
+      include: { patient: true, payment: { include: { refundRequest: true } }, clinic: true },
     });
-    if (!appt)                                  return { ok: false, code: 'NOT_FOUND',  message: 'Cita no encontrada.' };
+    if (!appt) return { ok: false, code: 'NOT_FOUND',  message: 'Cita no encontrada.' };
     if (!appt.payment || appt.payment.status !== 'PAID') {
-      return { ok: true, data: { refunded: false, reason: 'No había pago aprobado.' } };
+      // Si el pago ya está en PENDING_REFUND devolvemos la request existente
+      // (cubre el caso "el paciente clickea cancelar dos veces seguidas").
+      if (appt.payment?.status === 'PENDING_REFUND' && appt.payment.refundRequest) {
+        return {
+          ok: true,
+          data: {
+            queued: true,
+            reason: 'Ya hay una solicitud de reembolso en curso para esta cita.',
+            refundRequestId: appt.payment.refundRequest.id,
+          },
+        };
+      }
+      return { ok: true, data: { queued: false, reason: 'No había pago aprobado.' } };
     }
 
-    // Authorisation
+    // Authorisation + ventana de tiempo.
     if (user.role === 'CLINIC') {
       const clinic = await prisma.clinic.findUnique({ where: { userId: user.id } });
       if (!clinic || appt.clinicId !== clinic.id) {
@@ -288,7 +312,7 @@ export const paymentService = {
         return {
           ok: true,
           data: {
-            refunded: false,
+            queued: false,
             reason: `Las cancelaciones con menos de ${REFUND_HOURS_THRESHOLD}h de anticipación no son reembolsables.`,
           },
         };
@@ -297,21 +321,38 @@ export const paymentService = {
       return { ok: false, code: 'FORBIDDEN', message: 'No tenés permiso para reembolsar.' };
     }
 
-    if (!appt.payment.payphonePaymentId) {
-      return { ok: false, code: 'BAD_REQUEST', message: 'Pago sin id de PayPhone — reembolso manual.' };
-    }
-
-    const cancel = await payphone.cancelSale(appt.payment.payphonePaymentId);
-    if (!cancel.ok) {
-      return { ok: false, code: 'BAD_GATEWAY', message: `PayPhone rechazó el reembolso: ${cancel.error}` };
-    }
-
-    await prisma.payment.update({
-      where: { appointmentId: appt.id },
-      data:  { status: 'REFUNDED', refundedAt: new Date() },
+    // Transacción: crear RefundRequest + marcar Payment como PENDING_REFUND.
+    // Usamos upsert sobre paymentId (único) para resistir double-clicks.
+    const refundRequest = await prisma.refundRequest.upsert({
+      where:  { paymentId: appt.payment.id },
+      update: {}, // no-op si ya existe
+      create: {
+        paymentId:         appt.payment.id,
+        appointmentId:     appt.id,
+        status:            'PENDING',
+        requestedByUserId: user.id,
+        requestReason:     requestReason?.trim() || null,
+      },
     });
 
-    return { ok: true, data: { refunded: true, reason: 'Reembolsado al medio de pago original.' } };
+    if (appt.payment.status === 'PAID') {
+      await prisma.payment.update({
+        where: { id: appt.payment.id },
+        data:  { status: 'PENDING_REFUND' },
+      });
+    }
+
+    // Side effects fire-and-forget — el caller no espera por las notifs.
+    void notifyRefundRequested(appt.id, refundRequest.id).catch(() => {/* swallow */});
+
+    return {
+      ok: true,
+      data: {
+        queued: true,
+        reason: 'Solicitud de reembolso creada. El equipo la procesa en 3-5 días hábiles.',
+        refundRequestId: refundRequest.id,
+      },
+    };
   },
 
   /**
@@ -513,5 +554,106 @@ async function notifyAppointmentConfirmed(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[notifyAppointmentConfirmed] failed:', err);
+  }
+}
+
+/**
+ * Side effect de "solicitud de reembolso creada". Notifica:
+ *   • Al paciente (in-app + push + email): "tu reembolso está en proceso".
+ *   • A todos los ADMIN (in-app + push): "hay una nueva solicitud pendiente".
+ *
+ * Best-effort — si el envío de algún email falla, swalloweamos para no
+ * romper el flow de cancelación.
+ */
+async function notifyRefundRequested(
+  appointmentId:   string,
+  refundRequestId: string,
+): Promise<void> {
+  try {
+    const { prisma } = await import('@medicget/shared/prisma');
+    const appt = await prisma.appointment.findUnique({
+      where:   { id: appointmentId },
+      include: {
+        patient: { include: { user: { include: { profile: true } } } },
+        doctor:  { include: { user: { include: { profile: true } } } },
+        payment: true,
+      },
+    });
+    if (!appt) return;
+
+    const patientFirst = appt.patient.user.profile?.firstName ?? 'paciente';
+    const docName      = `${appt.doctor.user.profile?.firstName ?? ''} ${appt.doctor.user.profile?.lastName ?? ''}`.trim();
+    const dateShort    = new Date(appt.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+    const amount       = appt.payment?.amount ?? 0;
+
+    // ─── 1. Notif al paciente ───────────────────────────────────────────
+    await createNotification({
+      userId:   appt.patient.userId,
+      type:     'REFUND_REQUESTED',
+      title:    'Reembolso en proceso',
+      message:  `Tu cita con Dr. ${docName} fue cancelada. Procesamos tu reembolso de $${amount.toFixed(2)} en 3-5 días hábiles.`,
+      metadata: { appointmentId, refundRequestId },
+      pushUrl:  `/patient/appointments/${appointmentId}`,
+    }).catch(() => {/* swallow */});
+
+    // ─── 2. Notif in-app a todos los ADMIN ──────────────────────────────
+    // Lista chica (≤decenas), no hace falta paginar.
+    const admins = await prisma.user.findMany({
+      where:  { role: 'ADMIN', status: 'ACTIVE' },
+      select: { id: true },
+    });
+    await Promise.all(
+      admins.map((admin) =>
+        createNotification({
+          userId:   admin.id,
+          type:     'REFUND_REQUESTED',
+          title:    'Nueva solicitud de reembolso',
+          message:  `${patientFirst} canceló su cita con Dr. ${docName} (${dateShort} ${appt.time}). Monto $${amount.toFixed(2)} pendiente de reverso en PayPhone.`,
+          metadata: { appointmentId, refundRequestId },
+          pushUrl:  `/admin/refunds`,
+        }).catch(() => {/* swallow */}),
+      ),
+    );
+
+    // ─── 3. Email al paciente ──────────────────────────────────────────
+    if (!appt.patient.user.email) return;
+
+    const html = `
+      <!doctype html><html><body style="font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;padding:24px">
+        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #e2e8f0">
+          <h1 style="font-size:22px;color:#0f172a;margin:0 0 8px">Reembolso en proceso, ${patientFirst}</h1>
+          <p style="font-size:15px;color:#475569;margin:0 0 16px;line-height:1.5">
+            Tu cita con <strong>Dr. ${docName}</strong> del ${dateShort} a las ${appt.time} fue cancelada y aplicaste a reembolso.
+          </p>
+          <div style="background:#f1f5f9;border-radius:12px;padding:20px;margin:24px 0">
+            <p style="margin:0 0 6px;font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Monto a reembolsar</p>
+            <p style="margin:0;font-size:28px;font-weight:700;color:#0f172a">$${amount.toFixed(2)}</p>
+          </div>
+          <p style="font-size:14px;color:#475569;margin:0 0 14px;line-height:1.6">
+            Nuestro equipo procesa el reverso en <strong>3 a 5 días hábiles</strong>. Vas a verlo reflejado en el mismo medio con el que pagaste.
+          </p>
+          <p style="font-size:13px;color:#94a3b8;margin:24px 0 0">
+            Si tenés dudas, escribinos a <a href="mailto:soportemedicget@abisoft.it" style="color:#2563eb">soportemedicget@abisoft.it</a>.
+          </p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0"/>
+          <p style="font-size:11px;color:#94a3b8;margin:0">MedicGet · Correo automático, no respondas a este mensaje.</p>
+        </div>
+      </body></html>`;
+    const text = [
+      `Reembolso en proceso.`,
+      `Cita con Dr. ${docName} (${dateShort} ${appt.time}) cancelada.`,
+      `Monto a reembolsar: $${amount.toFixed(2)}.`,
+      `Lo procesamos en 3-5 días hábiles al mismo medio de pago.`,
+    ].join('\n');
+
+    await sendEmail({
+      to:      appt.patient.user.email,
+      subject: `Reembolso en proceso · $${amount.toFixed(2)}`,
+      html,
+      text,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[notifyRefundRequested] failed:', err);
   }
 }

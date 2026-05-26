@@ -23,7 +23,15 @@ export const doctorsRepository = {
   async findMany(filters: DoctorFilters, pagination: PaginationParams) {
     const { skip, take } = toSkipTake(pagination);
 
-    const where: Record<string, unknown> = {};
+    // Filtros base no negociables para el directorio público:
+    //   • Solo VERIFIED — médicos sin licencia aprobada NO aparecen.
+    //   • Solo ACTIVE — un médico INACTIVE/DELETED tampoco.
+    // El admin tiene endpoints separados (`/admin/verifications`) que NO
+    // pasan por este repo, así que esos filtros se mantienen acá sin opt-out.
+    const where: Record<string, unknown> = {
+      licenseVerificationStatus: 'VERIFIED',
+      status:                    'ACTIVE',
+    };
 
     if (filters.specialty) {
       where.specialty = { contains: filters.specialty, mode: 'insensitive' };

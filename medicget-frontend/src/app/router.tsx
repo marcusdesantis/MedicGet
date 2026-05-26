@@ -39,6 +39,8 @@ import { DoctorReportsPage }  from '@/features/doctor/reports/pages/DoctorReport
 import { AdminDashboardPage }     from '@/features/admin/dashboard/pages/AdminDashboardPage';
 import { AdminUsersPage }         from '@/features/admin/users/pages/AdminUsersPage';
 import { AdminPaymentsPage }      from '@/features/admin/payments/pages/AdminPaymentsPage';
+import { AdminRefundsPage }       from '@/features/admin/refunds/pages/AdminRefundsPage';
+import { AdminVerificationsPage } from '@/features/admin/verifications/pages/AdminVerificationsPage';
 import { AdminSettingsPage }      from '@/features/admin/settings/pages/AdminSettingsPage';
 
 // Shared (chat + presencial detail + payment) pages
@@ -70,7 +72,7 @@ import { SpecialtiesPage } from '@/features/clinic/specialties/pages/Specialties
 import {
   LayoutDashboard, Search, CalendarDays, FileText, User,
   Stethoscope, Calendar, Users, BarChart2, CreditCard, BookOpen,
-  Settings as SettingsIcon, Building2,
+  Settings as SettingsIcon, Building2, RotateCcw, ShieldCheck,
 } from 'lucide-react';
 import type { NavItem } from '@/components/layout/Sidebar';
 
@@ -106,6 +108,8 @@ const clinicNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { label: 'Panel general',  path: '/admin',               icon: LayoutDashboard },
   { label: 'Usuarios',       path: '/admin/users',         icon: Users },
+  { label: 'Verificaciones', path: '/admin/verifications', icon: ShieldCheck },
+  { label: 'Reembolsos',     path: '/admin/refunds',       icon: RotateCcw },
   { label: 'Pagos',          path: '/admin/payments',      icon: CreditCard },
   { label: 'Configuración',  path: '/admin/settings',      icon: SettingsIcon },
 ];
@@ -210,6 +214,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true,                 element: <AdminDashboardPage /> },
       { path:  'users',              element: <AdminUsersPage /> },
+      { path:  'verifications',      element: <AdminVerificationsPage /> },
+      { path:  'refunds',            element: <AdminRefundsPage /> },
       { path:  'payments',           element: <AdminPaymentsPage /> },
       { path:  'settings',           element: <AdminSettingsPage /> },
     ],

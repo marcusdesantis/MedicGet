@@ -10,6 +10,9 @@ export const updateDoctorSchema = z
     languages: z.array(z.string()).optional(),
     available: z.boolean().optional(),
     licenseNumber: z.string().optional(),
+    /// Autoridad emisora — texto libre. Ej: "MSP Ecuador", "FNOMCeO Italia",
+    /// "CMP Perú". Lo usa el admin como contexto al revisar el documento.
+    licenseAuthority: z.string().max(120).optional(),
     // Allowed appointment modalities — at least one must remain selected
     // (otherwise patients can't book at all). Validated as a non-empty
     // array of the canonical enum values.

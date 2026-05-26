@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard, Star } from 'lucide-react';
+import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard, Star, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { ReviewModal } from '@/features/shared/reviews/ReviewModal';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { Tabs }          from '@/components/ui/Tabs';
@@ -43,6 +44,8 @@ export function PatientAppointmentsPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<AppointmentDto | null>(null);
+  /** Cita seleccionada para el modal de cancelación (con política de reembolso). */
+  const [pendingCancel, setPendingCancel] = useState<AppointmentDto | null>(null);
 
   const { state, refetch } = useApi<PaginatedData<AppointmentDto>>(
     () => appointmentsApi.list({ pageSize: 100 }),
@@ -56,25 +59,42 @@ export function PatientAppointmentsPage() {
     );
   }, [state, activeTab]);
 
-  const handleCancel = async (id: string) => {
-    if (!confirm('¿Seguro que deseas cancelar esta cita?')) return;
-    setCancellingId(id);
+  /**
+   * Confirma la cancelación tras el modal. El backend evalúa si aplica
+   * reembolso (>=24h + payment.status=PAID) y crea una RefundRequest si
+   * corresponde. Acá mostramos el toast acorde y refetcheamos.
+   */
+  const confirmCancel = async (appt: AppointmentDto, reason: string) => {
+    setCancellingId(appt.id);
     setActionError(null);
     try {
-      // Pacientes cancelan vía PATCH con status: CANCELLED.
-      // El DELETE es exclusivo de CLINIC (por eso tiraba FORBIDDEN antes).
-      // El backend internamente libera el slot y dispara el reembolso
-      // automático si la cita estaba pagada y faltan más de 24h.
-      await appointmentsApi.update(id, { status: 'CANCELLED' });
+      await appointmentsApi.update(appt.id, {
+        status:       'CANCELLED',
+        cancelReason: reason || undefined,
+      });
+      const wouldRefund = appointmentQualifiesForRefund(appt);
+      if (wouldRefund) {
+        toast.success('Cita cancelada. Tu reembolso está en proceso (3-5 días hábiles).');
+      } else {
+        toast.success('Cita cancelada.');
+      }
+      setPendingCancel(null);
       refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })
           ?.response?.data?.error?.message ?? 'No se pudo cancelar la cita';
       setActionError(msg);
+      toast.error(msg);
     } finally {
       setCancellingId(null);
     }
+  };
+
+  /** Helper para el calendar view, que no abre modal — usa confirm legacy. */
+  const handleCancelFromCalendar = (id: string) => {
+    const appt = state.status === 'ready' ? state.data.data.find((x) => x.id === id) : null;
+    if (appt) setPendingCancel(appt);
   };
 
   return (
@@ -120,7 +140,7 @@ export function PatientAppointmentsPage() {
         <AppointmentCalendar
           appointments={state.data.data}
           role="patient"
-          onCancel={(appt) => handleCancel(appt.id)}
+          onCancel={(appt) => handleCancelFromCalendar(appt.id)}
           actingId={cancellingId}
         />
       )}
@@ -170,6 +190,16 @@ export function PatientAppointmentsPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-slate-800 dark:text-white">{doctorName(a)}</p>
                         <StatusBadge status={a.status.toLowerCase()} statusMap={appointmentStatusMap} size="sm" />
+                        {a.payment?.status === 'PENDING_REFUND' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-md text-[11px] font-semibold">
+                            <Loader2 size={10} className="animate-spin" /> Reembolso en proceso
+                          </span>
+                        )}
+                        {a.payment?.status === 'REFUNDED' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-md text-[11px] font-semibold">
+                            <CheckCircle2 size={10} /> Reembolsado
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-blue-600 font-medium">{a.doctor?.specialty ?? '—'}</p>
                       {a.notes && <p className="text-xs text-slate-400 mt-0.5 truncate">{a.notes}</p>}
@@ -255,7 +285,7 @@ export function PatientAppointmentsPage() {
                     )}
                     {cancellable && (
                       <button
-                        onClick={() => handleCancel(a.id)}
+                        onClick={() => setPendingCancel(a)}
                         disabled={cancellingId === a.id}
                         className="ml-2 inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-2 py-1.5 rounded-lg transition disabled:opacity-50"
                       >
@@ -278,6 +308,136 @@ export function PatientAppointmentsPage() {
           onSaved={() => { setReviewing(null); refetch(); }}
         />
       )}
+
+      {pendingCancel && (
+        <CancelAppointmentModal
+          appointment={pendingCancel}
+          submitting={cancellingId === pendingCancel.id}
+          onClose={() => setPendingCancel(null)}
+          onConfirm={(reason) => confirmCancel(pendingCancel, reason)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Modal de confirmación de cancelación con política de reembolso visible.
+ *
+ * Lógica de elegibilidad (debe espejar `paymentService.refund` del backend):
+ *   • Cita con pago PAID → reembolsable si la cita es >=24h en el futuro.
+ *   • Sin pago aprobado o cita <24h → cancela pero sin reembolso.
+ *
+ * El modal pide un `cancelReason` libre (opcional pero recomendado, va al
+ * admin cuando procesa el reverso).
+ */
+const REFUND_HOURS_THRESHOLD = 24;
+
+function appointmentQualifiesForRefund(appt: AppointmentDto): boolean {
+  if (!appt.payment || appt.payment.status !== 'PAID') return false;
+  const hoursUntil = hoursUntilAppointment(appt);
+  return hoursUntil >= REFUND_HOURS_THRESHOLD;
+}
+
+function hoursUntilAppointment(appt: AppointmentDto): number {
+  // El backend asume Ecuador (UTC-5) — replicamos acá para que el preview
+  // coincida con la decisión real.
+  const slot = new Date(`${appt.date.slice(0, 10)}T${appt.time}:00-05:00`);
+  return (slot.getTime() - Date.now()) / (60 * 60 * 1000);
+}
+
+function CancelAppointmentModal({
+  appointment, submitting, onClose, onConfirm,
+}: {
+  appointment: AppointmentDto;
+  submitting:  boolean;
+  onClose:     () => void;
+  onConfirm:   (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const refundable = appointmentQualifiesForRefund(appointment);
+  const hours      = Math.max(0, Math.floor(hoursUntilAppointment(appointment)));
+  const hasPaidPayment = appointment.payment?.status === 'PAID';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-md w-full p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 dark:text-white">Cancelar cita</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              {doctorName(appointment)} · {fmtDate(appointment.date)} {appointment.time}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" disabled={submitting}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Política de reembolso visible ANTES de confirmar */}
+        {hasPaidPayment ? (
+          refundable ? (
+            <div className="rounded-xl border bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 p-4 mb-4">
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 inline-flex items-center gap-2">
+                <CheckCircle2 size={16} /> Reembolso aplicable
+              </p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-200 mt-1.5">
+                Faltan {hours}h para tu cita. Se devolverán <strong>${appointment.payment?.amount.toFixed(2)}</strong> al mismo medio de pago. Procesamos el reverso en 3-5 días hábiles.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 p-4 mb-4">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 inline-flex items-center gap-2">
+                <AlertTriangle size={16} /> Sin reembolso
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-200 mt-1.5">
+                Tu cita es en menos de {REFUND_HOURS_THRESHOLD}h ({hours}h restantes). Las cancelaciones con menos de {REFUND_HOURS_THRESHOLD}h de anticipación no son reembolsables — vas a cancelar pero no se devuelve el monto.
+              </p>
+            </div>
+          )
+        ) : (
+          <div className="rounded-xl border bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 p-4 mb-4">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Esta cita todavía no está pagada — al cancelarla simplemente liberás el horario para otro paciente.
+            </p>
+          </div>
+        )}
+
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5 uppercase tracking-wide">
+            Motivo de la cancelación (opcional)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="ej: Surgió un imprevisto laboral."
+            maxLength={300}
+            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+          />
+          <p className="text-[11px] text-slate-400 mt-1">{reason.length}/300</p>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition disabled:opacity-50"
+          >
+            Volver
+          </button>
+          <button
+            onClick={() => onConfirm(reason)}
+            disabled={submitting}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 transition disabled:opacity-50"
+          >
+            {submitting && <Loader2 size={14} className="animate-spin" />}
+            Confirmar cancelación
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

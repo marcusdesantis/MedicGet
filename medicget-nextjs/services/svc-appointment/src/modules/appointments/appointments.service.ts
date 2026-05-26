@@ -90,6 +90,18 @@ export const appointmentsService = {
     const doctor = await prisma.doctor.findUnique({ where: { id: body.doctorId } });
     if (!doctor) return { ok: false, code: 'NOT_FOUND', message: 'Doctor not found' };
 
+    // Bloqueamos bookings contra médicos cuya licencia no fue verificada
+    // por un admin. El directorio público ya los oculta (svc-doctor.list
+    // filtra por status=VERIFIED), pero acá enforcement final por si
+    // alguien arma el POST manualmente con curl/devtools.
+    if (doctor.licenseVerificationStatus !== 'VERIFIED') {
+      return {
+        ok: false,
+        code: 'FORBIDDEN',
+        message: 'Este médico todavía no completó la verificación de su licencia. No podés reservar con él por ahora.',
+      };
+    }
+
     // Validate patient exists
     const patient = await prisma.patient.findUnique({ where: { id: body.patientId } });
     if (!patient) return { ok: false, code: 'NOT_FOUND', message: 'Patient not found' };
@@ -314,17 +326,20 @@ export const appointmentsService = {
       }
     }
 
-    // If cancelling, unbook the slot AND attempt automatic refund. The
-    // refund call is no-op-safe — it returns refunded:false with a reason
-    // when the cita is <24h away (PATIENT path) or there's no PAID
-    // payment to refund. We don't surface the refund result to the
-    // update response because the existing UI doesn't expect it; the
-    // patient's appointments list will pick up the new payment.status on
-    // the next refetch.
+    // Al cancelar:
+    //   1. Libera el slot (queda disponible para otro paciente).
+    //   2. Abre una RefundRequest si aplica (PATIENT con >=24h o CLINIC
+    //      siempre). El refund NO ejecuta el reverso real — solo encola
+    //      para que el admin lo procese en PayPhone Business y luego marque
+    //      PROCESSED desde /admin/refunds (ver paymentService.refund).
+    //   3. Notifica a la otra parte (in-app + push + email).
+    //
+    // Hacemos `await` en refund (no fire-and-forget) para garantizar que
+    // Payment.status quede en PENDING_REFUND antes de que el frontend
+    // re-fetchee — sino el usuario ve un estado intermedio inconsistente.
     if (body.status === 'CANCELLED') {
       await appointmentsRepository.unbookSlot(id);
-      void paymentService.refund(id, user).catch(() => {/* logged in service */});
-      // Notificar a la otra parte de la cancelación.
+      await paymentService.refund(id, user, body.cancelReason).catch(() => {/* logged in service */});
       void notifyCancellation(id, user.id).catch(() => {/* swallow */});
     }
 
@@ -421,8 +436,9 @@ export const appointmentsService = {
     }
 
     await appointmentsRepository.unbookSlot(id);
-    // Clinic-initiated cancel always refunds (no 24h rule for the clinic).
-    void paymentService.refund(id, user).catch(() => {/* logged in service */});
+    // Cancelación por clínica siempre encola reembolso (sin regla de 24h).
+    // Await para que Payment.status quede en PENDING_REFUND antes del response.
+    await paymentService.refund(id, user, 'Cancelación iniciada por la clínica.').catch(() => {/* logged in service */});
     const deleted = await appointmentsRepository.softDelete(id, user.id);
     return { ok: true, data: deleted };
   },

@@ -58,8 +58,38 @@ enum PaymentMethod {
 enum PaymentStatus {
   PENDING
   PAID
+  /// El paciente (o la clínica) canceló una cita pagada y aplicaba
+  /// reembolso (≥24h antes). El admin tiene que procesar el reverso en
+  /// el panel PayPhone Business y luego marcar la RefundRequest como
+  /// PROCESSED — en ese momento la pasamos a REFUNDED.
+  PENDING_REFUND
   REFUNDED
   FAILED
+}
+
+/// Workflow de revisión documental — comparte forma con cualquier doc
+/// que el admin tenga que aprobar manualmente. Hoy se usa para la
+/// licencia médica del Doctor.
+enum VerificationStatus {
+  /// El médico todavía no subió el documento.
+  NOT_SUBMITTED
+  /// Documento cargado, esperando revisión del superadmin.
+  PENDING_REVIEW
+  /// Aprobado — el médico puede recibir reservas.
+  VERIFIED
+  /// Rechazado — `licenseRejectionReason` explica por qué. El médico puede
+  /// volver a subir un documento nuevo (vuelve a PENDING_REVIEW).
+  REJECTED
+}
+
+/// Estado de una solicitud de reembolso (`RefundRequest`).
+enum RefundRequestStatus {
+  /// Esperando que el admin haga el reverso manual en PayPhone Business.
+  PENDING
+  /// Admin confirmó que ya hizo el reverso — el dinero volvió al cliente.
+  PROCESSED
+  /// Admin rechazó el pedido — `processorNotes` debe contener el motivo.
+  REJECTED
 }
 
 enum NotificationType {
@@ -74,6 +104,18 @@ enum NotificationType {
   REVIEW_RECEIVED
   /// Verificación de email pendiente / completada.
   EMAIL_VERIFICATION
+  /// Se creó una RefundRequest tras cancelar una cita con reembolso aplicable.
+  REFUND_REQUESTED
+  /// Admin confirmó el reverso en PayPhone — el paciente lo va a ver en 3-5 días hábiles.
+  REFUND_PROCESSED
+  /// Admin rechazó la solicitud de reembolso — la notif incluye el motivo.
+  REFUND_REJECTED
+  /// El médico subió su documento de licencia y queda en cola admin.
+  LICENSE_PENDING_REVIEW
+  /// Admin verificó la licencia — el médico ya puede recibir bookings.
+  LICENSE_VERIFIED
+  /// Admin rechazó la licencia — la notif incluye el motivo.
+  LICENSE_REJECTED
   SYSTEM
 }
 
@@ -187,6 +229,30 @@ model Doctor {
   clinicId        String?
   specialty       String
   licenseNumber   String?
+  /// País / autoridad emisora de la licencia — texto libre para soportar
+  /// múltiples mercados (ej: "MSP Ecuador", "FNOMCeO Italia", "CMP Perú").
+  /// El admin lo usa como contexto al revisar el documento.
+  licenseAuthority String?
+  /// Documento escaneado del título / colegiatura, guardado como dataURL
+  /// (`data:image/jpeg;base64,...` o `data:application/pdf;base64,...`).
+  /// Mismo patrón que avatarUrl y attachmentUrl — cuando migremos a object
+  /// storage (S3) esto se reemplaza por un URL firmado. Solo el médico
+  /// dueño y los ADMIN pueden descargarlo (enforcement en el service).
+  licenseDocumentUrl  String?
+  licenseDocumentMime String?
+  licenseDocumentUploadedAt DateTime?
+  /// Estado de la revisión. Cuando vale VERIFIED el médico aparece en
+  /// búsqueda y puede recibir bookings. Cualquier otro valor lo oculta
+  /// y bloquea bookings (ver svc-doctor.list y svc-appointment.create).
+  licenseVerificationStatus VerificationStatus @default(NOT_SUBMITTED)
+  /// Timestamp en que el admin aprobó la licencia. Lo mantenemos aún si
+  /// luego se reasignó a PENDING_REVIEW para auditoría (no se borra).
+  licenseVerifiedAt   DateTime?
+  /// User.id del admin que verificó / rechazó. Útil para "quién aprobó qué".
+  licenseVerifiedBy   String?
+  /// Motivo del rechazo — siempre presente cuando status = REJECTED.
+  /// Se le muestra al médico para que pueda subir un documento corregido.
+  licenseRejectionReason String?
   experience      Int        @default(0)
   pricePerConsult Float      @default(0)
   bio             String?
@@ -216,6 +282,7 @@ model Doctor {
   @@index([specialty])
   @@index([available])
   @@index([status])
+  @@index([licenseVerificationStatus])
 }
 
 // ─── Doctor Availability / Schedule ──────────────────────────────────────────
@@ -406,10 +473,64 @@ model Payment {
   updatedAt     DateTime      @updatedAt
 
   appointment  Appointment?  @relation(fields: [appointmentId],  references: [id])
+  refundRequest RefundRequest?
 
   @@index([status])
   @@index([method])
   @@index([expiresAt])
+}
+
+// ─── Refund Requests ──────────────────────────────────────────────────────────
+//
+// Cola operacional de reembolsos. Cuando el paciente (o la clínica) cancela
+// una cita pagada y aplica reembolso (paciente ≥24h antes, clínica siempre),
+// el sistema crea un RefundRequest con status PENDING en vez de marcar
+// directamente el Payment como REFUNDED.
+//
+// El motivo es que PayPhone Cajita NO expone API de reverso — el reverso
+// real lo hace un admin manualmente desde el panel PayPhone Business. Esta
+// tabla es el bridge entre el pedido del paciente y la acción operacional:
+//   1. Cliente cancela → RefundRequest(PENDING) + Payment(PENDING_REFUND).
+//   2. Admin entra a /admin/refunds, ve la lista de pendientes.
+//   3. Admin hace el reverso en PayPhone Business y anota el reference id.
+//   4. Admin marca PROCESSED en MedicGet → Payment pasa a REFUNDED +
+//      notificación al paciente "tu reembolso fue procesado".
+//   5. Si admin rechaza (ej: error de comunicación, paciente ya recibió
+//      el servicio): RefundRequest(REJECTED), Payment vuelve a PAID, y se
+//      notifica al paciente con el motivo.
+//
+// Una RefundRequest siempre está atada a un Payment (1:1). No soportamos
+// reembolsos parciales en MVP — el monto del refund = Payment.amount.
+
+model RefundRequest {
+  id              String              @id @default(cuid())
+  paymentId       String              @unique
+  /// Denormalizado para queries del admin ("dame todas las solicitudes
+  /// con appointment del médico X") sin tener que joinear Payment.
+  appointmentId   String?
+  status          RefundRequestStatus @default(PENDING)
+  /// User.id del paciente o de la clínica que disparó la cancelación.
+  requestedByUserId String
+  /// Texto libre opcional ingresado al cancelar — útil para que el admin
+  /// entienda el contexto antes de procesar.
+  requestReason   String?
+  requestedAt     DateTime            @default(now())
+  /// User.id del admin que procesó / rechazó.
+  processedByUserId String?
+  processedAt     DateTime?
+  /// Notas internas del admin. Cuando status=REJECTED, este campo se
+  /// envía al paciente como explicación.
+  processorNotes  String?
+  /// ID del reverso en PayPhone Business — lo ingresa el admin al marcar
+  /// PROCESSED para auditoría cruzada. Opcional para casos donde el
+  /// reverso se hizo por otro canal (transferencia, efectivo).
+  externalReference String?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([appointmentId])
+  @@index([requestedAt])
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff, Lock, ArrowRight } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff, Lock, ArrowRight, ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion, Upload, FileText } from 'lucide-react';
 import { Link }         from 'react-router-dom';
+import { toast }        from 'sonner';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
 import { Avatar }         from '@/components/ui/Avatar';
@@ -15,7 +16,7 @@ import { LocationPicker, type LocationValue } from '@/components/ui/LocationPick
 import { PhoneField } from '@/components/ui/PhoneField';
 import { useAuth }      from '@/context/AuthContext';
 import { useApi }       from '@/hooks/useApi';
-import { doctorsApi, usersApi, type DoctorDto, type AppointmentModality } from '@/lib/api';
+import { doctorsApi, usersApi, type DoctorDto, type AppointmentModality, type VerificationStatus } from '@/lib/api';
 
 /**
  * Doctor profile — edits BOTH the User.Profile (firstName, lastName, phone)
@@ -59,8 +60,9 @@ export function DoctorProfilePage() {
     phone:     '',
     avatarUrl: '',
     // Doctor fields
-    specialty:       '',
-    licenseNumber:   '',
+    specialty:        '',
+    licenseNumber:    '',
+    licenseAuthority: '',
     experience:      '',
     pricePerConsult: '',
     consultDuration: '',
@@ -92,8 +94,9 @@ export function DoctorProfilePage() {
       lastName:        profile?.lastName  ?? '',
       phone:           profile?.phone     ?? '',
       avatarUrl:       profile?.avatarUrl ?? '',
-      specialty:       d.specialty,
-      licenseNumber:   d.licenseNumber ?? '',
+      specialty:        d.specialty,
+      licenseNumber:    d.licenseNumber ?? '',
+      licenseAuthority: d.licenseAuthority ?? '',
       experience:      String(d.experience ?? 0),
       pricePerConsult: String(d.pricePerConsult ?? 0),
       consultDuration: String(d.consultDuration ?? 30),
@@ -166,8 +169,9 @@ export function DoctorProfilePage() {
         }),
         // Doctor row
         doctorsApi.update(doctorId, {
-          specialty:       form.specialty.trim() || 'Médico General',
-          licenseNumber:   form.licenseNumber.trim() || undefined,
+          specialty:        form.specialty.trim() || 'Médico General',
+          licenseNumber:    form.licenseNumber.trim() || undefined,
+          licenseAuthority: form.licenseAuthority.trim() || undefined,
           experience:      Number(form.experience)      || 0,
           pricePerConsult: Number(form.pricePerConsult) || 0,
           consultDuration: Number(form.consultDuration) || 30,
@@ -298,10 +302,18 @@ export function DoctorProfilePage() {
                 <FormField label="Número de licencia / colegiatura">
                   <Input value={form.licenseNumber} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} />
                 </FormField>
-                <FormField label="Años de experiencia">
-                  <Input type="number" min="0" value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} />
+                <FormField label="Autoridad emisora">
+                  <Input
+                    placeholder="ej: MSP Ecuador, FNOMCeO Italia"
+                    value={form.licenseAuthority}
+                    onChange={(e) => setForm({ ...form, licenseAuthority: e.target.value })}
+                  />
                 </FormField>
               </div>
+
+              <FormField label="Años de experiencia">
+                <Input type="number" min="0" value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} />
+              </FormField>
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Precio por consulta (USD)">
@@ -334,6 +346,16 @@ export function DoctorProfilePage() {
               </FormField>
             </div>
           </SectionCard>
+
+          {/* Verificación de licencia — bloqueante para aparecer en búsqueda */}
+          <LicenseVerificationSection
+            doctorId={doctorId}
+            status={state.data.licenseVerificationStatus ?? 'NOT_SUBMITTED'}
+            verifiedAt={state.data.licenseVerifiedAt ?? null}
+            rejectionReason={state.data.licenseRejectionReason ?? null}
+            uploadedAt={state.data.licenseDocumentUploadedAt ?? null}
+            onChanged={refetch}
+          />
 
           {/* Visibilidad pública */}
           <SectionCard
@@ -508,6 +530,158 @@ function Field({ icon, label }: { icon: React.ReactNode; label: string }) {
       <span className="text-slate-400 mt-0.5">{icon}</span>
       <span className="text-slate-700 dark:text-slate-300 break-all">{label}</span>
     </div>
+  );
+}
+
+/**
+ * Sección "Verificación de licencia" — sube el documento, ve el estado.
+ *
+ * Flujo:
+ *   1. Médico clickea "Subir documento" → file picker (JPG/PNG/WebP/PDF, max 5MB).
+ *   2. Archivo se convierte a dataURL en el browser y se POSTea al backend.
+ *   3. Backend valida, guarda, transiciona status → PENDING_REVIEW, notifica admin.
+ *   4. Médico ve el badge "Pendiente de revisión".
+ *   5. Admin aprueba/rechaza desde /admin/verifications → notif + email al médico.
+ *   6. Si rechaza: motivo aparece acá; médico puede subir uno nuevo.
+ *
+ * Mientras el status no sea VERIFIED, el médico NO aparece en /medicos
+ * ni puede recibir reservas. El bloqueo lo enforce el backend (svc-doctor.list
+ * filtra por VERIFIED y svc-appointment.create también).
+ */
+const STATUS_META: Record<VerificationStatus, { label: string; icon: typeof ShieldQuestion; tone: string; help: string }> = {
+  VERIFIED: {
+    label: 'Verificado',
+    icon:  ShieldCheck,
+    tone:  'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
+    help:  'Tu perfil aparece en búsqueda y podés recibir citas. Si subís un documento nuevo, el status vuelve a "pendiente" hasta que el admin lo revise de nuevo.',
+  },
+  PENDING_REVIEW: {
+    label: 'Pendiente de revisión',
+    icon:  ShieldQuestion,
+    tone:  'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300',
+    help:  'Tu documento está en cola. El admin lo revisa y te avisamos por email apenas haya respuesta. Mientras tanto no aparecés en búsqueda.',
+  },
+  REJECTED: {
+    label: 'Rechazado',
+    icon:  ShieldX,
+    tone:  'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300',
+    help:  'Subí un documento corregido para que el admin lo revise nuevamente.',
+  },
+  NOT_SUBMITTED: {
+    label: 'Sin enviar',
+    icon:  ShieldAlert,
+    tone:  'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300',
+    help:  'Para empezar a recibir pacientes, subí una foto o PDF de tu título profesional / colegiatura.',
+  },
+};
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,application/pdf';
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function LicenseVerificationSection({
+  doctorId, status, verifiedAt, rejectionReason, uploadedAt, onChanged,
+}: {
+  doctorId:       string;
+  status:         VerificationStatus;
+  verifiedAt:     string | null;
+  rejectionReason: string | null;
+  uploadedAt:     string | null;
+  onChanged:      () => void;
+}) {
+  const meta = STATUS_META[status];
+  const Icon = meta.icon;
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error('El archivo supera los 5 MB. Reducí su tamaño y volvé a intentar.');
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+      toast.error('Formato no soportado. Aceptamos JPG, PNG, WebP o PDF.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      await doctorsApi.uploadLicense(doctorId, dataUrl);
+      toast.success('Documento enviado. Te avisamos cuando se revise.');
+      onChanged();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'Error al subir el documento.';
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <SectionCard
+      title="Verificación de licencia"
+      subtitle="Validamos manualmente el documento que cargues. Hasta aprobarse, tu perfil no es visible para pacientes."
+    >
+      <div className={`flex items-start gap-3 rounded-xl border p-4 ${meta.tone}`}>
+        <Icon size={22} className="mt-0.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold">{meta.label}</p>
+          <p className="text-xs mt-1 opacity-90">{meta.help}</p>
+
+          {status === 'REJECTED' && rejectionReason && (
+            <div className="mt-3 p-3 bg-white/60 dark:bg-black/20 rounded-lg border border-current/20">
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1">Motivo del rechazo</p>
+              <p className="text-sm">{rejectionReason}</p>
+            </div>
+          )}
+
+          {status === 'VERIFIED' && verifiedAt && (
+            <p className="text-xs mt-2 opacity-80">
+              Verificado el {new Date(verifiedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}.
+            </p>
+          )}
+
+          {status === 'PENDING_REVIEW' && uploadedAt && (
+            <p className="text-xs mt-2 opacity-80">
+              Documento enviado el {new Date(uploadedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          onChange={(e) => handleFile(e.target.files?.[0])}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
+        >
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          {status === 'NOT_SUBMITTED' ? 'Subir documento' : 'Reemplazar documento'}
+        </button>
+        <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
+          <FileText size={12} /> JPG, PNG, WebP o PDF · máx 5 MB
+        </p>
+      </div>
+    </SectionCard>
   );
 }
 

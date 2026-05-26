@@ -194,10 +194,30 @@ export interface ClinicDto {
   status:      string;
 }
 
+/**
+ * Estado de verificación de la licencia médica.
+ *   • NOT_SUBMITTED  — médico no subió ningún documento todavía.
+ *   • PENDING_REVIEW — documento cargado, admin debe revisar.
+ *   • VERIFIED       — admin aprobó. Único estado en el que el médico
+ *                      aparece en búsqueda pública y recibe bookings.
+ *   • REJECTED       — admin rechazó; `licenseRejectionReason` explica.
+ */
+export type VerificationStatus = 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
+
 export interface DoctorDto {
   id:              string;
   specialty:       string;
   licenseNumber?:  string;
+  /** País / autoridad emisora — texto libre. Ej: "MSP Ecuador". */
+  licenseAuthority?: string | null;
+  /** Estado de la verificación documental. Default NOT_SUBMITTED. */
+  licenseVerificationStatus?: VerificationStatus;
+  /** Cuándo fue aprobada por última vez (null si nunca, o si fue rechazada). */
+  licenseVerifiedAt?: string | null;
+  /** Motivo del rechazo — presente sólo cuando status = REJECTED. */
+  licenseRejectionReason?: string | null;
+  /** Fecha del último upload del documento. */
+  licenseDocumentUploadedAt?: string | null;
   experience:      number;
   pricePerConsult: number;
   bio?:            string;
@@ -592,6 +612,19 @@ export const doctorsApi = {
   deleteAvailability: (id: string, availId: string)     => apiDelete(`/doctors/${id}/availability/${availId}`),
   getSlots:           (id: string, date: string)         => apiGet<SlotDto[]>(`/doctors/${id}/slots`, { date }),
   getReviews:         (id: string, params?: Record<string, unknown>) => apiGet<PaginatedData<ReviewDto>>(`/doctors/${id}/reviews`, params),
+  /**
+   * Subir el documento de licencia (dataURL). Tras el upload el status
+   * pasa a PENDING_REVIEW. Solo el médico dueño puede llamar.
+   */
+  uploadLicense:      (id: string, dataUrl: string) =>
+    apiPost<{ status: VerificationStatus }>(`/doctors/${id}/license-document`, { dataUrl }),
+  /**
+   * Descargar el documento (dataURL). Solo el médico dueño o un ADMIN.
+   */
+  getLicense:         (id: string) =>
+    apiGet<{ url: string; mime: string | null; uploadedAt: string | null; status: VerificationStatus }>(
+      `/doctors/${id}/license-document`,
+    ),
 };
 
 /**
@@ -766,7 +799,7 @@ export interface PaymentRowDto {
   platformFee?:    number | null;
   doctorAmount?:   number | null;
   method:          string;
-  status:          'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED';
+  status:          'PENDING' | 'PAID' | 'PENDING_REFUND' | 'REFUNDED' | 'FAILED';
   paidAt?:         string | null;
   refundedAt?:     string | null;
   transactionId?:  string | null;
@@ -923,4 +956,92 @@ export const adminApi = {
     role: 'PATIENT' | 'DOCTOR' | 'CLINIC' | 'ADMIN';
     clinicName?: string; specialty?: string;
   }) => apiPost<{ user: UserDto; tempPassword: string }>('/admin/users/create', body),
+};
+
+// ─── Refunds (admin) ─────────────────────────────────────────────────────────
+
+export type RefundRequestStatus = 'PENDING' | 'PROCESSED' | 'REJECTED';
+
+export interface RefundRequestDto {
+  id:                string;
+  paymentId:         string;
+  appointmentId:     string | null;
+  status:            RefundRequestStatus;
+  requestedByUserId: string;
+  requestReason:     string | null;
+  requestedAt:       string;
+  processedByUserId: string | null;
+  processedAt:       string | null;
+  processorNotes:    string | null;
+  externalReference: string | null;
+  payment?: {
+    id:           string;
+    amount:       number;
+    method:       string;
+    status:       string;
+    appointment?: {
+      id:       string;
+      date:     string;
+      time:     string;
+      status:   string;
+      modality: AppointmentModality;
+      patient:  { user: { profile: ProfileDto } };
+      doctor:   { specialty: string; user: { profile: ProfileDto } };
+    };
+  };
+}
+
+/** Solicitudes de reembolso — superadmin only. */
+export const refundsApi = {
+  list: (params?: { status?: RefundRequestStatus | 'ALL'; page?: number; pageSize?: number }) =>
+    apiGet<PaginatedData<RefundRequestDto>>('/admin/refunds', params),
+  getById: (id: string) =>
+    apiGet<RefundRequestDto>(`/admin/refunds/${id}`),
+  /**
+   * Marca como PROCESSED tras haber hecho el reverso real en PayPhone Business.
+   * `externalReference` = id del reverso en PayPhone (opcional pero recomendado).
+   */
+  process: (id: string, body: { externalReference?: string; processorNotes?: string }) =>
+    apiPost<RefundRequestDto>(`/admin/refunds/${id}/process`, body),
+  /** Rechaza la solicitud. `processorNotes` es obligatorio (mín 5 chars). */
+  reject: (id: string, body: { processorNotes: string }) =>
+    apiPost<RefundRequestDto>(`/admin/refunds/${id}/reject`, body),
+};
+
+// ─── License Verifications (admin) ───────────────────────────────────────────
+
+/**
+ * Doctor en la cola de verificación. Subset de DoctorDto con la metadata
+ * relevante para el admin (nombre, especialidad, email, status, fecha).
+ * `licenseDocumentUrl` viene como `'__present__'` cuando hay documento
+ * cargado pero el dataURL real se obtiene aparte vía
+ * `doctorsApi.getLicense(id)` — evita que la lista sea pesada.
+ */
+export interface VerificationDoctorDto {
+  id:                         string;
+  specialty:                  string;
+  licenseNumber:              string | null;
+  licenseAuthority:           string | null;
+  licenseVerificationStatus:  VerificationStatus;
+  licenseVerifiedAt:          string | null;
+  licenseRejectionReason:     string | null;
+  licenseDocumentMime:        string | null;
+  licenseDocumentUploadedAt:  string | null;
+  licenseDocumentUrl:         '__present__' | null;
+  createdAt:                  string;
+  user: {
+    id:      string;
+    email:   string;
+    profile: ProfileDto;
+  };
+  clinic: { id: string; name: string } | null;
+}
+
+export const verificationsApi = {
+  list: (params?: { status?: VerificationStatus | 'ALL'; page?: number; pageSize?: number }) =>
+    apiGet<PaginatedData<VerificationDoctorDto>>('/admin/verifications', params),
+  approve: (doctorId: string) =>
+    apiPost<VerificationDoctorDto>(`/admin/verifications/${doctorId}/approve`, {}),
+  reject: (doctorId: string, body: { reason: string }) =>
+    apiPost<VerificationDoctorDto>(`/admin/verifications/${doctorId}/reject`, body),
 };
