@@ -19,7 +19,9 @@
     "./settings": "./src/settings.ts",
     "./subscription": "./src/subscription.ts",
     "./webpush": "./src/webpush.ts",
-    "./notifications": "./src/notifications.ts"
+    "./notifications": "./src/notifications.ts",
+    "./cedula": "./src/cedula.ts",
+    "./license-verifier": "./src/license-verifier.ts"
   },
   "scripts": {
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",

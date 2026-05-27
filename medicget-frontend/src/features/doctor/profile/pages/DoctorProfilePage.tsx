@@ -355,6 +355,8 @@ export function DoctorProfilePage() {
             verifiedAt={state.data.licenseVerifiedAt ?? null}
             rejectionReason={state.data.licenseRejectionReason ?? null}
             uploadedAt={state.data.licenseDocumentUploadedAt ?? null}
+            source={state.data.licenseVerificationSource ?? null}
+            nationalId={state.data.nationalId ?? null}
             onChanged={refetch}
           />
 
@@ -589,19 +591,50 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function LicenseVerificationSection({
-  doctorId, status, verifiedAt, rejectionReason, uploadedAt, onChanged,
+  doctorId, status, verifiedAt, rejectionReason, uploadedAt, source, nationalId, onChanged,
 }: {
   doctorId:       string;
   status:         VerificationStatus;
   verifiedAt:     string | null;
   rejectionReason: string | null;
   uploadedAt:     string | null;
+  source:         string | null;
+  nationalId:     string | null;
   onChanged:      () => void;
 }) {
   const meta = STATUS_META[status];
   const Icon = meta.icon;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // ── Verificación automática (ACESS) ──────────────────────────────────
+  const [cedula, setCedula]       = useState(nationalId ?? '');
+  const [verifying, setVerifying] = useState(false);
+  const showAutoVerify = status === 'NOT_SUBMITTED' || status === 'REJECTED';
+
+  const handleAutoVerify = async () => {
+    const value = cedula.trim();
+    if (value.length < 10) {
+      toast.error('Ingresá tu cédula de 10 dígitos.');
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await doctorsApi.requestVerification(doctorId, value);
+      if (res.data.autoVerified) {
+        toast.success('¡Cuenta verificada automáticamente vía ACESS! Ya aparecés en la búsqueda.');
+      } else {
+        toast.info(res.data.reason || 'No pudimos verificarte automáticamente. Subí tu documento para revisión manual.');
+      }
+      onChanged();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        ?.response?.data?.error?.message ?? 'Error al verificar. Intentá de nuevo o subí tu documento.';
+      toast.error(msg);
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -669,7 +702,9 @@ function LicenseVerificationSection({
 
           {status === 'VERIFIED' && verifiedAt && (
             <p className="text-xs mt-2 opacity-80">
-              Verificado el {new Date(verifiedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}.
+              Verificado el {new Date(verifiedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+              {source === 'ACESS_AUTO' && ' · automáticamente vía ACESS'}
+              {source === 'MANUAL' && ' · revisión manual del equipo'}.
             </p>
           )}
 
@@ -681,26 +716,64 @@ function LicenseVerificationSection({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED_TYPES}
-          onChange={(e) => handleFile(e.target.files?.[0])}
-          className="hidden"
-        />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
-        >
-          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          {status === 'NOT_SUBMITTED' ? 'Subir documento' : 'Reemplazar documento'}
-        </button>
-        <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
-          <FileText size={12} /> JPG, PNG, WebP o PDF · máx 5 MB
-        </p>
+      {/* Opción 1 (rápida): verificación automática contra ACESS por cédula */}
+      {showAutoVerify && (
+        <div className="mt-4 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-900/10 p-4">
+          <p className="text-sm font-semibold text-slate-800 dark:text-white mb-1">
+            Opción rápida · Verificación automática
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+            Ingresá tu cédula y validamos tu habilitación al instante contra el registro de ACESS (Ecuador). Si coincide, quedás verificado sin subir nada.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              placeholder="Cédula (10 dígitos)"
+              inputMode="numeric"
+              className="sm:max-w-[220px]"
+            />
+            <button
+              type="button"
+              onClick={handleAutoVerify}
+              disabled={verifying || cedula.trim().length < 10}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
+            >
+              {verifying ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+              Verificar automáticamente
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Opción 2 (fallback): subir documento para revisión manual */}
+      <div className="mt-4">
+        {showAutoVerify && (
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+            ¿No te encontró ACESS o preferís revisión manual? Subí tu documento:
+          </p>
+        )}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ACCEPTED_TYPES}
+            onChange={(e) => handleFile(e.target.files?.[0])}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition disabled:opacity-50"
+          >
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            {status === 'NOT_SUBMITTED' ? 'Subir documento' : 'Reemplazar documento'}
+          </button>
+          <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
+            <FileText size={12} /> JPG, PNG, WebP o PDF · máx 5 MB
+          </p>
+        </div>
       </div>
     </SectionCard>
   );

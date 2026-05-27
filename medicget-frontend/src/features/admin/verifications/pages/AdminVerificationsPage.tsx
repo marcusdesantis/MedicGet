@@ -200,6 +200,24 @@ function DoctorCard({
             <span className="font-mono text-slate-700 dark:text-slate-200">{doctor.licenseNumber}</span>
           </div>
         )}
+        {doctor.nationalId && (
+          <div className="flex justify-between">
+            <span className="text-slate-500">Cédula</span>
+            <span className="font-mono text-slate-700 dark:text-slate-200">{doctor.nationalId}</span>
+          </div>
+        )}
+        {doctor.licenseVerificationStatus === 'VERIFIED' && doctor.licenseVerificationSource && (
+          <div className="flex justify-between">
+            <span className="text-slate-500">Verificado vía</span>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+              doctor.licenseVerificationSource === 'ACESS_AUTO'
+                ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'
+                : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+            }`}>
+              {doctor.licenseVerificationSource === 'ACESS_AUTO' ? 'ACESS (auto)' : 'Manual'}
+            </span>
+          </div>
+        )}
         {doctor.licenseAuthority && (
           <div className="flex justify-between">
             <span className="text-slate-500">Autoridad</span>

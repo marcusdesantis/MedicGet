@@ -208,10 +208,14 @@ export interface DoctorDto {
   id:              string;
   specialty:       string;
   licenseNumber?:  string;
+  /** Cédula / DNI — usada para verificación automática ACESS. */
+  nationalId?:     string | null;
   /** País / autoridad emisora — texto libre. Ej: "MSP Ecuador". */
   licenseAuthority?: string | null;
   /** Estado de la verificación documental. Default NOT_SUBMITTED. */
   licenseVerificationStatus?: VerificationStatus;
+  /** Cómo se verificó: "MANUAL" | "ACESS_AUTO". */
+  licenseVerificationSource?: string | null;
   /** Cuándo fue aprobada por última vez (null si nunca, o si fue rechazada). */
   licenseVerifiedAt?: string | null;
   /** Motivo del rechazo — presente sólo cuando status = REJECTED. */
@@ -612,6 +616,13 @@ export const doctorsApi = {
   deleteAvailability: (id: string, availId: string)     => apiDelete(`/doctors/${id}/availability/${availId}`),
   getSlots:           (id: string, date: string)         => apiGet<SlotDto[]>(`/doctors/${id}/slots`, { date }),
   getReviews:         (id: string, params?: Record<string, unknown>) => apiGet<PaginatedData<ReviewDto>>(`/doctors/${id}/reviews`, params),
+  /**
+   * Verificación AUTOMÁTICA contra ACESS por cédula. Si el match es
+   * inequívoco, el médico queda VERIFIED sin necesidad de subir documento.
+   * Si no, `autoVerified:false` y el frontend ofrece el flujo manual.
+   */
+  requestVerification: (id: string, nationalId: string) =>
+    apiPost<{ autoVerified: boolean; reason: string }>(`/doctors/${id}/request-verification`, { nationalId }),
   /**
    * Subir el documento de licencia (dataURL). Tras el upload el status
    * pasa a PENDING_REVIEW. Solo el médico dueño puede llamar.
@@ -1021,8 +1032,10 @@ export interface VerificationDoctorDto {
   id:                         string;
   specialty:                  string;
   licenseNumber:              string | null;
+  nationalId:                 string | null;
   licenseAuthority:           string | null;
   licenseVerificationStatus:  VerificationStatus;
+  licenseVerificationSource:  string | null;
   licenseVerifiedAt:          string | null;
   licenseRejectionReason:     string | null;
   licenseDocumentMime:        string | null;

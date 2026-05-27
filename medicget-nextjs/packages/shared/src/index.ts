@@ -12,3 +12,5 @@ export * from './settings';
 export * from './subscription';
 export * from './webpush';
 export * from './notifications';
+export * from './cedula';
+export * from './license-verifier';

@@ -229,6 +229,10 @@ model Doctor {
   clinicId        String?
   specialty       String
   licenseNumber   String?
+  /// Cédula / documento nacional de identidad. Necesario para la
+  /// verificación automática contra ACESS (Ecuador), que se consulta por
+  /// cédula. Validado estructuralmente (módulo 10) antes de guardarse.
+  nationalId      String?
   /// País / autoridad emisora de la licencia — texto libre para soportar
   /// múltiples mercados (ej: "MSP Ecuador", "FNOMCeO Italia", "CMP Perú").
   /// El admin lo usa como contexto al revisar el documento.
@@ -253,6 +257,13 @@ model Doctor {
   /// Motivo del rechazo — siempre presente cuando status = REJECTED.
   /// Se le muestra al médico para que pueda subir un documento corregido.
   licenseRejectionReason String?
+  /// Cómo se verificó: "MANUAL" (admin revisó documento) o "ACESS_AUTO"
+  /// (match inequívoco contra el registro ACESS al registrarse). Null
+  /// mientras no esté verificado.
+  licenseVerificationSource String?
+  /// Snapshot crudo de la respuesta de ACESS cuando la verificación fue
+  /// automática — para auditoría ("¿por qué se aprobó este médico?").
+  licenseVerificationEvidence Json?
   experience      Int        @default(0)
   pricePerConsult Float      @default(0)
   bio             String?

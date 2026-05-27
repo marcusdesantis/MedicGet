@@ -145,6 +145,13 @@ services:
       JWT_EXPIRES_IN: 7d
       NODE_ENV:       production
       PORT:           "4004"
+      # ─── Verificación automática de licencia (ACESS Ecuador) ───────────
+      # OFF por default: hasta calibrar el scraper JSF contra el sitio real
+      # (ver deploy/ACESS_CALIBRATION.md), toda verificación cae al flujo
+      # manual. Cuando esté calibrado desde el VPS (que sí alcanza .gob.ec),
+      # poné ACESS_ENABLED=true.
+      ACESS_ENABLED:  ${ACESS_ENABLED:-false}
+      ACESS_BASE_URL: ${ACESS_BASE_URL:-http://www.calidadsalud.gob.ec/acess-app-servicio-ciudadano/public/titulo/consulta.jsf}
     expose:
       - "4004"
     networks:

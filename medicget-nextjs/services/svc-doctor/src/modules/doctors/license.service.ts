@@ -19,6 +19,8 @@
 import { prisma }              from '@medicget/shared/prisma';
 import { createNotification }  from '@medicget/shared/notifications';
 import type { AuthUser }       from '@medicget/shared/auth';
+import { isValidEcuadorianCedula, normalizeCedula } from '@medicget/shared/cedula';
+import { verifyMedicalLicense } from '@medicget/shared/license-verifier';
 
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string };
 
@@ -48,6 +50,71 @@ function parseDataUrl(dataUrl: string): { mime: AllowedMime; valid: true } | { v
 }
 
 export const licenseService = {
+  /**
+   * Verificación AUTOMÁTICA contra ACESS por cédula. Auth: solo el médico
+   * dueño. Flujo:
+   *   1. Valida estructura de la cédula (módulo 10) — rechazo si inválida.
+   *   2. Persiste `nationalId`.
+   *   3. Consulta ACESS (fail-safe — nunca lanza).
+   *   4. Si el match es INEQUÍVOCO → marca VERIFIED + source ACESS_AUTO +
+   *      guarda evidencia + notifica. Devuelve { autoVerified: true }.
+   *   5. Si ACESS no confirma (no encontrado / no disponible / ambiguo) →
+   *      NO cambia el status. Devuelve { autoVerified: false, reason } para
+   *      que el frontend ofrezca el flujo manual (subir documento).
+   */
+  async requestAutoVerification(
+    doctorId: string,
+    user:     AuthUser,
+    rawCedula: string,
+  ): Promise<ServiceResult<{ autoVerified: boolean; reason: string }>> {
+    if (user.role !== 'DOCTOR') {
+      return { ok: false, code: 'FORBIDDEN', message: 'Solo el médico puede verificar su propia cuenta.' };
+    }
+    const doctor = await prisma.doctor.findUnique({
+      where:   { id: doctorId },
+      include: { user: { include: { profile: true } } },
+    });
+    if (!doctor)                   return { ok: false, code: 'NOT_FOUND', message: 'Médico no encontrado.' };
+    if (doctor.userId !== user.id) return { ok: false, code: 'FORBIDDEN', message: 'Solo podés verificar tu propia cuenta.' };
+
+    const cedula = normalizeCedula(rawCedula);
+    if (!isValidEcuadorianCedula(cedula)) {
+      return { ok: false, code: 'BAD_REQUEST', message: 'La cédula no es válida. Revisá los 10 dígitos.' };
+    }
+
+    // Persistimos la cédula sí o sí (sirve para la revisión manual también).
+    await prisma.doctor.update({ where: { id: doctorId }, data: { nationalId: cedula } });
+
+    const fullName = `${doctor.user.profile?.firstName ?? ''} ${doctor.user.profile?.lastName ?? ''}`.trim();
+    const result = await verifyMedicalLicense({ cedula, fullName: fullName || undefined });
+
+    if (result.outcome === 'VERIFIED') {
+      await prisma.doctor.update({
+        where: { id: doctorId },
+        data: {
+          licenseVerificationStatus:   'VERIFIED',
+          licenseVerifiedAt:           new Date(),
+          licenseVerificationSource:   'ACESS_AUTO',
+          licenseVerificationEvidence: (result.evidence ?? {}) as object,
+          licenseRejectionReason:      null,
+        },
+      });
+      void notifyDoctorAutoVerified(doctorId).catch(() => {/* swallow */});
+      return { ok: true, data: { autoVerified: true, reason: result.reason } };
+    }
+
+    // No concluyente → queda para el flujo manual. No tocamos el status.
+    return {
+      ok: true,
+      data: {
+        autoVerified: false,
+        reason: result.outcome === 'NOT_FOUND'
+          ? 'No encontramos tu registro en ACESS. Subí tu documento para revisión manual.'
+          : 'No pudimos verificarte automáticamente ahora. Subí tu documento para revisión manual.',
+      },
+    };
+  },
+
   /**
    * Sube el documento de licencia. Auth: solo el médico dueño del perfil.
    * Idempotente: si ya había uno cargado, se reemplaza y el status vuelve
@@ -132,6 +199,19 @@ export const licenseService = {
     };
   },
 };
+
+async function notifyDoctorAutoVerified(doctorId: string): Promise<void> {
+  const doctor = await prisma.doctor.findUnique({ where: { id: doctorId } });
+  if (!doctor) return;
+  await createNotification({
+    userId:   doctor.userId,
+    type:     'LICENSE_VERIFIED',
+    title:    'Cuenta verificada automáticamente ✓',
+    message:  'Validamos tu habilitación profesional contra ACESS. Ya aparecés en la búsqueda y podés recibir citas.',
+    metadata: { doctorId, source: 'ACESS_AUTO' },
+    pushUrl:  '/doctor/profile',
+  }).catch(() => {/* swallow */});
+}
 
 async function notifyAdminsLicensePending(doctorId: string): Promise<void> {
   const doctor = await prisma.doctor.findUnique({
