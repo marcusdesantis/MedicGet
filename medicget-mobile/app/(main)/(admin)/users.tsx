@@ -53,7 +53,25 @@ import {
   adminApi,
   type AdminUserPatch,
   type UserDto,
+  type VerificationStatus,
 } from '@/lib/api';
+
+/** Chip del estado de verificación de licencia (solo médicos). */
+const LICENSE_BADGE: Record<VerificationStatus, { label: string; bg: string; text: string }> = {
+  VERIFIED: { label: 'Licencia ✓', bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-300' },
+  PENDING_REVIEW: { label: 'Licencia pendiente', bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-300' },
+  REJECTED: { label: 'Licencia rechazada', bg: 'bg-rose-100 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-300' },
+  NOT_SUBMITTED: { label: 'Sin verificar licencia', bg: 'bg-slate-200 dark:bg-slate-700', text: 'text-slate-600 dark:text-slate-300' },
+};
+
+function LicenseBadge({ status }: { status: VerificationStatus }) {
+  const b = LICENSE_BADGE[status];
+  return (
+    <View className={`px-2 py-0.5 rounded ${b.bg}`}>
+      <Text className={`text-[10px] font-semibold ${b.text}`}>{b.label}</Text>
+    </View>
+  );
+}
 
 const ROLE_LABEL: Record<string, string> = {
   PATIENT: 'Paciente',
@@ -355,12 +373,15 @@ function UserRow({
           <Text numberOfLines={1} className="text-xs text-slate-500 mt-0.5">
             {user.email}
           </Text>
-          <View className="mt-1">
+          <View className="mt-1 flex-row flex-wrap items-center gap-1.5">
             <StatusBadge
               status={user.status.toLowerCase()}
               statusMap={STATUS_MAP}
               size="sm"
             />
+            {user.role === 'DOCTOR' && user.doctor?.licenseVerificationStatus ? (
+              <LicenseBadge status={user.doctor.licenseVerificationStatus} />
+            ) : null}
           </View>
         </View>
       </View>

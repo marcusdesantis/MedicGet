@@ -10,6 +10,9 @@ import {
   ArrowRight,
   Calendar as CalendarIcon,
   Clock,
+  ShieldAlert,
+  ShieldQuestion,
+  ShieldX,
   Star,
   TrendingUp,
   Users,
@@ -29,15 +32,25 @@ import { useAuth } from '@/context/AuthContext';
 import { profileInitials } from '@/lib/format';
 import {
   dashboardApi,
+  doctorsApi,
   type AppointmentDto,
   type ReviewDto,
+  type VerificationStatus,
 } from '@/lib/api';
 
 export default function DoctorHome() {
   const router = useRouter();
   const { user } = useAuth();
+  const doctorId = user?.dto.doctor?.id ?? null;
   const { state, refetch } = useApi(() => dashboardApi.doctor(), []);
+  // Fetch liviano del propio perfil para el estado de verificación.
+  const { state: docState } = useApi(() => doctorsApi.getById(doctorId!), [doctorId]);
   useRefetchOnFocus(refetch);
+
+  const verifStatus: VerificationStatus | null =
+    docState.status === 'ready'
+      ? docState.data.licenseVerificationStatus ?? 'NOT_SUBMITTED'
+      : null;
 
   return (
     <Screen>
@@ -53,6 +66,15 @@ export default function DoctorHome() {
       <Text className="text-sm text-slate-500 mt-0.5 mb-4">
         Resumen de tu actividad médica
       </Text>
+
+      {verifStatus && verifStatus !== 'VERIFIED' ? (
+        <View className="mb-4">
+          <VerificationBanner
+            status={verifStatus}
+            onPress={() => router.push('/(main)/(doctor)/profile')}
+          />
+        </View>
+      ) : null}
 
       {state.status === 'loading' && (
         <View className="py-16 items-center">
@@ -319,6 +341,64 @@ function ReviewRow({ review }: { review: ReviewDto }) {
       <Text className="mt-1 text-[10px] text-slate-400">
         {new Date(review.createdAt).toLocaleDateString('es-ES')}
       </Text>
+    </View>
+  );
+}
+
+/** Banner de verificación pendiente — empuja al médico a completar su perfil. */
+function VerificationBanner({
+  status,
+  onPress,
+}: {
+  status: VerificationStatus;
+  onPress: () => void;
+}) {
+  const cfg =
+    status === 'PENDING_REVIEW'
+      ? {
+          Icon: ShieldQuestion,
+          wrap: 'bg-amber-50 dark:bg-amber-900/15 border-amber-300 dark:border-amber-800',
+          iconColor: '#b45309',
+          title: 'Tu cuenta está en revisión',
+          body: 'Recibimos tu documentación. Te avisamos por email apenas se apruebe. Mientras tanto no aparecés en la búsqueda.',
+          cta: 'Ver estado',
+        }
+      : status === 'REJECTED'
+      ? {
+          Icon: ShieldX,
+          wrap: 'bg-rose-50 dark:bg-rose-900/15 border-rose-300 dark:border-rose-800',
+          iconColor: '#e11d48',
+          title: 'Tu verificación fue rechazada',
+          body: 'Entrá a tu perfil para ver el motivo y reenviar tu documentación.',
+          cta: 'Corregir y reenviar',
+        }
+      : {
+          Icon: ShieldAlert,
+          wrap: 'bg-amber-50 dark:bg-amber-900/15 border-amber-300 dark:border-amber-800',
+          iconColor: '#b45309',
+          title: 'Tu cuenta está pendiente de verificación',
+          body: 'Para aparecer en la búsqueda y recibir citas, completá tu licencia, cédula y subí tu documento.',
+          cta: 'Completar verificación',
+        };
+  const Icon = cfg.Icon;
+
+  return (
+    <View className={`rounded-2xl border p-4 ${cfg.wrap}`}>
+      <View className="flex-row items-start gap-3">
+        <Icon size={22} color={cfg.iconColor} />
+        <View className="flex-1">
+          <Text className="font-semibold text-slate-800 dark:text-white">{cfg.title}</Text>
+          <Text className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-5">
+            {cfg.body}
+          </Text>
+          <Pressable
+            onPress={onPress}
+            className="mt-3 self-start flex-row items-center gap-2 bg-teal-600 active:bg-teal-700 px-4 py-2 rounded-xl">
+            <Text className="text-white text-xs font-semibold">{cfg.cta}</Text>
+            <ArrowRight size={13} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }

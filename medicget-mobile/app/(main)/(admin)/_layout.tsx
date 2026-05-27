@@ -53,6 +53,10 @@ export default function AdminLayout() {
             ),
           }}
         />
+        {/* Rutas accesibles desde los atajos del home (no en el tab bar
+            para no saturarlo). */}
+        <Tabs.Screen name="verifications" options={{ href: null }} />
+        <Tabs.Screen name="refunds"       options={{ href: null }} />
         <Tabs.Screen name="plans"         options={{ href: null }} />
         <Tabs.Screen name="subscriptions" options={{ href: null }} />
         <Tabs.Screen name="notifications" options={{ href: null }} />

@@ -11,15 +11,17 @@
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert as RNAlert,
   Linking,
   Pressable,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
+  AlertTriangle,
   Calendar as CalendarIcon,
   CalendarDays,
+  CheckCircle2,
   Clock,
   CreditCard,
   Eye,
@@ -27,6 +29,7 @@ import {
   MapPin,
   MessageSquare,
   Plus,
+  RotateCcw,
   Star,
   Video,
   X,
@@ -35,12 +38,15 @@ import { useRouter } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { PolicyPanel } from '@/components/ui/PolicyPanel';
 import { Tabs } from '@/components/ui/Tabs';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Alert } from '@/components/ui/Alert';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import { AppointmentCalendar } from '@/components/ui/AppointmentCalendar';
 import { ReviewModal } from '@/components/reviews/ReviewModal';
 import { useApi } from '@/hooks/useApi';
@@ -51,6 +57,18 @@ import {
   appointmentsApi,
   type AppointmentDto,
 } from '@/lib/api';
+
+const REFUND_HOURS_THRESHOLD = 24;
+
+/** Replica la elegibilidad de reembolso del backend (Ecuador UTC-5). */
+function hoursUntilAppointment(appt: AppointmentDto): number {
+  const slot = new Date(`${appt.date.slice(0, 10)}T${appt.time}:00-05:00`);
+  return (slot.getTime() - Date.now()) / (60 * 60 * 1000);
+}
+function appointmentQualifiesForRefund(appt: AppointmentDto): boolean {
+  if (!appt.payment || appt.payment.status !== 'PAID') return false;
+  return hoursUntilAppointment(appt) >= REFUND_HOURS_THRESHOLD;
+}
 
 const TABS = ['Próximas', 'Pasadas', 'Canceladas'] as const;
 type TabType = (typeof TABS)[number];
@@ -73,6 +91,7 @@ export default function PatientAppointments() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<AppointmentDto | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<AppointmentDto | null>(null);
 
   const { state, refetch } = useApi(
     () => appointmentsApi.list({ pageSize: 100 }),
@@ -89,22 +108,15 @@ export default function PatientAppointments() {
     );
   }, [state, activeTab]);
 
-  const handleCancel = (id: string) => {
-    RNAlert.alert(
-      'Cancelar cita',
-      '¿Seguro que deseas cancelar esta cita? Si está pagada y faltan más de 24h, se reembolsará automáticamente.',
-      [
-        { text: 'No', style: 'cancel' },
-        { text: 'Sí, cancelar', style: 'destructive', onPress: () => doCancel(id) },
-      ],
-    );
-  };
-
-  const doCancel = async (id: string) => {
-    setCancellingId(id);
+  const doCancel = async (appt: AppointmentDto, reason: string) => {
+    setCancellingId(appt.id);
     setActionError(null);
     try {
-      await appointmentsApi.update(id, { status: 'CANCELLED' });
+      await appointmentsApi.update(appt.id, {
+        status: 'CANCELLED',
+        cancelReason: reason.trim() || undefined,
+      });
+      setPendingCancel(null);
       refetch();
     } catch (err: unknown) {
       const msg =
@@ -189,6 +201,20 @@ export default function PatientAppointments() {
         </View>
       ) : null}
 
+      <View className="mb-3">
+        <PolicyPanel
+          title="Política de cancelación y reembolsos"
+          icon={RotateCcw}
+          tone="blue"
+          steps={[
+            'Podés cancelar una cita cuando quieras con el botón Cancelar.',
+            'Si está pagada y la cancelás con 24h o más de anticipación, se te reembolsa el 100%.',
+            'Con menos de 24h, la cancelación se hace igual pero no aplica reembolso.',
+            'Cuando aplica, el reembolso llega al mismo medio de pago en 3 a 5 días hábiles.',
+          ]}
+        />
+      </View>
+
       {state.status === 'loading' && (
         <View className="py-16 items-center">
           <ActivityIndicator size="large" color="#2563eb" />
@@ -247,7 +273,7 @@ export default function PatientAppointments() {
                   key={appt.id}
                   appt={appt}
                   cancelling={cancellingId === appt.id}
-                  onCancel={() => handleCancel(appt.id)}
+                  onCancel={() => setPendingCancel(appt)}
                   onOpenDetail={() =>
                     router.push(
                       `/(main)/(patient)/appointment/${appt.id}` as never,
@@ -274,7 +300,123 @@ export default function PatientAppointments() {
           refetch();
         }}
       />
+
+      <CancelAppointmentModal
+        appointment={pendingCancel}
+        submitting={!!pendingCancel && cancellingId === pendingCancel.id}
+        onClose={() => setPendingCancel(null)}
+        onConfirm={(reason) => pendingCancel && doCancel(pendingCancel, reason)}
+      />
     </Screen>
+  );
+}
+
+/**
+ * Modal de confirmación de cancelación con la política de reembolso visible
+ * ANTES de confirmar (espejo del web). Pide un motivo opcional.
+ */
+function CancelAppointmentModal({
+  appointment,
+  submitting,
+  onClose,
+  onConfirm,
+}: {
+  appointment: AppointmentDto | null;
+  submitting: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  if (!appointment) return null;
+
+  const refundable = appointmentQualifiesForRefund(appointment);
+  const hours = Math.max(0, Math.floor(hoursUntilAppointment(appointment)));
+  const hasPaid = appointment.payment?.status === 'PAID';
+
+  return (
+    <Modal
+      visible={!!appointment}
+      onClose={onClose}
+      title="Cancelar cita"
+      footer={
+        <View className="flex-row gap-3">
+          <View className="flex-1">
+            <Button variant="secondary" onPress={onClose} disabled={submitting} fullWidth>
+              Volver
+            </Button>
+          </View>
+          <View className="flex-1">
+            <Pressable
+              onPress={() => onConfirm(reason)}
+              disabled={submitting}
+              className={`h-12 rounded-2xl items-center justify-center flex-row bg-rose-600 active:bg-rose-700 ${
+                submitting ? 'opacity-60' : ''
+              }`}>
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text className="text-white font-semibold text-base">Confirmar</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      }>
+      <Text className="text-xs text-slate-500 mb-3">
+        {doctorName(appointment)} · {fmtMedDate(appointment.date)} {appointment.time}
+      </Text>
+
+      {hasPaid ? (
+        refundable ? (
+          <View className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 mb-4">
+            <View className="flex-row items-center gap-2">
+              <CheckCircle2 size={15} color="#047857" />
+              <Text className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                Reembolso aplicable
+              </Text>
+            </View>
+            <Text className="text-xs text-emerald-700 dark:text-emerald-200 mt-1.5 leading-5">
+              Faltan {hours}h para tu cita. Se devolverán $
+              {appointment.payment?.amount.toFixed(2)} al mismo medio de pago en 3-5 días hábiles.
+            </Text>
+          </View>
+        ) : (
+          <View className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-4">
+            <View className="flex-row items-center gap-2">
+              <AlertTriangle size={15} color="#b45309" />
+              <Text className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Sin reembolso
+              </Text>
+            </View>
+            <Text className="text-xs text-amber-700 dark:text-amber-200 mt-1.5 leading-5">
+              Tu cita es en menos de {REFUND_HOURS_THRESHOLD}h ({hours}h restantes). Las
+              cancelaciones con menos de {REFUND_HOURS_THRESHOLD}h de anticipación no son
+              reembolsables.
+            </Text>
+          </View>
+        )
+      ) : (
+        <View className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 mb-4">
+          <Text className="text-xs text-slate-600 dark:text-slate-300 leading-5">
+            Esta cita todavía no está pagada — al cancelarla solo liberás el horario.
+          </Text>
+        </View>
+      )}
+
+      <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+        Motivo (opcional)
+      </Text>
+      <TextInput
+        value={reason}
+        onChangeText={setReason}
+        multiline
+        numberOfLines={3}
+        maxLength={300}
+        placeholder="ej: Surgió un imprevisto."
+        placeholderTextColor="#94a3b8"
+        textAlignVertical="top"
+        className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 min-h-[72px]"
+      />
+    </Modal>
   );
 }
 
@@ -330,6 +472,22 @@ function AppointmentRow({
               size="sm"
             />
           </View>
+          {appt.payment?.status === 'PENDING_REFUND' ? (
+            <View className="flex-row items-center gap-1 mt-1 self-start bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-md">
+              <Clock size={10} color="#b45309" />
+              <Text className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                Reembolso en proceso
+              </Text>
+            </View>
+          ) : null}
+          {appt.payment?.status === 'REFUNDED' ? (
+            <View className="flex-row items-center gap-1 mt-1 self-start bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-md">
+              <CheckCircle2 size={10} color="#047857" />
+              <Text className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                Reembolsado
+              </Text>
+            </View>
+          ) : null}
           <Text className="text-xs text-blue-600 font-medium mt-0.5">
             {appt.doctor?.specialty ?? '—'}
           </Text>

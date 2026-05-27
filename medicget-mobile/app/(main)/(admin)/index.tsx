@@ -132,6 +132,16 @@ export default function AdminHome() {
 
           <SectionCard title="Atajos del superadmin">
             <Shortcut
+              title="Verificaciones de licencia"
+              desc="Aprobá o rechazá la habilitación de los médicos. Solo verificados reciben citas."
+              onPress={() => router.push('/(main)/(admin)/verifications' as never)}
+            />
+            <Shortcut
+              title="Reembolsos"
+              desc="Cola de cancelaciones con reembolso aplicable. Procesá el reverso en PayPhone."
+              onPress={() => router.push('/(main)/(admin)/refunds' as never)}
+            />
+            <Shortcut
               title="Usuarios"
               desc="Ver, suspender o eliminar cualquier cuenta. Impersonar para soporte."
               onPress={() => router.push('/(main)/(admin)/users')}

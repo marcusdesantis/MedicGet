@@ -19,19 +19,27 @@ import {
 } from 'react-native';
 import {
   Building2,
+  Camera,
   CheckCircle2,
   Eye,
   EyeOff,
+  Images,
   LogOut,
   MessageSquare,
   Save,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldQuestion,
+  ShieldX,
   Video,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
+import { PolicyPanel } from '@/components/ui/PolicyPanel';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { PhoneField } from '@/components/ui/PhoneField';
@@ -48,6 +56,7 @@ import {
   usersApi,
   type AppointmentModality,
   type DoctorDto,
+  type VerificationStatus,
 } from '@/lib/api';
 
 const MODALITY_LABEL: Record<
@@ -193,7 +202,8 @@ export default function DoctorProfile() {
         }),
         doctorsApi.update(doctorId, {
           specialty: form.specialty.trim() || 'Médico General',
-          licenseNumber: form.licenseNumber.trim() || undefined,
+          // licenseNumber / licenseAuthority / nationalId se guardan desde el
+          // card "Verificación de tu cuenta", no acá.
           experience: Number(form.experience) || 0,
           pricePerConsult: Number(form.pricePerConsult) || 0,
           consultDuration: Number(form.consultDuration) || 30,
@@ -385,12 +395,10 @@ export default function DoctorProfile() {
               />
             </FormField>
 
-            <FormField label="N° de licencia / Cédula profesional">
-              <Input
-                value={form.licenseNumber}
-                onChangeText={(t) => setForm({ ...form, licenseNumber: t })}
-              />
-            </FormField>
+            <Text className="text-[11px] text-slate-400">
+              Tu número de licencia, autoridad emisora y cédula se gestionan en
+              la sección <Text className="font-semibold">Verificación de tu cuenta</Text>, más abajo.
+            </Text>
 
             <View className="flex-row gap-3">
               <View className="flex-1">
@@ -447,6 +455,25 @@ export default function DoctorProfile() {
             </FormField>
           </View>
         </SectionCard>
+
+        {state.status === 'ready' ? (
+          <DoctorVerificationCard
+            doctorId={doctorId}
+            status={state.data.licenseVerificationStatus ?? 'NOT_SUBMITTED'}
+            verifiedAt={state.data.licenseVerifiedAt ?? null}
+            rejectionReason={state.data.licenseRejectionReason ?? null}
+            uploadedAt={state.data.licenseDocumentUploadedAt ?? null}
+            source={state.data.licenseVerificationSource ?? null}
+            nationalId={state.data.nationalId ?? null}
+            initialLicenseNumber={state.data.licenseNumber ?? ''}
+            initialLicenseAuthority={state.data.licenseAuthority ?? ''}
+            hasDocument={!!state.data.licenseDocumentUploadedAt}
+            onChanged={() => {
+              refetch();
+              void refreshMe();
+            }}
+          />
+        ) : null}
 
         <SectionCard
           title="Modalidades de atención"
@@ -529,5 +556,279 @@ export default function DoctorProfile() {
         </Pressable>
       </View>
     </Screen>
+  );
+}
+
+/* ─── Verificación de licencia ──────────────────────────────────────────── */
+
+const VERIF_META: Record<
+  VerificationStatus,
+  { label: string; help: string; wrap: string; text: string; iconColor: string; Icon: typeof ShieldCheck }
+> = {
+  VERIFIED: {
+    label: 'Verificado',
+    help: 'Tu perfil aparece en la búsqueda y podés recibir citas.',
+    wrap: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800',
+    text: 'text-emerald-700 dark:text-emerald-300',
+    iconColor: '#047857',
+    Icon: ShieldCheck,
+  },
+  PENDING_REVIEW: {
+    label: 'Pendiente de revisión',
+    help: 'Tu documento está en cola. Te avisamos por email apenas se revise.',
+    wrap: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800',
+    text: 'text-amber-700 dark:text-amber-300',
+    iconColor: '#b45309',
+    Icon: ShieldQuestion,
+  },
+  REJECTED: {
+    label: 'Rechazado',
+    help: 'Subí un documento corregido para que el admin lo revise de nuevo.',
+    wrap: 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800',
+    text: 'text-rose-700 dark:text-rose-300',
+    iconColor: '#e11d48',
+    Icon: ShieldX,
+  },
+  NOT_SUBMITTED: {
+    label: 'Sin verificar',
+    help: 'Completá tus datos y verificá tu cuenta para empezar a recibir pacientes.',
+    wrap: 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700',
+    text: 'text-slate-700 dark:text-slate-300',
+    iconColor: '#475569',
+    Icon: ShieldAlert,
+  },
+};
+
+function DoctorVerificationCard({
+  doctorId,
+  status,
+  verifiedAt,
+  rejectionReason,
+  uploadedAt,
+  source,
+  nationalId,
+  initialLicenseNumber,
+  initialLicenseAuthority,
+  hasDocument,
+  onChanged,
+}: {
+  doctorId: string;
+  status: VerificationStatus;
+  verifiedAt: string | null;
+  rejectionReason: string | null;
+  uploadedAt: string | null;
+  source: string | null;
+  nationalId: string | null;
+  initialLicenseNumber: string;
+  initialLicenseAuthority: string;
+  hasDocument: boolean;
+  onChanged: () => void;
+}) {
+  const meta = VERIF_META[status];
+  const Icon = meta.Icon;
+  const isVerified = status === 'VERIFIED';
+
+  const [licenseNumber, setLicenseNumber] = useState(initialLicenseNumber);
+  const [licenseAuthority, setLicenseAuthority] = useState(initialLicenseAuthority);
+  const [cedula, setCedula] = useState(nationalId ?? '');
+  const [pickedDataUrl, setPickedDataUrl] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const pickFrom = async (mode: 'camera' | 'library') => {
+    setError(null);
+    const opts: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.6,
+      allowsEditing: false,
+    };
+    const perm =
+      mode === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setError('Necesitamos permiso para acceder a la cámara/galería.');
+      return;
+    }
+    const res =
+      mode === 'camera'
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
+    if (res.canceled || !res.assets?.[0]?.base64) return;
+    const asset = res.assets[0];
+    const mime = asset.mimeType ?? 'image/jpeg';
+    setPickedDataUrl(`data:${mime};base64,${asset.base64}`);
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    setInfo(null);
+    if (!licenseNumber.trim()) {
+      setError('Ingresá tu código de certificado / licencia.');
+      return;
+    }
+    const ced = cedula.trim();
+    if (ced && ced.length !== 10) {
+      setError('La cédula debe tener 10 dígitos.');
+      return;
+    }
+    if (!ced && !pickedDataUrl && !hasDocument) {
+      setError('Ingresá tu cédula o subí una foto del documento.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await doctorsApi.update(doctorId, {
+        licenseNumber: licenseNumber.trim() || undefined,
+        licenseAuthority: licenseAuthority.trim() || undefined,
+      } as Partial<DoctorDto>);
+
+      if (ced) {
+        const res = await doctorsApi.requestVerification(doctorId, ced);
+        if (res.data.autoVerified) {
+          setInfo('¡Cuenta verificada automáticamente! Ya aparecés en la búsqueda.');
+          setPickedDataUrl(null);
+          onChanged();
+          return;
+        }
+      }
+
+      if (pickedDataUrl) {
+        await doctorsApi.uploadLicense(doctorId, pickedDataUrl);
+        setInfo('Enviado a verificación. Te avisamos por email cuando se apruebe.');
+      } else if (hasDocument) {
+        setInfo('Datos actualizados. Tu documento sigue en revisión.');
+      } else {
+        setInfo('Guardamos tus datos. Subí tu documento para que te verifiquemos.');
+      }
+      setPickedDataUrl(null);
+      onChanged();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ?? 'Error al enviar la verificación.';
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <SectionCard
+      title="Verificación de tu cuenta"
+      subtitle="Validamos tu habilitación. Hasta aprobarse, no aparecés para pacientes.">
+      <View className="gap-3">
+        {/* Estado actual */}
+        <View className={`flex-row items-start gap-3 rounded-xl border p-3 ${meta.wrap}`}>
+          <Icon size={20} color={meta.iconColor} />
+          <View className="flex-1">
+            <Text className={`text-sm font-semibold ${meta.text}`}>{meta.label}</Text>
+            <Text className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-5">
+              {meta.help}
+            </Text>
+            {status === 'REJECTED' && rejectionReason ? (
+              <View className="mt-2 bg-white/60 dark:bg-black/20 rounded-lg p-2">
+                <Text className="text-[11px] font-semibold text-rose-700 dark:text-rose-300 mb-0.5">
+                  Motivo del rechazo
+                </Text>
+                <Text className="text-xs text-rose-700 dark:text-rose-200">{rejectionReason}</Text>
+              </View>
+            ) : null}
+            {isVerified && verifiedAt ? (
+              <Text className="text-[11px] text-slate-500 mt-1">
+                Verificado el {new Date(verifiedAt).toLocaleDateString('es-ES')}
+                {source === 'ACESS_AUTO' ? ' · automático vía ACESS' : source === 'MANUAL' ? ' · revisión del equipo' : ''}.
+              </Text>
+            ) : null}
+            {status === 'PENDING_REVIEW' && uploadedAt ? (
+              <Text className="text-[11px] text-slate-500 mt-1">
+                Documento enviado el {new Date(uploadedAt).toLocaleDateString('es-ES')}.
+              </Text>
+            ) : null}
+          </View>
+        </View>
+
+        <PolicyPanel
+          title="¿Cómo se aprueba mi cuenta?"
+          icon={ShieldCheck}
+          tone="blue"
+          defaultOpen={status === 'NOT_SUBMITTED' || status === 'REJECTED'}
+          steps={[
+            'Completá tu código de certificado / licencia, el lugar donde la obtuviste y tu cédula.',
+            'Subí una foto nítida de tu título o credencial de colegiatura, donde se lea tu nombre y el número.',
+            'Tocá Enviar a verificación. Si tu cédula coincide con el registro oficial te aprobamos al instante; si no, queda en revisión manual (24-48h).',
+            'Te avisamos por email y notificación. Al aprobarse, aparecés en la búsqueda y recibís citas.',
+          ]}
+        />
+
+        {!isVerified ? (
+          <>
+            <FormField label="Código de certificado / licencia *">
+              <Input value={licenseNumber} onChangeText={setLicenseNumber} placeholder="ej: CMP-12345" />
+            </FormField>
+            <FormField label="Lugar donde obtuviste la licencia">
+              <Input
+                value={licenseAuthority}
+                onChangeText={setLicenseAuthority}
+                placeholder="ej: MSP Ecuador, ACESS"
+              />
+            </FormField>
+            <FormField label="Cédula (10 dígitos)" hint="Si coincide con el registro oficial, te aprobamos al instante.">
+              <Input
+                value={cedula}
+                onChangeText={(t) => setCedula(t.replace(/\D/g, '').slice(0, 10))}
+                keyboardType="numeric"
+                placeholder="0102030405"
+              />
+            </FormField>
+
+            <View>
+              <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+                Documento (foto del título / credencial)
+              </Text>
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={() => pickFrom('camera')}
+                  className="flex-1 flex-row items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 active:bg-slate-50">
+                  <Camera size={15} color="#475569" />
+                  <Text className="text-slate-700 dark:text-slate-200 text-xs font-semibold">
+                    Tomar foto
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => pickFrom('library')}
+                  className="flex-1 flex-row items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 active:bg-slate-50">
+                  <Images size={15} color="#475569" />
+                  <Text className="text-slate-700 dark:text-slate-200 text-xs font-semibold">
+                    Elegir de galería
+                  </Text>
+                </Pressable>
+              </View>
+              <Text className="text-[11px] text-slate-400 mt-1">
+                {pickedDataUrl
+                  ? '✓ Documento listo para enviar'
+                  : hasDocument
+                  ? 'Ya hay un documento cargado'
+                  : 'JPG / PNG · máx 5 MB'}
+              </Text>
+            </View>
+
+            {error ? <Alert variant="error">{error}</Alert> : null}
+            {info ? <Alert variant="success">{info}</Alert> : null}
+
+            <Button onPress={handleSubmit} loading={submitting} variant="success" fullWidth>
+              <View className="flex-row items-center gap-2">
+                <ShieldCheck size={16} color="#fff" />
+                <Text className="text-white text-base font-semibold">Enviar a verificación</Text>
+              </View>
+            </Button>
+          </>
+        ) : info ? (
+          <Alert variant="success">{info}</Alert>
+        ) : null}
+      </View>
+    </SectionCard>
   );
 }
