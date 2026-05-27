@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard, Star, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Plus, Calendar, Clock, Loader2, X, List, CalendarDays, Video, MessageSquare, MapPin, Eye, CreditCard, Star, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { ReviewModal } from '@/features/shared/reviews/ReviewModal';
 import { PageHeader }    from '@/components/ui/PageHeader';
+import { PolicyPanel }   from '@/components/ui/PolicyPanel';
 import { Tabs }          from '@/components/ui/Tabs';
 import { Avatar }        from '@/components/ui/Avatar';
 import { StatusBadge }   from '@/components/ui/StatusBadge';
@@ -118,6 +119,23 @@ export function PatientAppointmentsPage() {
       </div>
 
       {actionError && <Alert variant="error">{actionError}</Alert>}
+
+      <PolicyPanel
+        title="Política de cancelación y reembolsos"
+        icon={RotateCcw}
+        tone="blue"
+        defaultOpen={false}
+        steps={[
+          <>Podés cancelar una cita cuando quieras desde el botón <strong>Cancelar</strong>.</>,
+          <>Si tu cita está <strong>pagada</strong> y la cancelás con <strong>24 horas o más de anticipación</strong>, se te reembolsa el <strong>100% del monto</strong>.</>,
+          <>Si la cancelás con <strong>menos de 24 horas</strong>, la cancelación se hace igual pero <strong>no aplica reembolso</strong>.</>,
+          <>Cuando aplica, el reembolso se procesa al <strong>mismo medio de pago</strong> en <strong>3 a 5 días hábiles</strong>. Lo vas a ver reflejado según tu banco.</>,
+        ]}
+      >
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Antes de confirmar una cancelación te mostramos si tu caso aplica o no a reembolso, así no hay sorpresas.
+        </p>
+      </PolicyPanel>
 
       {state.status === 'loading' && (
         <div className="flex items-center justify-center py-16 text-slate-400">

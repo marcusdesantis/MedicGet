@@ -4,6 +4,7 @@ import { Link }         from 'react-router-dom';
 import { toast }        from 'sonner';
 import { PageHeader }   from '@/components/ui/PageHeader';
 import { SectionCard }  from '@/components/ui/SectionCard';
+import { PolicyPanel }  from '@/components/ui/PolicyPanel';
 import { Avatar }         from '@/components/ui/Avatar';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { Input }          from '@/components/ui/Input';
@@ -633,6 +634,26 @@ function LicenseVerificationSection({
       title="Verificación de licencia"
       subtitle="Validamos manualmente el documento que cargues. Hasta aprobarse, tu perfil no es visible para pacientes."
     >
+      <div className="mb-4">
+        <PolicyPanel
+          title="¿Cómo se aprueba mi cuenta?"
+          icon={ShieldCheck}
+          tone="blue"
+          defaultOpen={status === 'NOT_SUBMITTED' || status === 'REJECTED'}
+          steps={[
+            <>Completá tu <strong>número de licencia / colegiatura</strong> y la <strong>autoridad emisora</strong> en la sección de arriba.</>,
+            <>Subí una foto nítida o un PDF de tu <strong>título profesional o credencial de colegiatura</strong> (máx 5 MB). Asegurate de que se lea tu nombre y el número.</>,
+            <>Tu documento entra en una <strong>cola de revisión</strong>. Un administrador lo valida manualmente — normalmente en 24-48h hábiles.</>,
+            <>Te avisamos por <strong>email y notificación</strong> apenas haya respuesta. Si se aprueba, ya aparecés en la búsqueda y podés recibir citas.</>,
+            <>Si se rechaza, vas a ver el <strong>motivo acá mismo</strong> y podés subir un documento corregido (vuelve a entrar en cola).</>,
+          ]}
+        >
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Mientras tu licencia no esté verificada, <strong>no aparecés en el directorio público</strong> ni los pacientes pueden reservarte. Es un requisito para garantizar la seguridad de la plataforma.
+          </p>
+        </PolicyPanel>
+      </div>
+
       <div className={`flex items-start gap-3 rounded-xl border p-4 ${meta.tone}`}>
         <Icon size={22} className="mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">

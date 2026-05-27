@@ -20,6 +20,7 @@ import { toast }    from 'sonner';
 import { Loader2, CheckCircle2, XCircle, Clock, CreditCard, X } from 'lucide-react';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { SectionCard }   from '@/components/ui/SectionCard';
+import { PolicyPanel }   from '@/components/ui/PolicyPanel';
 import { Alert }         from '@/components/ui/Alert';
 import { Avatar }        from '@/components/ui/Avatar';
 import { EmptyState }    from '@/components/ui/EmptyState';
@@ -55,6 +56,23 @@ export function AdminRefundsPage() {
         subtitle="Cola de cancelaciones con reembolso aplicable. Procesá el reverso en PayPhone Business y marcalas como PROCESADAS acá."
       />
 
+      <PolicyPanel
+        title="Cómo procesar un reembolso"
+        icon={CreditCard}
+        tone="blue"
+        defaultOpen={false}
+        steps={[
+          <>Una solicitud aparece acá cuando un paciente (o clínica) cancela una <strong>cita pagada con reembolso aplicable</strong> (paciente con ≥24h de anticipación, clínica siempre).</>,
+          <>Entrá al <strong>panel de PayPhone Business</strong> y ejecutá el reverso real de la transacción por el monto indicado. MedicGet <strong>no</strong> hace el reverso automáticamente.</>,
+          <>Volvé acá y tocá <strong>"Procesado"</strong>. Ingresá el <strong>ID del reverso de PayPhone</strong> en "Referencia" para dejar trazabilidad. El pago pasa a REEMBOLSADO y el paciente recibe email + notificación.</>,
+          <>Si el reembolso <strong>no procede</strong> (el paciente ya fue atendido, error de comunicación, etc) tocá <strong>"Rechazar"</strong> con un motivo claro — se le envía al paciente y el pago vuelve a PAGADO.</>,
+        ]}
+      >
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Importante: marcar "Procesado" en MedicGet <strong>no mueve dinero</strong> — solo registra el estado. El reverso real siempre se hace primero en PayPhone Business.
+        </p>
+      </PolicyPanel>
+
       <div className="flex flex-wrap gap-2">
         {STATUS_TABS.map((t) => (
           <button
@@ -78,7 +96,7 @@ export function AdminRefundsPage() {
       )}
 
       {state.status === 'error' && (
-        <Alert variant="error" title="Error al cargar">{state.error.message}</Alert>
+        <Alert variant="error">{state.error.message}</Alert>
       )}
 
       {state.status === 'ready' && state.data.data.length === 0 && (

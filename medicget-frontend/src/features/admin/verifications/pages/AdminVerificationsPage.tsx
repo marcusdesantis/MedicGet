@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { PageHeader }    from '@/components/ui/PageHeader';
 import { SectionCard }   from '@/components/ui/SectionCard';
+import { PolicyPanel }   from '@/components/ui/PolicyPanel';
 import { Alert }         from '@/components/ui/Alert';
 import { Avatar }        from '@/components/ui/Avatar';
 import { EmptyState }    from '@/components/ui/EmptyState';
@@ -62,6 +63,24 @@ export function AdminVerificationsPage() {
         subtitle="Revisá el documento de cada médico y aprobalo o rechazalo. Solo los médicos con licencia verificada aparecen en la búsqueda y reciben bookings."
       />
 
+      <PolicyPanel
+        title="Guía de aprobación — qué revisar antes de aprobar"
+        icon={ShieldCheck}
+        tone="blue"
+        defaultOpen={false}
+        steps={[
+          <>Abrí <strong>"Ver documento"</strong> y confirmá que la imagen/PDF sea legible y corresponda a un título o credencial de colegiatura real.</>,
+          <>Verificá que el <strong>nombre del documento coincida</strong> con el nombre del médico en su perfil.</>,
+          <>Chequeá que el <strong>número de licencia</strong> y la <strong>autoridad emisora</strong> declarados sean coherentes con el documento.</>,
+          <>Si todo está en orden → <strong>Aprobar</strong>. El médico pasa a aparecer en búsqueda y puede recibir citas de inmediato.</>,
+          <>Si hay algún problema (foto borrosa, datos que no coinciden, documento inválido) → <strong>Rechazar con un motivo claro</strong>. El médico lo recibe por email y puede reenviar uno corregido.</>,
+        ]}
+      >
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Recordá: aprobar una licencia habilita al médico a recibir pacientes reales. Ante la duda, rechazá pidiendo más información — es reversible y el médico puede volver a enviar.
+        </p>
+      </PolicyPanel>
+
       <div className="flex flex-wrap gap-2">
         {STATUS_TABS.map((t) => {
           const Icon = t.icon;
@@ -88,7 +107,7 @@ export function AdminVerificationsPage() {
       )}
 
       {state.status === 'error' && (
-        <Alert variant="error" title="Error al cargar">{state.error.message}</Alert>
+        <Alert variant="error">{state.error.message}</Alert>
       )}
 
       {state.status === 'ready' && state.data.data.length === 0 && (
@@ -308,7 +327,7 @@ function DocumentModal({
               <Loader2 className="animate-spin mr-2" size={18} /> Cargando documento…
             </div>
           )}
-          {errorDoc && <Alert variant="error" title="Error">{errorDoc}</Alert>}
+          {errorDoc && <Alert variant="error">{errorDoc}</Alert>}
           {!loadingDoc && !errorDoc && docUrl && (
             isPdf ? (
               <iframe src={docUrl} title="Licencia" className="w-full h-[60vh] rounded-lg bg-white shadow-sm" />
