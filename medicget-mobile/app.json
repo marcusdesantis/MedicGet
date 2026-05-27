@@ -2,7 +2,7 @@
   "expo": {
     "name": "MedicGet",
     "slug": "medicget",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "scheme": "medicget",
     "userInterfaceStyle": "automatic",
@@ -10,14 +10,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.medicget.app",
-      "buildNumber": "1"
+      "buildNumber": "2"
     },
     "android": {
       "package": "com.medicget.app",
-      "versionCode": 1,
+      "versionCode": 2,
       "permissions": [
         "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -34,6 +35,13 @@
             "compileSdkVersion": 35,
             "targetSdkVersion": 35
           }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MedicGet necesita acceso a tus fotos para subir el documento de tu licencia.",
+          "cameraPermission": "MedicGet necesita acceso a la cámara para tomar una foto de tu licencia."
         }
       ]
     ],
