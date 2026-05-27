@@ -11,7 +11,28 @@ import { DatePicker }    from '@/components/ui/DatePicker';
 import { PhoneField }    from '@/components/ui/PhoneField';
 import { Button }        from '@/components/ui/Button';
 import { useApi }        from '@/hooks/useApi';
-import { adminApi, type UserDto, type PaginatedData, type AdminUserPatch, TOKEN_KEY } from '@/lib/api';
+import { adminApi, type UserDto, type PaginatedData, type AdminUserPatch, type VerificationStatus, TOKEN_KEY } from '@/lib/api';
+
+/**
+ * Chip del estado de verificación de licencia (solo médicos). Es distinto
+ * del estado de cuenta (Activo / Email sin verificar): refleja si el médico
+ * puede recibir pacientes. Se gestiona desde /admin/verifications.
+ */
+const LICENSE_BADGE: Record<VerificationStatus, { label: string; cls: string }> = {
+  VERIFIED:       { label: 'Licencia verificada', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  PENDING_REVIEW: { label: 'Licencia pendiente',  cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  REJECTED:       { label: 'Licencia rechazada',  cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+  NOT_SUBMITTED:  { label: 'Sin verificar licencia', cls: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+};
+
+function LicenseBadge({ status }: { status: VerificationStatus }) {
+  const b = LICENSE_BADGE[status];
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${b.cls}`}>
+      {b.label}
+    </span>
+  );
+}
 
 const ROLE_LABEL: Record<string, string> = {
   PATIENT: 'Paciente', DOCTOR: 'Médico', CLINIC: 'Clínica', ADMIN: 'Admin',
@@ -174,15 +195,24 @@ export function AdminUsersPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        <StatusBadge
-                          status={u.status.toLowerCase()}
-                          statusMap={{
-                            active:   { label: 'Activo',     bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700' },
-                            inactive: { label: 'Suspendido', bg: 'bg-amber-100 dark:bg-amber-900/30',     text: 'text-amber-700'   },
-                            deleted:  { label: 'Eliminado',  bg: 'bg-rose-100 dark:bg-rose-900/30',       text: 'text-rose-700'    },
-                          }}
-                          size="sm"
-                        />
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge
+                            status={u.status.toLowerCase()}
+                            statusMap={{
+                              active:   { label: 'Activo',     bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700' },
+                              inactive: { label: 'Suspendido', bg: 'bg-amber-100 dark:bg-amber-900/30',     text: 'text-amber-700'   },
+                              deleted:  { label: 'Eliminado',  bg: 'bg-rose-100 dark:bg-rose-900/30',       text: 'text-rose-700'    },
+                              pending_verification: { label: 'Email sin verificar', bg: 'bg-slate-200 dark:bg-slate-700', text: 'text-slate-600 dark:text-slate-300' },
+                            }}
+                            size="sm"
+                          />
+                          {/* Para médicos, además del estado de cuenta, mostramos
+                              el estado de verificación de licencia (lo que define
+                              si pueden recibir pacientes). */}
+                          {u.role === 'DOCTOR' && u.doctor?.licenseVerificationStatus && (
+                            <LicenseBadge status={u.doctor.licenseVerificationStatus} />
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center gap-1">

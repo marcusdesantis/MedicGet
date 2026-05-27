@@ -160,7 +160,13 @@ export interface UserDto {
   updatedAt: string;
   profile:   ProfileDto | null;
   clinic?:   { id: string; name: string } | null;
-  doctor?:   { id: string; specialty: string; clinicId?: string | null } | null;
+  doctor?:   {
+    id: string;
+    specialty: string;
+    clinicId?: string | null;
+    /** Estado de verificación de licencia — distinto del status de cuenta. */
+    licenseVerificationStatus?: VerificationStatus;
+  } | null;
   patient?:  { id: string } | null;
 }
 
