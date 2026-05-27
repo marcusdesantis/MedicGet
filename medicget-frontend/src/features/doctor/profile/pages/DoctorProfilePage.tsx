@@ -116,6 +116,15 @@ export function DoctorProfilePage() {
     });
   }, [state.status === 'ready' ? state.data : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Si llegamos con #verificacion (desde el banner del dashboard), scrolleamos
+  // al card de verificación una vez que los datos cargaron y se renderizó.
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    if (window.location.hash !== '#verificacion') return;
+    const el = document.getElementById('verificacion');
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }, [state.status]);
+
   const [saving,           setSaving]           = useState(false);
   const [togglingAvailable, setTogglingAvailable] = useState(false);
   const [error,            setError]            = useState<string | null>(null);
@@ -171,8 +180,9 @@ export function DoctorProfilePage() {
         // Doctor row
         doctorsApi.update(doctorId, {
           specialty:        form.specialty.trim() || 'Médico General',
-          licenseNumber:    form.licenseNumber.trim() || undefined,
-          licenseAuthority: form.licenseAuthority.trim() || undefined,
+          // licenseNumber / licenseAuthority / nationalId se guardan desde la
+          // sección "Verificación de tu cuenta médica" (LicenseVerificationSection),
+          // no acá — para no pisarlos con un save parcial del perfil.
           experience:      Number(form.experience)      || 0,
           pricePerConsult: Number(form.pricePerConsult) || 0,
           consultDuration: Number(form.consultDuration) || 30,
@@ -299,22 +309,13 @@ export function DoctorProfilePage() {
                 />
               </FormField>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Número de licencia / colegiatura">
-                  <Input value={form.licenseNumber} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} />
-                </FormField>
-                <FormField label="Autoridad emisora">
-                  <Input
-                    placeholder="ej: MSP Ecuador, FNOMCeO Italia"
-                    value={form.licenseAuthority}
-                    onChange={(e) => setForm({ ...form, licenseAuthority: e.target.value })}
-                  />
-                </FormField>
-              </div>
-
               <FormField label="Años de experiencia">
                 <Input type="number" min="0" value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} />
               </FormField>
+              <p className="text-xs text-slate-400 -mt-1">
+                Tu número de licencia, autoridad emisora y cédula se gestionan en la sección{' '}
+                <strong>Verificación de tu cuenta médica</strong>, más abajo.
+              </p>
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Precio por consulta (USD)">
@@ -357,6 +358,9 @@ export function DoctorProfilePage() {
             uploadedAt={state.data.licenseDocumentUploadedAt ?? null}
             source={state.data.licenseVerificationSource ?? null}
             nationalId={state.data.nationalId ?? null}
+            initialLicenseNumber={state.data.licenseNumber ?? ''}
+            initialLicenseAuthority={state.data.licenseAuthority ?? ''}
+            hasDocument={!!state.data.licenseDocumentUploadedAt}
             onChanged={refetch}
           />
 
@@ -591,7 +595,8 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function LicenseVerificationSection({
-  doctorId, status, verifiedAt, rejectionReason, uploadedAt, source, nationalId, onChanged,
+  doctorId, status, verifiedAt, rejectionReason, uploadedAt, source, nationalId,
+  initialLicenseNumber, initialLicenseAuthority, hasDocument, onChanged,
 }: {
   doctorId:       string;
   status:         VerificationStatus;
@@ -600,182 +605,235 @@ function LicenseVerificationSection({
   uploadedAt:     string | null;
   source:         string | null;
   nationalId:     string | null;
+  initialLicenseNumber:    string;
+  initialLicenseAuthority: string;
+  hasDocument:    boolean;
   onChanged:      () => void;
 }) {
   const meta = STATUS_META[status];
   const Icon = meta.icon;
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [uploading, setUploading] = useState(false);
 
-  // ── Verificación automática (ACESS) ──────────────────────────────────
-  const [cedula, setCedula]       = useState(nationalId ?? '');
-  const [verifying, setVerifying] = useState(false);
-  const showAutoVerify = status === 'NOT_SUBMITTED' || status === 'REJECTED';
+  // Estado local del card — todo lo de verificación vive acá, no en el form
+  // general del perfil. Un solo submit lo persiste y lo manda a revisión.
+  const [licenseNumber, setLicenseNumber]       = useState(initialLicenseNumber);
+  const [licenseAuthority, setLicenseAuthority] = useState(initialLicenseAuthority);
+  const [cedula, setCedula]                     = useState(nationalId ?? '');
+  const [file, setFile]                         = useState<File | null>(null);
+  const [submitting, setSubmitting]             = useState(false);
 
-  const handleAutoVerify = async () => {
-    const value = cedula.trim();
-    if (value.length < 10) {
-      toast.error('Ingresá tu cédula de 10 dígitos.');
-      return;
-    }
-    setVerifying(true);
-    try {
-      const res = await doctorsApi.requestVerification(doctorId, value);
-      if (res.data.autoVerified) {
-        toast.success('¡Cuenta verificada automáticamente vía ACESS! Ya aparecés en la búsqueda.');
-      } else {
-        toast.info(res.data.reason || 'No pudimos verificarte automáticamente. Subí tu documento para revisión manual.');
-      }
-      onChanged();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
-        ?.response?.data?.error?.message ?? 'Error al verificar. Intentá de nuevo o subí tu documento.';
-      toast.error(msg);
-    } finally {
-      setVerifying(false);
-    }
-  };
+  const isVerified = status === 'VERIFIED';
 
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
-    if (file.size > MAX_FILE_BYTES) {
+  const pickFile = (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > MAX_FILE_BYTES) {
       toast.error('El archivo supera los 5 MB. Reducí su tamaño y volvé a intentar.');
       return;
     }
-    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(f.type)) {
       toast.error('Formato no soportado. Aceptamos JPG, PNG, WebP o PDF.');
       return;
     }
-    setUploading(true);
+    setFile(f);
+  };
+
+  /**
+   * Un solo flujo: guarda los datos + intenta verificación automática por
+   * cédula (ACESS) + si no, sube el documento para revisión manual.
+   */
+  const handleSubmit = async () => {
+    if (!licenseNumber.trim()) {
+      toast.error('Ingresá tu código de certificado / licencia.');
+      return;
+    }
+    const ced = cedula.trim();
+    if (ced && ced.length !== 10) {
+      toast.error('La cédula debe tener 10 dígitos.');
+      return;
+    }
+    // Necesitamos AL MENOS un medio de verificación: cédula (para ACESS) o
+    // un documento (para revisión manual). Si ya hay documento cargado de
+    // antes, también vale.
+    if (!ced && !file && !hasDocument) {
+      toast.error('Ingresá tu cédula o subí tu documento para que podamos verificarte.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const dataUrl = await fileToDataUrl(file);
-      await doctorsApi.uploadLicense(doctorId, dataUrl);
-      toast.success('Documento enviado. Te avisamos cuando se revise.');
+      // 1. Guardar código de licencia + autoridad emisora.
+      await doctorsApi.update(doctorId, {
+        licenseNumber:    licenseNumber.trim() || undefined,
+        licenseAuthority: licenseAuthority.trim() || undefined,
+      } as Partial<DoctorDto>);
+
+      // 2. Si hay cédula, intentar verificación automática (guarda la cédula
+      //    y, si ACESS está habilitado y coincide, deja la cuenta VERIFIED).
+      if (ced) {
+        const res = await doctorsApi.requestVerification(doctorId, ced);
+        if (res.data.autoVerified) {
+          toast.success('¡Cuenta verificada automáticamente! Ya aparecés en la búsqueda.');
+          setFile(null);
+          onChanged();
+          return;
+        }
+      }
+
+      // 3. No hubo verificación automática → si subió documento, mandarlo a
+      //    revisión manual (queda PENDING_REVIEW).
+      if (file) {
+        const dataUrl = await fileToDataUrl(file);
+        await doctorsApi.uploadLicense(doctorId, dataUrl);
+        toast.success('Enviado a verificación. Te avisamos por email cuando se apruebe.');
+      } else if (hasDocument) {
+        toast.success('Datos actualizados. Tu documento sigue en revisión.');
+      } else {
+        toast.info('Guardamos tus datos. Subí tu documento para que el equipo te verifique.');
+      }
+      setFile(null);
       onChanged();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })
-        ?.response?.data?.error?.message ?? 'Error al subir el documento.';
+        ?.response?.data?.error?.message ?? 'Error al enviar la verificación.';
       toast.error(msg);
     } finally {
-      setUploading(false);
+      setSubmitting(false);
       if (inputRef.current) inputRef.current.value = '';
     }
   };
 
   return (
-    <SectionCard
-      title="Verificación de licencia"
-      subtitle="Validamos manualmente el documento que cargues. Hasta aprobarse, tu perfil no es visible para pacientes."
-    >
-      <div className="mb-4">
-        <PolicyPanel
-          title="¿Cómo se aprueba mi cuenta?"
-          icon={ShieldCheck}
-          tone="blue"
-          defaultOpen={status === 'NOT_SUBMITTED' || status === 'REJECTED'}
-          steps={[
-            <>Completá tu <strong>número de licencia / colegiatura</strong> y la <strong>autoridad emisora</strong> en la sección de arriba.</>,
-            <>Subí una foto nítida o un PDF de tu <strong>título profesional o credencial de colegiatura</strong> (máx 5 MB). Asegurate de que se lea tu nombre y el número.</>,
-            <>Tu documento entra en una <strong>cola de revisión</strong>. Un administrador lo valida manualmente — normalmente en 24-48h hábiles.</>,
-            <>Te avisamos por <strong>email y notificación</strong> apenas haya respuesta. Si se aprueba, ya aparecés en la búsqueda y podés recibir citas.</>,
-            <>Si se rechaza, vas a ver el <strong>motivo acá mismo</strong> y podés subir un documento corregido (vuelve a entrar en cola).</>,
-          ]}
-        >
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Mientras tu licencia no esté verificada, <strong>no aparecés en el directorio público</strong> ni los pacientes pueden reservarte. Es un requisito para garantizar la seguridad de la plataforma.
-          </p>
-        </PolicyPanel>
-      </div>
+    <div id="verificacion">
+      <SectionCard
+        title="Verificación de tu cuenta médica"
+        subtitle="Completá estos datos para que validemos tu habilitación. Hasta aprobarse, tu perfil no es visible para pacientes."
+      >
+        {/* Estado actual */}
+        <div className={`flex items-start gap-3 rounded-xl border p-4 ${meta.tone}`}>
+          <Icon size={22} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">{meta.label}</p>
+            <p className="text-xs mt-1 opacity-90">{meta.help}</p>
 
-      <div className={`flex items-start gap-3 rounded-xl border p-4 ${meta.tone}`}>
-        <Icon size={22} className="mt-0.5 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold">{meta.label}</p>
-          <p className="text-xs mt-1 opacity-90">{meta.help}</p>
-
-          {status === 'REJECTED' && rejectionReason && (
-            <div className="mt-3 p-3 bg-white/60 dark:bg-black/20 rounded-lg border border-current/20">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-1">Motivo del rechazo</p>
-              <p className="text-sm">{rejectionReason}</p>
-            </div>
-          )}
-
-          {status === 'VERIFIED' && verifiedAt && (
-            <p className="text-xs mt-2 opacity-80">
-              Verificado el {new Date(verifiedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
-              {source === 'ACESS_AUTO' && ' · automáticamente vía ACESS'}
-              {source === 'MANUAL' && ' · revisión manual del equipo'}.
-            </p>
-          )}
-
-          {status === 'PENDING_REVIEW' && uploadedAt && (
-            <p className="text-xs mt-2 opacity-80">
-              Documento enviado el {new Date(uploadedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}.
-            </p>
-          )}
+            {status === 'REJECTED' && rejectionReason && (
+              <div className="mt-3 p-3 bg-white/60 dark:bg-black/20 rounded-lg border border-current/20">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-1">Motivo del rechazo</p>
+                <p className="text-sm">{rejectionReason}</p>
+              </div>
+            )}
+            {status === 'VERIFIED' && verifiedAt && (
+              <p className="text-xs mt-2 opacity-80">
+                Verificado el {new Date(verifiedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+                {source === 'ACESS_AUTO' && ' · automáticamente vía ACESS'}
+                {source === 'MANUAL' && ' · revisión del equipo'}.
+              </p>
+            )}
+            {status === 'PENDING_REVIEW' && uploadedAt && (
+              <p className="text-xs mt-2 opacity-80">
+                Documento enviado el {new Date(uploadedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}. Estamos revisándolo.
+              </p>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Opción 1 (rápida): verificación automática contra ACESS por cédula */}
-      {showAutoVerify && (
-        <div className="mt-4 rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-900/10 p-4">
-          <p className="text-sm font-semibold text-slate-800 dark:text-white mb-1">
-            Opción rápida · Verificación automática
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-            Ingresá tu cédula y validamos tu habilitación al instante contra el registro de ACESS (Ecuador). Si coincide, quedás verificado sin subir nada.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2">
+        {/* Política — cómo se aprueba */}
+        <div className="mt-4">
+          <PolicyPanel
+            title="¿Cómo se aprueba mi cuenta?"
+            icon={ShieldCheck}
+            tone="blue"
+            defaultOpen={status === 'NOT_SUBMITTED' || status === 'REJECTED'}
+            steps={[
+              <>Completá tu <strong>código de certificado / licencia</strong>, el <strong>lugar donde la obtuviste</strong> y tu <strong>cédula</strong>.</>,
+              <>Subí una foto nítida o PDF de tu <strong>título o credencial de colegiatura</strong> (máx 5 MB), donde se lea tu nombre y el número.</>,
+              <>Tocá <strong>Enviar a verificación</strong>. Si tu cédula coincide con el registro oficial, te aprobamos al instante; si no, queda en <strong>revisión manual</strong> (24-48h hábiles).</>,
+              <>Te avisamos por <strong>email y notificación</strong>. Al aprobarse, aparecés en la búsqueda y podés recibir citas.</>,
+            ]}
+          >
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Mientras no estés verificado, <strong>no aparecés en el directorio</strong> ni los pacientes pueden reservarte.
+            </p>
+          </PolicyPanel>
+        </div>
+
+        {/* Formulario unificado */}
+        <div className="mt-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Código de certificado / licencia *">
+              <Input
+                value={licenseNumber}
+                onChange={(e) => setLicenseNumber(e.target.value)}
+                placeholder="ej: CMP-12345"
+                disabled={isVerified}
+              />
+            </FormField>
+            <FormField label="Lugar donde obtuviste la licencia">
+              <Input
+                value={licenseAuthority}
+                onChange={(e) => setLicenseAuthority(e.target.value)}
+                placeholder="ej: MSP Ecuador, ACESS"
+                disabled={isVerified}
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Cédula (10 dígitos)">
             <Input
               value={cedula}
               onChange={(e) => setCedula(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              placeholder="Cédula (10 dígitos)"
+              placeholder="0102030405"
               inputMode="numeric"
-              className="sm:max-w-[220px]"
+              disabled={isVerified}
             />
-            <button
-              type="button"
-              onClick={handleAutoVerify}
-              disabled={verifying || cedula.trim().length < 10}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
-            >
-              {verifying ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-              Verificar automáticamente
-            </button>
-          </div>
-        </div>
-      )}
+            {!isVerified && (
+              <p className="text-[11px] text-slate-400 mt-1">
+                La usamos para validar tu habilitación contra el registro oficial. Si coincide, te aprobamos al instante.
+              </p>
+            )}
+          </FormField>
 
-      {/* Opción 2 (fallback): subir documento para revisión manual */}
-      <div className="mt-4">
-        {showAutoVerify && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-            ¿No te encontró ACESS o preferís revisión manual? Subí tu documento:
-          </p>
-        )}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ACCEPTED_TYPES}
-            onChange={(e) => handleFile(e.target.files?.[0])}
-            className="hidden"
-          />
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition disabled:opacity-50"
-          >
-            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            {status === 'NOT_SUBMITTED' ? 'Subir documento' : 'Reemplazar documento'}
-          </button>
-          <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
-            <FileText size={12} /> JPG, PNG, WebP o PDF · máx 5 MB
-          </p>
+          {!isVerified && (
+            <FormField label="Documento (título / credencial)">
+              <input
+                ref={inputRef}
+                type="file"
+                accept={ACCEPTED_TYPES}
+                onChange={(e) => pickFile(e.target.files?.[0])}
+                className="hidden"
+              />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition"
+                >
+                  <Upload size={14} />
+                  {hasDocument ? 'Reemplazar documento' : 'Seleccionar documento'}
+                </button>
+                <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 truncate">
+                  <FileText size={12} className="flex-shrink-0" />
+                  {file ? file.name : hasDocument ? 'Ya hay un documento cargado' : 'JPG, PNG, WebP o PDF · máx 5 MB'}
+                </p>
+              </div>
+            </FormField>
+          )}
+
+          {!isVerified && (
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition disabled:opacity-50"
+              >
+                {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                Enviar a verificación
+              </button>
+            </div>
+          )}
         </div>
-      </div>
-    </SectionCard>
+      </SectionCard>
+    </div>
   );
 }
 

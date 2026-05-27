@@ -1,4 +1,4 @@
-import { Calendar, Users, Star, TrendingUp, Clock, ArrowRight } from 'lucide-react';
+import { Calendar, Users, Star, TrendingUp, Clock, ArrowRight, ShieldAlert, ShieldQuestion, ShieldX } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { StatCard }    from '@/components/ui/StatCard';
 import { PageHeader }  from '@/components/ui/PageHeader';
@@ -10,7 +10,7 @@ import { EmptyState }  from '@/components/ui/EmptyState';
 import { DashboardLoading, DashboardError } from '@/components/ui/DashboardState';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/context/AuthContext';
-import { dashboardApi, type AppointmentDto, type ReviewDto } from '@/lib/api';
+import { dashboardApi, doctorsApi, type AppointmentDto, type ReviewDto, type DoctorDto } from '@/lib/api';
 
 function initials(firstName?: string, lastName?: string): string {
   return ((firstName?.[0] ?? '') + (lastName?.[0] ?? '')).toUpperCase() || '👤';
@@ -18,10 +18,21 @@ function initials(firstName?: string, lastName?: string): string {
 
 export function DoctorDashboardPage() {
   const { user } = useAuth();
+  const doctorId = user?.dto.doctor?.id ?? null;
   const { state, refetch } = useApi(() => dashboardApi.doctor(), []);
+  // Fetch liviano del propio perfil para conocer el estado de verificación
+  // (el dashboard endpoint no lo trae). Si no hay doctorId, no consultamos.
+  const { state: docState } = useApi<DoctorDto>(
+    () => doctorsApi.getById(doctorId!),
+    [doctorId],
+  );
 
   if (state.status === 'loading') return <DashboardLoading />;
   if (state.status === 'error')   return <DashboardError error={state.error} onRetry={refetch} role="doctor" />;
+
+  const verifStatus = docState.status === 'ready'
+    ? (docState.data.licenseVerificationStatus ?? 'NOT_SUBMITTED')
+    : null;
 
   // svc-dashboard returns the payload from getDoctorDashboard():
   //   { stats, todaySchedule, weeklyChart, recentReviews }
@@ -51,6 +62,11 @@ export function DoctorDashboardPage() {
           }
         />
       </div>
+
+      {/* Banner de verificación pendiente — solo si no está VERIFIED */}
+      {verifStatus && verifStatus !== 'VERIFIED' && (
+        <VerificationBanner status={verifStatus} />
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -166,6 +182,60 @@ export function DoctorDashboardPage() {
           </div>
         </SectionCard>
       )}
+    </div>
+  );
+}
+
+/**
+ * Banner que se muestra en el dashboard del médico mientras su cuenta NO
+ * esté verificada. Lo empuja a completar la verificación en su perfil
+ * (link directo al ancla #verificacion del card unificado).
+ */
+function VerificationBanner({ status }: { status: string }) {
+  const cfg =
+    status === 'PENDING_REVIEW'
+      ? {
+          icon: ShieldQuestion,
+          wrap: 'bg-amber-50 dark:bg-amber-900/15 border-amber-300 dark:border-amber-800',
+          tint: 'text-amber-600',
+          title: 'Tu cuenta está en revisión',
+          body:  'Recibimos tu documentación. Un administrador la está revisando — te avisamos por email apenas se apruebe. Mientras tanto no aparecés en la búsqueda de pacientes.',
+          cta:   'Ver estado',
+        }
+      : status === 'REJECTED'
+      ? {
+          icon: ShieldX,
+          wrap: 'bg-rose-50 dark:bg-rose-900/15 border-rose-300 dark:border-rose-800',
+          tint: 'text-rose-600',
+          title: 'Tu verificación fue rechazada',
+          body:  'Necesitamos que corrijas tu documentación. Entrá a tu perfil para ver el motivo y reenviar.',
+          cta:   'Corregir y reenviar',
+        }
+      : {
+          icon: ShieldAlert,
+          wrap: 'bg-amber-50 dark:bg-amber-900/15 border-amber-300 dark:border-amber-800',
+          tint: 'text-amber-600',
+          title: 'Tu cuenta está pendiente de verificación',
+          body:  'Para aparecer en la búsqueda y recibir citas, completá tu código de licencia, cédula y subí tu documento. Toma 2 minutos.',
+          cta:   'Completar verificación',
+        };
+  const Icon = cfg.icon;
+
+  return (
+    <div className={`flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border p-5 ${cfg.wrap}`}>
+      <div className="flex items-start gap-3 flex-1">
+        <Icon size={24} className={`${cfg.tint} flex-shrink-0 mt-0.5`} />
+        <div>
+          <p className="font-semibold text-slate-800 dark:text-white">{cfg.title}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5">{cfg.body}</p>
+        </div>
+      </div>
+      <Link
+        to="/doctor/profile#verificacion"
+        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition whitespace-nowrap flex-shrink-0"
+      >
+        {cfg.cta} <ArrowRight size={15} />
+      </Link>
     </div>
   );
 }
