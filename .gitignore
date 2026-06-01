@@ -34,3 +34,5 @@ prisma/migrations/dev.db*
 # Vite escribe estos archivos temporales al cargar config con TS — no
 # deben versionarse (cambian en cada arranque del dev server).
 vite.config.ts.timestamp-*.mjs
+
+.claude/

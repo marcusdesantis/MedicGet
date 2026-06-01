@@ -119,6 +119,7 @@ android {
     packagingOptions {
         jniLibs {
             useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+            pickFirsts += ['lib/**/libworklets.so']
         }
     }
     androidResources {
