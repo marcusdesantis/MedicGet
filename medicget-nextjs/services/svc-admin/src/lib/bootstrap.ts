@@ -50,6 +50,14 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   // y en /terminos para que pacientes y medicos sepan el modelo de
   // negocio. NO se aplica a ningun calculo de Payment.
   COMMISSION_PCT:   '15',
+  // ── Notificaciones operacionales para admins ────────────────────────────
+  // Listas CSV editables desde /admin/settings → tab Notificaciones.
+  // Vacías = no se manda nada (el helper compartido las omite).
+  NOTIFY_REGISTRATIONS_EMAILS: '',
+  // Roles para los que disparar la notif de registro. CSV de
+  // PATIENT / DOCTOR / CLINIC. Si está vacío, no se manda nada.
+  NOTIFY_REGISTRATIONS_ROLES:  '',
+  NOTIFY_PAYMENTS_EMAILS:      '',
 };
 
 async function bootstrapDefaultSettings(): Promise<void> {
@@ -61,10 +69,11 @@ async function bootstrapDefaultSettings(): Promise<void> {
       update: {},
       create: {
         key,
-        category: key.startsWith('SMTP_')      ? 'EMAIL'
-                : key === 'PLATFORM_FEE_PCT'   ? 'PAYMENTS'
-                : key === 'COMMISSION_PCT'     ? 'PAYMENTS'
-                : key.startsWith('BRAND_')     ? 'BRANDING'
+        category: key.startsWith('SMTP_')         ? 'EMAIL'
+                : key === 'PLATFORM_FEE_PCT'      ? 'PAYMENTS'
+                : key === 'COMMISSION_PCT'        ? 'PAYMENTS'
+                : key.startsWith('BRAND_')        ? 'BRANDING'
+                : key.startsWith('NOTIFY_')       ? 'NOTIFICATIONS'
                 : 'GENERAL',
         isSecret: key === 'SMTP_PASS',
         value:    null,

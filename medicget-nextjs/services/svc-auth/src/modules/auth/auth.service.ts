@@ -4,6 +4,7 @@ import { Prisma, Role } from '@prisma/client';
 import { signToken }              from '@medicget/shared/auth';
 import { ensureFreeSubscription } from '@medicget/shared/subscription';
 import { sendEmail }              from '@medicget/shared/email';
+import { notifyAdminRegistration } from '@medicget/shared/admin-notifications';
 import { authRepository } from './auth.repository';
 
 /**
@@ -187,6 +188,11 @@ export const authService = {
         // eslint-disable-next-line no-console
         console.error('[authService.register] verification email failed:', err);
       });
+
+      // Aviso operacional a los admins configurados desde /admin/settings →
+      // tab Notificaciones. Fire-and-forget: si el SMTP falla, el usuario
+      // ya está creado y no se entera del error.
+      void notifyAdminRegistration(user.id).catch(() => {/* logged */});
 
       // NO devolvemos token — el usuario debe verificar primero.
       return {

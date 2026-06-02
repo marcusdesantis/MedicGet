@@ -9,6 +9,7 @@ import {
 import { sendEmail }                       from '@medicget/shared/email';
 import { generateMeetingUrl }              from '@medicget/shared/meeting';
 import { createNotification }              from '@medicget/shared/notifications';
+import { notifyAdminPaymentConfirmed }     from '@medicget/shared/admin-notifications';
 import type { CheckoutInput, ConfirmInput } from './payment.schemas';
 
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string };
@@ -235,6 +236,10 @@ export const paymentService = {
       // Disparamos las notificaciones in-app + email en background. Si
       // alguna falla, no rompemos el confirm (la cita ya está pagada).
       void notifyAppointmentConfirmed(appt.id, meetingUrl);
+
+      // Aviso operacional a los admins configurados desde /admin/settings →
+      // tab Notificaciones. Fire-and-forget.
+      void notifyAdminPaymentConfirmed(appt.id).catch(() => {/* logged */});
 
       return { ok: true, data: { status: 'PAID' } };
     }

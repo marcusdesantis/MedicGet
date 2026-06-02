@@ -21,7 +21,8 @@
     "./webpush": "./src/webpush.ts",
     "./notifications": "./src/notifications.ts",
     "./cedula": "./src/cedula.ts",
-    "./license-verifier": "./src/license-verifier.ts"
+    "./license-verifier": "./src/license-verifier.ts",
+    "./admin-notifications": "./src/admin-notifications.ts"
   },
   "scripts": {
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
