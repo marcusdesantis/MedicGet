@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { ClinicDetailsForm } from "../components/ClinicDetailsForm";
-import { LegalConsent } from "../components/LegalConsent";
 import { Button } from "@/components/ui/Button";
 import { AuthCard } from "@/components/ui/AuthCard";
 import { Alert } from "@/components/ui/Alert";
@@ -106,20 +105,17 @@ export const RegisterClinicDetailsPage = () => {
 
     const personalValid = isClean(clientErrors);
     const locationValid = isClean(locationErrors);
-    const [acceptedLegal, setAcceptedLegal] = useState(false);
-    const [legalError, setLegalError] = useState<string | null>(null);
-    const canSubmit = personalValid && stepOneValid && !submitting && acceptedLegal;
+    // El consentimiento legal vive dentro del ClinicDetailsForm como
+    // `draft.acceptTerms` (LegalConsent con links a /terminos y /privacidad).
+    // No duplicamos el chequeo acá; basta con que `personalValid` falle si
+    // no marcó el checkbox (errors.acceptTerms entra en clientErrors).
+    const canSubmit = personalValid && stepOneValid && !submitting;
 
     const firstLocationError = locationErrors.country
         ?? locationErrors.province
         ?? locationErrors.marker;
 
     const handleSubmit = async () => {
-        if (!acceptedLegal) {
-            setLegalError("Tenés que aceptar los Términos y la Política de Privacidad.");
-            return;
-        }
-        setLegalError(null);
         if (!canSubmit) return;
         if (!locationValid) {
             setShowLocErrors(true);
@@ -235,16 +231,6 @@ export const RegisterClinicDetailsPage = () => {
                             <Alert variant="error">{firstLocationError}</Alert>
                         </div>
                     )}
-                </div>
-
-                {/* LEGAL INFO */}
-                <div className="mt-6">
-                    <LegalConsent
-                        accent="indigo"
-                        accepted={acceptedLegal}
-                        onChange={(v) => { setAcceptedLegal(v); if (v) setLegalError(null); }}
-                        error={legalError}
-                    />
                 </div>
 
                 {/* SUBMIT */}

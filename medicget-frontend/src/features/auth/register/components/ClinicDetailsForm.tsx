@@ -5,6 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
+import { LegalConsent } from "./LegalConsent";
 import type { ClinicDraft } from "../state";
 import type { FieldErrors } from "../validation";
 
@@ -165,19 +166,16 @@ export const ClinicDetailsForm = ({ form, setForm, errors }: Props) => {
                 )}
             </FormField>
 
-            <div className="text-sm text-slate-600 dark:text-slate-300">
-                <Checkbox
-                    checked={form.acceptTerms}
-                    onChange={(v: boolean) => setForm({ acceptTerms: v })}
-                >
-                    <span>
-                        Acepto los{" "}
-                        <span className="text-blue-500 cursor-pointer">términos y condiciones</span>
-                        , la{" "}
-                        <span className="text-blue-500 cursor-pointer">política de privacidad</span>{" "}
-                        y el tratamiento de mis datos
-                    </span>
-                </Checkbox>
+            <div className="text-sm text-slate-600 dark:text-slate-300 space-y-3">
+                {/* Consentimiento legal — antes los textos azules eran spans
+                    estilizados sin onClick. Ahora son links reales a /terminos
+                    y /privacidad (abren en pestaña nueva). */}
+                <LegalConsent
+                    accent="indigo"
+                    accepted={form.acceptTerms}
+                    onChange={(v) => setForm({ acceptTerms: v })}
+                    error={errors.acceptTerms}
+                />
 
                 <Checkbox
                     checked={form.confirmAuthorization}
@@ -185,6 +183,9 @@ export const ClinicDetailsForm = ({ form, setForm, errors }: Props) => {
                 >
                     Confirmo que tengo la autorización para crear una cuenta para este centro
                 </Checkbox>
+                {errors.confirmAuthorization && (
+                    <p className="text-xs text-rose-600 -mt-1 ml-7">{errors.confirmAuthorization}</p>
+                )}
             </div>
 
         </div>
