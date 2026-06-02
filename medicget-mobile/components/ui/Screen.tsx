@@ -54,7 +54,7 @@ export function Screen({
 
   return (
     <SafeAreaView
-      edges={['top', 'bottom']}
+      edges={['top']}
       className={['flex-1 bg-slate-50 dark:bg-slate-950', className]
         .filter(Boolean)
         .join(' ')}>

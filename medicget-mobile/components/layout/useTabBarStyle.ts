@@ -13,6 +13,7 @@
  */
 
 import { useColorScheme } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface TabBarStyle {
   tabBarActiveTintColor: string;
@@ -20,6 +21,9 @@ interface TabBarStyle {
   tabBarStyle: {
     backgroundColor: string;
     borderTopColor: string;
+    height: number;
+    paddingBottom: number;
+    paddingTop: number;
   };
   tabBarLabelStyle: { fontSize: number; fontWeight: '500' };
 }
@@ -30,16 +34,20 @@ interface TabBarStyle {
 export function useTabBarStyle(activeColor: string): TabBarStyle {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
+  const { bottom } = useSafeAreaInsets();
+  // `bottom` es el alto de la barra de navegación del sistema (botones
+  // o gestos). Varía por dispositivo: ~0 en gesture nav oculta, ~24-48
+  // en dispositivos con botones visibles. Sumamos 8 dp de padding propio.
+  const paddingBottom = bottom + 8;
   return {
     tabBarActiveTintColor: activeColor,
-    // En dark, el "inactivo" tiene que tener más contraste contra el
-    // fondo oscuro — slate-500 funciona mejor que slate-400.
     tabBarInactiveTintColor: isDark ? '#64748b' : '#94a3b8',
     tabBarStyle: {
-      // slate-900 / white — mismas superficies que SectionCard.
       backgroundColor: isDark ? '#0f172a' : '#ffffff',
-      // slate-800 / slate-200 — bordes consistentes con el resto.
       borderTopColor: isDark ? '#1e293b' : '#e2e8f0',
+      height: 56 + paddingBottom,
+      paddingBottom,
+      paddingTop: 6,
     },
     tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
   };

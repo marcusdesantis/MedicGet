@@ -187,8 +187,7 @@ export default function AdminUsers() {
     ]);
   };
 
-  const { logout: _logout } = useAuth();
-  void _logout;
+  const { refreshMe } = useAuth();
 
   const handleImpersonate = (u: UserDto) => {
     const name =
@@ -205,11 +204,11 @@ export default function AdminUsers() {
             setActing(u.id);
             try {
               const res = await adminApi.impersonate(u.id);
-              // Reemplazamos el token. La próxima vez que la app
-              // bootstrappee leerá el token nuevo y traerá al usuario
-              // impersonado.
               await tokenStorage.set(res.data.token);
               setAuthToken(res.data.token);
+              // Actualizar el AuthContext con el nuevo usuario antes de
+              // navegar, para que ProtectedRoute vea el rol correcto.
+              await refreshMe();
               const targetRole = u.role.toLowerCase();
               router.replace(`/(main)/(${targetRole})` as never);
             } catch (err: unknown) {
