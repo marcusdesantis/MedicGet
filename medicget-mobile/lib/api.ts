@@ -625,16 +625,6 @@ export const paymentApi = {
 };
 
 
-/**
- * Public commission - porcentaje informativo que se publica en la
- * landing/terminos. NO afecta calculos. El admin lo edita desde
- * /admin/settings.
- */
-export const publicCommissionApi = {
-  get: () =>
-    apiGet<{ commissionPct: number; label: string }>('/public/commission'),
-};
-
 export const notificationsApi = {
   list: (params?: { limit?: number; onlyUnread?: 0 | 1 }) =>
     apiGet<{ items: NotificationDto[]; unreadCount: number }>(

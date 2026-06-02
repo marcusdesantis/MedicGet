@@ -942,9 +942,21 @@ export const publicSettingsApi = {
  * landing y /terminos. El admin lo edita desde /admin/settings → tab
  * Pagos. NO afecta cálculos de Payment (la comisión real se acuerda
  * offline con cada médico).
+ *
+ * `get()` es **silencioso** ante errores de red / 502 del gateway:
+ * si svc-admin está caído o reiniciándose, devuelve el default sin
+ * loguear nada — la página igual renderiza el `15%` informativo en
+ * vez de mostrar un error rojo en una página legal pública.
  */
 export const publicCommissionApi = {
-  get: () => apiGet<{ commissionPct: number; label: string }>('/public/commission'),
+  get: async (): Promise<ApiOk<{ commissionPct: number; label: string }>> => {
+    try {
+      return await apiGet<{ commissionPct: number; label: string }>('/public/commission');
+    } catch {
+      // Fallback silencioso. Nunca tirar — es solo informativo.
+      return { ok: true, data: { commissionPct: 15, label: '15 %' } };
+    }
+  },
 };
 
 /** Superadmin-only API. All endpoints require `role === ADMIN`. */
