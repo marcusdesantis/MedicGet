@@ -10,6 +10,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SocialButton } from "../components/SocialButton";
 import { Divider } from "../components/Divider";
+import { LegalConsent } from "../components/LegalConsent";
 import { useAuth } from "@/context/AuthContext";
 import { useRegistrationDraft } from "../state";
 import {
@@ -50,10 +51,18 @@ export const RegisterPatientPage = () => {
         return merged;
     }, [clientErrors, submitError]);
 
-    const canSubmit = isClean(clientErrors) && !submitting;
+    const [acceptedLegal, setAcceptedLegal] = useState(false);
+    const [legalError, setLegalError] = useState<string | null>(null);
+
+    const canSubmit = isClean(clientErrors) && !submitting && acceptedLegal;
     const emailsMatch = !!draft.email && draft.email === draft.confirmEmail;
 
     const handleSubmit = async () => {
+        if (!acceptedLegal) {
+            setLegalError("Tenés que aceptar los Términos y la Política de Privacidad.");
+            return;
+        }
+        setLegalError(null);
         if (!canSubmit) return;
         setSubmitting(true);
         setSubmitError(null);
@@ -64,6 +73,8 @@ export const RegisterPatientPage = () => {
             password:  draft.password,
             firstName: draft.firstName.trim(),
             lastName:  draft.lastName.trim(),
+            acceptedTerms:   true,
+            acceptedPrivacy: true,
         });
 
         setSubmitting(false);
@@ -220,10 +231,18 @@ export const RegisterPatientPage = () => {
 
                 </div>
 
+                <div className="mt-6">
+                    <LegalConsent
+                        accepted={acceptedLegal}
+                        onChange={(v) => { setAcceptedLegal(v); if (v) setLegalError(null); }}
+                        error={legalError}
+                    />
+                </div>
+
                 <Button
                     onClick={handleSubmit}
                     disabled={!canSubmit}
-                    className="w-full mt-8 bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full mt-6 bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {submitting ? "Creando cuenta..." : "Crear mi cuenta"}
                 </Button>

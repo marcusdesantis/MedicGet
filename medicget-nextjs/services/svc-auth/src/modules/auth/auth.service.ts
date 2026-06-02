@@ -38,7 +38,19 @@ export interface RegisterInput {
   licenseNumber?:   string;
   experience?:      number;
   pricePerConsult?: number;
+
+  // Consentimiento legal (zod ya garantiza que ambos son `true`).
+  acceptedTerms:   true;
+  acceptedPrivacy: true;
 }
+
+/**
+ * Versión vigente de los documentos legales (Términos + Privacidad).
+ * Se incrementa cuando se hace un cambio sustantivo que requiere
+ * re-consent. El frontend la lee del `legalVersion` exportado abajo
+ * para mantenerse en sync.
+ */
+export const LEGAL_VERSION = '2026-06-02';
 
 export interface LoginInput {
   email:    string;
@@ -151,10 +163,16 @@ export const authService = {
       const passwordHash = await bcrypt.hash(input.password, 10);
       // Crear con status PENDING_VERIFICATION — el usuario no podrá loguearse
       // hasta hacer click en el link / ingresar el código del email.
+      // El consentimiento legal se registra con el mismo timestamp para
+      // ambos documentos (un solo checkbox del UI cubre los dos).
+      const now = new Date();
       const user = await authRepository.create({
         ...input,
         passwordHash,
         status: 'PENDING_VERIFICATION',
+        termsAcceptedAt:   now,
+        privacyAcceptedAt: now,
+        legalVersion:      LEGAL_VERSION,
       });
 
       // Auto-asignar plan FREE a médicos y clínicas. Pacientes y admins no

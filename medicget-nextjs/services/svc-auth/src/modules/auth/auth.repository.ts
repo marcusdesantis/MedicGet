@@ -40,6 +40,11 @@ export interface CreateUserInput {
   licenseNumber?:   string;
   experience?:      number;
   pricePerConsult?: number;
+
+  // Consentimiento legal — registrado al momento del registro.
+  termsAcceptedAt?:   Date;
+  privacyAcceptedAt?: Date;
+  legalVersion?:      string;
 }
 
 /**
@@ -98,6 +103,9 @@ export const authRepository = {
           // Si el caller pasa status (auto-registro → PENDING_VERIFICATION),
           // se respeta. Sin él, queda ACTIVE por el default del schema.
           ...(input.status ? { status: input.status } : {}),
+          termsAcceptedAt:   input.termsAcceptedAt   ?? undefined,
+          privacyAcceptedAt: input.privacyAcceptedAt ?? undefined,
+          legalVersion:      input.legalVersion      ?? undefined,
           profile: {
             create: {
               firstName: input.firstName,

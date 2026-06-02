@@ -53,6 +53,7 @@ import {
 import { PaymentCheckoutPage } from '@/features/shared/payment/pages/PaymentCheckoutPage';
 import { PaymentReturnPage }   from '@/features/shared/payment/pages/PaymentReturnPage';
 import { TermsPage } from '@/features/legal/terms/pages/TermsPage';
+import { PrivacyPolicyPage } from '@/features/legal/privacy/pages/PrivacyPolicyPage';
 
 // Public directory + detail
 import { PublicDoctorsDirectoryPage } from '@/features/public/doctors/pages/PublicDoctorsDirectoryPage';
@@ -130,6 +131,7 @@ export const router = createBrowserRouter([
 
   // ── Pagina legal publica ──
   { path: '/terminos', element: <TermsPage /> },
+  { path: '/privacidad', element: <PrivacyPolicyPage /> },
 
   // ── Payment return (callback de PayPhone) ──
   // Endpoint compartido fuera del ProtectedRoute para que cualquier rol

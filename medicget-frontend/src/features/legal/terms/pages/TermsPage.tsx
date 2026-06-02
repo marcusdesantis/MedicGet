@@ -53,109 +53,149 @@ export function TermsPage() {
         </p>
 
         <div className="prose prose-slate dark:prose-invert mt-10 max-w-none">
-          {/* ── 1. Modelo de servicio ─────────────────────────────────── */}
-          <h2 className="text-2xl font-bold mt-10 mb-3">1. Modelo de servicio</h2>
+          {/* ── 1. Quiénes somos ─────────────────────────────────────── */}
+          <h2 className="text-2xl font-bold mt-10 mb-3">1. Quiénes somos</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
             MedicGet (en adelante, <strong>la plataforma</strong>) es un
-            servicio en linea que conecta pacientes con medicos y clinicas
-            para reservar y atender consultas medicas, ya sea por
-            videollamada, chat o en consultorio. El registro y el uso
-            cotidiano de la plataforma son <strong>100% gratuitos</strong>
-            para los tres tipos de usuario (paciente, medico, clinica).
-            No existen planes pagos, ni mensualidades, ni limites por
-            funcionalidad: todas las herramientas estan habilitadas para
-            cualquier cuenta verificada.
+            servicio operado por Abisoft que conecta pacientes con médicos
+            y clínicas para reservar y atender consultas médicas online,
+            por chat o presenciales. Al registrarte y usar la plataforma,
+            aceptás estos Términos de Uso y la{' '}
+            <Link to="/privacidad" className="text-blue-600 hover:underline">
+              Política de Privacidad
+            </Link>.
           </p>
 
-          {/* ── 2. Comision por consulta ─────────────────────────────── */}
-          <h2 className="text-2xl font-bold mt-10 mb-3">
-            2. Comision por consulta
-          </h2>
+          {/* ── 2. Modelo de servicio ────────────────────────────────── */}
+          <h2 className="text-2xl font-bold mt-10 mb-3">2. Modelo de servicio</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            La plataforma se sostiene a traves de una <strong>comision
-            del {pct}%</strong> aplicada sobre el monto de cada consulta
-            efectivamente cobrada. Este porcentaje es publicado en la
-            landing y aqui mismo (puede ser actualizado por la
-            administracion en cualquier momento; el valor vigente
-            siempre es el que aparece en este documento).
+            El registro y uso cotidiano de la plataforma son{' '}
+            <strong>100% gratuitos</strong> para los tres tipos de usuario
+            (paciente, médico, clínica). No hay planes pagos, mensualidades
+            ni límites por funcionalidad. La plataforma se sostiene con una
+            comisión sobre las consultas cobradas.
           </p>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
-            El cobro al paciente se realiza por el <strong>precio integro
-            publicado por el medico</strong> (sin recargos por parte de
-            la plataforma). Por ejemplo: si el medico publica una
-            consulta a $20, el paciente paga $20 netos. La comision
-            del {pct}% sale luego de la facturacion del medico con la
-            plataforma, no del bolsillo del paciente.
+            MedicGet es una plataforma <strong>tecnológica de intermediación</strong>.
+            No presta servicios de salud por sí misma: las consultas las
+            brindan los médicos habilitados que se registran. Las
+            decisiones clínicas, diagnósticos, prescripciones y todo acto
+            médico son responsabilidad exclusiva del profesional tratante.
           </p>
 
-          {/* ── 3. Liquidacion offline ───────────────────────────────── */}
+          {/* ── 3. Verificación de médicos ──────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">
-            3. Liquidacion entre medico y plataforma
+            3. Verificación de habilitación profesional
           </h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            La contabilidad interna del app refleja el cobro completo
-            como ingreso del medico. La liquidacion del {pct}%
-            correspondiente a la plataforma se acuerda de forma
-            <strong> manual y periodica</strong>, fuera del sistema, entre
-            el equipo administrativo de MedicGet y cada profesional. Al
-            registrarse como medico o clinica, el usuario acepta este
-            modelo de liquidacion offline.
+            Los médicos solo pueden aparecer en búsqueda y recibir citas
+            tras pasar un <strong>proceso de verificación de licencia</strong>:
           </p>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3 list-disc pl-6 space-y-1">
+            <li>Cargan número de licencia / colegiatura, autoridad emisora, cédula y un documento (foto del título o credencial).</li>
+            <li>La plataforma intenta verificar automáticamente la habilitación contra el registro de <strong>ACESS</strong> (Agencia de Aseguramiento de la Calidad de los Servicios de Salud, Ecuador) por cédula.</li>
+            <li>Si la verificación automática no concluye, el equipo administrativo revisa el documento manualmente (24–48 h hábiles).</li>
+            <li>Hasta no estar verificado, el médico <strong>no aparece en la búsqueda pública</strong> ni puede recibir reservas.</li>
+          </ul>
 
-          {/* ── 4. Responsabilidad medica ────────────────────────────── */}
+          {/* ── 4. Pagos y comisión ──────────────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">
-            4. Responsabilidad clinica
+            4. Pagos, comisión y facturación
           </h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            MedicGet es una plataforma tecnologica de intermediacion. No
-            ejerce la medicina ni provee servicios de salud directamente.
-            Las decisiones clinicas, diagnosticos, prescripciones y
-            cualquier acto medico son responsabilidad exclusiva del
-            profesional habilitado que atiende la consulta. El paciente
-            es responsable de verificar la matricula del medico antes de
-            reservar (publicada en cada perfil).
+            El paciente paga el <strong>precio íntegro publicado por el médico</strong>{' '}
+            (sin recargos de la plataforma). Por ejemplo: si el médico publica
+            una consulta a $20, el paciente paga $20 netos. La{' '}
+            <strong>comisión del {pct}%</strong> sale luego de la facturación
+            con el profesional, no del bolsillo del paciente.
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
+            Los cobros se procesan a través de <strong>PayPhone</strong>
+            (procesador autorizado en Ecuador). MedicGet no almacena datos
+            de tarjeta de crédito: esa información la procesa directamente
+            PayPhone bajo su propia política. La liquidación de la comisión
+            con cada profesional se acuerda de forma manual y periódica,
+            fuera del sistema.
           </p>
 
-          {/* ── 5. Datos personales ──────────────────────────────────── */}
+          {/* ── 5. Cancelaciones y reembolsos ───────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">
-            5. Datos personales y privacidad
+            5. Política de cancelación y reembolsos
           </h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            Los datos de pacientes (incluyendo historia clinica, motivos
-            de consulta y conversaciones de chat) se almacenan cifrados
-            en transito y en reposo. Solo son accesibles para el
-            paciente, el medico tratante y, cuando corresponde, la
-            clinica del medico. Para mas detalle, ver nuestra Politica
-            de Privacidad.
+            Tanto pacientes como clínicas pueden cancelar una cita desde
+            su panel. La política de reembolso es:
+          </p>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3 list-disc pl-6 space-y-1">
+            <li><strong>Paciente cancela con 24 h o más de anticipación</strong> → reembolso del 100 % al mismo medio de pago.</li>
+            <li><strong>Paciente cancela con menos de 24 h</strong> → la cancelación se hace, pero <strong>no aplica reembolso</strong>.</li>
+            <li><strong>Cancela la clínica</strong> → reembolso del 100 % sin importar el tiempo restante.</li>
+          </ul>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
+            Cuando corresponde, el reembolso se procesa al mismo medio de
+            pago en un plazo de <strong>3 a 5 días hábiles</strong>. El
+            procesamiento del reverso en la pasarela puede requerir acción
+            manual del equipo administrativo; mientras tanto el estado de
+            tu pago figura como "Reembolso en proceso" en tu panel.
           </p>
 
-          {/* ── 6. Cancelaciones y reembolsos ────────────────────────── */}
+          {/* ── 6. Videollamadas y chat ─────────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">
-            6. Cancelaciones y reembolsos
+            6. Videollamadas y mensajes
           </h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            Tanto pacientes como medicos pueden cancelar una cita desde
-            su panel. Las politicas de reembolso dependen del tiempo
-            restante hasta la cita y son configurables por cada clinica.
-            En caso de no-show del medico, el paciente recibe reembolso
-            integro.
+            Las consultas online se realizan mediante <strong>Jitsi Meet
+            auto-hospedado</strong> en infraestructura de MedicGet
+            (meet.medicget.io). No se requiere registrarse en ningún
+            servicio externo para iniciar o unirse. La plataforma{' '}
+            <strong>no graba ni almacena las videollamadas</strong>.
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
+            Las consultas por chat (modalidad CHAT) se guardan asociadas a
+            la cita correspondiente para que el paciente y el médico puedan
+            volver a leerlas como parte del historial clínico.
           </p>
 
-          {/* ── 7. Cambios a los terminos ────────────────────────────── */}
+          {/* ── 7. Obligaciones del usuario ─────────────────────────── */}
+          <h2 className="text-2xl font-bold mt-10 mb-3">7. Obligaciones del usuario</h2>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3 list-disc pl-6 space-y-1">
+            <li>Brindar información veraz y mantenerla actualizada.</li>
+            <li>Verificar tu correo electrónico antes de poder iniciar sesión.</li>
+            <li>No compartir tu contraseña ni el link de tu videollamada con terceros ajenos a la consulta.</li>
+            <li>Respeto mutuo en el chat y la videollamada — la plataforma se reserva el derecho de suspender cuentas ante conductas inapropiadas.</li>
+            <li>Para médicos: mantener vigente la habilitación profesional y notificar cualquier cambio.</li>
+          </ul>
+
+          {/* ── 8. Privacidad ────────────────────────────────────────── */}
+          <h2 className="text-2xl font-bold mt-10 mb-3">8. Privacidad de tus datos</h2>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+            Los datos personales y de salud (historia clínica, alergias,
+            medicación, motivo de consulta, chats) se almacenan cifrados
+            en tránsito (HTTPS) y se aplican controles de acceso por rol.
+            Solo el paciente, el médico tratante y, cuando corresponde,
+            la clínica del médico, pueden ver los datos clínicos de cada
+            consulta. El detalle está en la{' '}
+            <Link to="/privacidad" className="text-blue-600 hover:underline">
+              Política de Privacidad
+            </Link>.
+          </p>
+
+          {/* ── 9. Cambios a los términos ───────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">
-            7. Cambios a estos terminos
+            9. Cambios a estos términos
           </h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            MedicGet puede actualizar estos terminos en cualquier momento.
-            Los cambios significativos se comunican por correo a los
-            usuarios registrados con al menos 7 dias de anticipacion. El
-            % de comision vigente siempre se muestra en este documento.
+            MedicGet puede actualizar estos términos. Los cambios
+            significativos se comunican por correo a los usuarios
+            registrados y pueden requerir un re-consent al iniciar sesión.
+            El % de comisión vigente siempre se muestra en este documento.
           </p>
 
-          {/* ── 8. Contacto ──────────────────────────────────────────── */}
-          <h2 className="text-2xl font-bold mt-10 mb-3">8. Contacto</h2>
+          {/* ── 10. Contacto y reclamos ─────────────────────────────── */}
+          <h2 className="text-2xl font-bold mt-10 mb-3">10. Contacto</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            Para consultas, reclamos o solicitudes legales, escribinos a{' '}
+            Para consultas, reclamos, solicitudes legales o ejercicio de
+            derechos sobre tus datos, escribinos a{' '}
             <a
               href="mailto:soportemedicget@abisoft.it"
               className="text-blue-600 hover:underline"

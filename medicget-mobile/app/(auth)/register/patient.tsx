@@ -16,6 +16,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { LegalConsent } from '@/components/ui/LegalConsent';
 import { useAuth } from '@/context/AuthContext';
 import { useRegistrationDraft } from '@/features/auth/registration-draft';
 import {
@@ -65,13 +66,20 @@ export default function RegisterPatientScreen() {
     return merged;
   }, [clientErrors, submitError]);
 
-  const canSubmit = isClean(clientErrors) && !submitting;
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
+  const [legalError, setLegalError] = useState<string | null>(null);
+  const canSubmit = isClean(clientErrors) && !submitting && acceptedLegal;
   const generalError =
     submitError && (!submitError.field || !PAGE_FIELDS.has(submitError.field))
       ? submitError.message
       : null;
 
   const onSubmit = async () => {
+    if (!acceptedLegal) {
+      setLegalError('Tenés que aceptar los Términos y la Política de Privacidad.');
+      return;
+    }
+    setLegalError(null);
     if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError(null);
@@ -81,6 +89,8 @@ export default function RegisterPatientScreen() {
       password: draft.password,
       firstName: draft.firstName.trim(),
       lastName: draft.lastName.trim(),
+      acceptedTerms:   true,
+      acceptedPrivacy: true,
     });
     setSubmitting(false);
     if (result.success) {
@@ -206,6 +216,14 @@ export default function RegisterPatientScreen() {
             onChange={(v) => setDraft({ marketing: v })}>
             Quiero recibir consejos de salud y ofertas exclusivas.
           </Checkbox>
+
+          <View className="mt-3">
+            <LegalConsent
+              accepted={acceptedLegal}
+              onChange={(v) => { setAcceptedLegal(v); if (v) setLegalError(null); }}
+              error={legalError}
+            />
+          </View>
         </View>
 
         <View className="mt-6">

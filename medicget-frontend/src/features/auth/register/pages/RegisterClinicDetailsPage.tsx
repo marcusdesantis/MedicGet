@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { ClinicDetailsForm } from "../components/ClinicDetailsForm";
+import { LegalConsent } from "../components/LegalConsent";
 import { Button } from "@/components/ui/Button";
 import { AuthCard } from "@/components/ui/AuthCard";
 import { Alert } from "@/components/ui/Alert";
@@ -105,13 +106,20 @@ export const RegisterClinicDetailsPage = () => {
 
     const personalValid = isClean(clientErrors);
     const locationValid = isClean(locationErrors);
-    const canSubmit = personalValid && stepOneValid && !submitting;
+    const [acceptedLegal, setAcceptedLegal] = useState(false);
+    const [legalError, setLegalError] = useState<string | null>(null);
+    const canSubmit = personalValid && stepOneValid && !submitting && acceptedLegal;
 
     const firstLocationError = locationErrors.country
         ?? locationErrors.province
         ?? locationErrors.marker;
 
     const handleSubmit = async () => {
+        if (!acceptedLegal) {
+            setLegalError("Tenés que aceptar los Términos y la Política de Privacidad.");
+            return;
+        }
+        setLegalError(null);
         if (!canSubmit) return;
         if (!locationValid) {
             setShowLocErrors(true);
@@ -135,6 +143,8 @@ export const RegisterClinicDetailsPage = () => {
             province:    draft.province     || undefined,
             latitude:    draft.lat ?? undefined,
             longitude:   draft.lng ?? undefined,
+            acceptedTerms:   true,
+            acceptedPrivacy: true,
         });
 
         setSubmitting(false);
@@ -228,20 +238,20 @@ export const RegisterClinicDetailsPage = () => {
                 </div>
 
                 {/* LEGAL INFO */}
-                <div className="mt-8 text-xs text-slate-500 space-y-2">
-                    <p className="font-medium text-slate-600 dark:text-slate-300">
-                        INFORMACIÓN BÁSICA SOBRE PROTECCIÓN DE DATOS
-                    </p>
-                    <p>Responsable: MEDICGET, S.L.</p>
-                    <p>Finalidad: Gestión de los servicios solicitados.</p>
-                    <p className="text-blue-500 cursor-pointer">Ver política completa</p>
+                <div className="mt-6">
+                    <LegalConsent
+                        accent="indigo"
+                        accepted={acceptedLegal}
+                        onChange={(v) => { setAcceptedLegal(v); if (v) setLegalError(null); }}
+                        error={legalError}
+                    />
                 </div>
 
                 {/* SUBMIT */}
                 <Button
                     onClick={handleSubmit}
                     disabled={!canSubmit}
-                    className="mt-8 w-full py-3 rounded-full bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="mt-6 w-full py-3 rounded-full bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {submitting ? "Creando cuenta..." : "Crear cuenta"}
                 </Button>

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
+import { LegalConsent } from '@/components/ui/LegalConsent';
 import { useAuth } from '@/context/AuthContext';
 import {
   clearRegistrationDraft,
@@ -50,9 +51,16 @@ export default function RegisterClinicAddressScreen() {
     }),
     [draft],
   );
-  const canSubmit = isClean(errors) && !submitting;
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
+  const [legalError, setLegalError] = useState<string | null>(null);
+  const canSubmit = isClean(errors) && !submitting && acceptedLegal;
 
   const onSubmit = async () => {
+    if (!acceptedLegal) {
+      setLegalError('Tenés que aceptar los Términos y la Política de Privacidad.');
+      return;
+    }
+    setLegalError(null);
     if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError(null);
@@ -70,6 +78,8 @@ export default function RegisterClinicAddressScreen() {
       latitude: draft.lat ?? undefined,
       longitude: draft.lng ?? undefined,
       clinicName: draft.clinicName.trim(),
+      acceptedTerms:   true,
+      acceptedPrivacy: true,
     });
     setSubmitting(false);
     if (result.success) {
@@ -169,7 +179,16 @@ export default function RegisterClinicAddressScreen() {
           </FormField>
         </View>
 
-        <View className="mt-6">
+        <View className="mt-5">
+          <LegalConsent
+            tint="indigo"
+            accepted={acceptedLegal}
+            onChange={(v) => { setAcceptedLegal(v); if (v) setLegalError(null); }}
+            error={legalError}
+          />
+        </View>
+
+        <View className="mt-5">
           <Button onPress={onSubmit} loading={submitting} disabled={!canSubmit} fullWidth>
             Crear cuenta de clínica
           </Button>

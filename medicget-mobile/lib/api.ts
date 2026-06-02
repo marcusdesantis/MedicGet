@@ -414,6 +414,14 @@ export interface RegisterBody {
   licenseNumber?: string;
   experience?: number;
   pricePerConsult?: number;
+
+  /**
+   * Consentimiento legal — OBLIGATORIO. El backend rechaza el registro si
+   * no son ambos `true`. Un solo checkbox del UI cubre los dos documentos
+   * (Términos + Privacidad).
+   */
+  acceptedTerms:   true;
+  acceptedPrivacy: true;
 }
 
 export interface CreateAppointmentBody {

@@ -55,6 +55,16 @@ const schema = z.object({
   licenseNumber:   z.string().optional(),
   experience:      z.number().int().min(0).optional(),
   pricePerConsult: z.number().positive().optional(),
+
+  // ─── Consentimiento legal (obligatorio) ──────────────────────────────────
+  // El cliente DEBE pasar acceptedTerms=true y acceptedPrivacy=true.
+  // El service los registra como timestamps + versión del documento.
+  acceptedTerms: z.literal(true, {
+    errorMap: () => ({ message: 'Debes aceptar los Términos y Condiciones para registrarte.' }),
+  }),
+  acceptedPrivacy: z.literal(true, {
+    errorMap: () => ({ message: 'Debes aceptar la Política de Privacidad para registrarte.' }),
+  }),
 }).strict();
 
 export async function POST(req: NextRequest) {

@@ -532,6 +532,14 @@ export interface RegisterBody {
   licenseNumber?:   string;
   experience?:      number;
   pricePerConsult?: number;
+
+  /**
+   * Consentimiento legal — ambos OBLIGATORIOS (el backend rechaza el
+   * registro si no son `true`). Un solo checkbox en el UI cubre los dos
+   * documentos (Términos + Privacidad).
+   */
+  acceptedTerms:   true;
+  acceptedPrivacy: true;
 }
 
 // ─── Domain API objects ───────────────────────────────────────────────────────

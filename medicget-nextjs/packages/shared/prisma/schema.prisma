@@ -142,6 +142,15 @@ model User {
   /// el login está bloqueado. Mantenemos también el timestamp aún cuando
   /// el status ya cambió a ACTIVE para auditoría.
   emailVerifiedAt DateTime?
+  /// Consentimiento legal — registrado en el momento del registro, NUNCA
+  /// editable retroactivamente. `legalVersion` identifica la edición
+  /// vigente de los Términos / Privacidad al momento de aceptar (ej.
+  /// "2026-06-02"). Si actualizamos los documentos y exigimos re-consent,
+  /// estos campos quedan como evidencia histórica del consentimiento
+  /// previo y registramos el nuevo aparte.
+  termsAcceptedAt    DateTime?
+  privacyAcceptedAt  DateTime?
+  legalVersion       String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   createdBy       String?
