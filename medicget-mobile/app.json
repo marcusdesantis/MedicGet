@@ -7,6 +7,12 @@
     "scheme": "medicget",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2563eb"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.medicget.app",
@@ -15,6 +21,10 @@
     "android": {
       "package": "com.medicget.app",
       "versionCode": 2,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#2563eb"
+      },
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
