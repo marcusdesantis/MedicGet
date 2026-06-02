@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Loader2, Save, Mail, CreditCard, Video, Palette, Settings2, Eye, EyeOff,
+  Bell, X, UserPlus, DollarSign,
 } from 'lucide-react';
 import { toast }       from 'sonner';
 import { PageHeader }  from '@/components/ui/PageHeader';
@@ -25,13 +26,14 @@ import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { useApi }      from '@/hooks/useApi';
 import { adminApi, type AppSettingDto } from '@/lib/api';
 
-type TabKey = 'general' | 'email' | 'payments' | 'video';
+type TabKey = 'general' | 'email' | 'payments' | 'video' | 'notifications';
 
 const TABS: { key: TabKey; label: string; icon: typeof Settings2 }[] = [
-  { key: 'general',  label: 'General',                 icon: Settings2 },
-  { key: 'email',    label: 'Configuración de correo', icon: Mail      },
-  { key: 'payments', label: 'Pagos',                   icon: CreditCard },
-  { key: 'video',    label: 'Videollamadas',           icon: Video     },
+  { key: 'general',       label: 'General',                 icon: Settings2 },
+  { key: 'email',         label: 'Configuración de correo', icon: Mail      },
+  { key: 'payments',      label: 'Pagos',                   icon: CreditCard },
+  { key: 'video',         label: 'Videollamadas',           icon: Video     },
+  { key: 'notifications', label: 'Notificaciones',          icon: Bell      },
 ];
 
 /* ─── Provider presets (auto-llenado de host/puerto/TLS) ─────────────── */
@@ -118,10 +120,11 @@ export function AdminSettingsPage() {
         </div>
       </div>
 
-      {tab === 'general'  && <GeneralTab  draft={draft} setDraft={setDraft} />}
-      {tab === 'email'    && <EmailTab    draft={draft} setDraft={setDraft} />}
-      {tab === 'payments' && <PaymentsTab draft={draft} setDraft={setDraft} />}
-      {tab === 'video'    && <VideoTab    draft={draft} setDraft={setDraft} />}
+      {tab === 'general'       && <GeneralTab       draft={draft} setDraft={setDraft} />}
+      {tab === 'email'         && <EmailTab         draft={draft} setDraft={setDraft} />}
+      {tab === 'payments'      && <PaymentsTab      draft={draft} setDraft={setDraft} />}
+      {tab === 'video'         && <VideoTab         draft={draft} setDraft={setDraft} />}
+      {tab === 'notifications' && <NotificationsTab draft={draft} setDraft={setDraft} />}
 
       <div className="flex justify-end sticky bottom-4">
         <button
@@ -377,4 +380,218 @@ function PasswordField({ label, k, draft, setDraft, placeholder }: TabProps & {
       </div>
     </label>
   );
+}
+
+/* ─────────────── Notifications tab ─────────────── */
+/**
+ * NotificationsTab — dos secciones independientes:
+ *
+ *  1. Registros: lista de correos + checkboxes (Paciente / Médico / Clínica)
+ *     para elegir qué roles disparan la notificación. CSV se persiste en
+ *     `NOTIFY_REGISTRATIONS_EMAILS` y `NOTIFY_REGISTRATIONS_ROLES`.
+ *
+ *  2. Pagos: lista de correos a los que se avisa cada vez que un pago
+ *     queda en estado PAID. CSV se persiste en `NOTIFY_PAYMENTS_EMAILS`.
+ *
+ * Backend lee estos settings en cada disparo (svc-auth.register y
+ * svc-appointment.payment.confirm) — los cambios se aplican en segundos
+ * sin redeploy.
+ */
+function NotificationsTab({ draft, setDraft }: TabProps) {
+  const regRoles = csvSet(draft['NOTIFY_REGISTRATIONS_ROLES'] ?? '');
+  const toggleRole = (role: 'PATIENT' | 'DOCTOR' | 'CLINIC') => {
+    const next = new Set(regRoles);
+    if (next.has(role)) next.delete(role);
+    else next.add(role);
+    setDraft({ ...draft, NOTIFY_REGISTRATIONS_ROLES: Array.from(next).join(',') });
+  };
+  const ROLES: { value: 'PATIENT' | 'DOCTOR' | 'CLINIC'; label: string }[] = [
+    { value: 'PATIENT', label: 'Pacientes'    },
+    { value: 'DOCTOR',  label: 'Médicos'      },
+    { value: 'CLINIC',  label: 'Clínicas'     },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* ── Registros ── */}
+      <SectionCard>
+        <div className="flex items-start gap-3 mb-3">
+          <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <UserPlus size={18} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-white">Avisos de nuevos registros</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              A qué correos avisamos cuando alguien <strong>verifica su cuenta</strong> con
+              el código que le mandamos, y de qué tipos de usuario.
+              No se notifica de cuentas creadas sin confirmar el email.
+            </p>
+          </div>
+        </div>
+
+        <EmailListField
+          label="Correos a notificar"
+          k="NOTIFY_REGISTRATIONS_EMAILS"
+          draft={draft}
+          setDraft={setDraft}
+          placeholder="admin@medicget.com"
+        />
+
+        <div className="mt-5">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+            Qué registros disparan el aviso
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ROLES.map((r) => {
+              const on = regRoles.has(r.value);
+              return (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => toggleRole(r.value)}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition ${
+                    on
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span className={`inline-flex h-4 w-4 items-center justify-center rounded ${on ? 'bg-white' : 'border border-slate-300 dark:border-slate-600'}`}>
+                    {on && <span className="text-blue-600 font-bold text-[10px]">✓</span>}
+                  </span>
+                  {r.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2">
+            Sin ningún rol marcado, no se manda nada (la lista de correos también necesita al menos uno).
+          </p>
+        </div>
+      </SectionCard>
+
+      {/* ── Pagos ── */}
+      <SectionCard>
+        <div className="flex items-start gap-3 mb-3">
+          <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center flex-shrink-0">
+            <DollarSign size={18} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-white">Avisos de pagos confirmados</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              A qué correos avisamos cada vez que un paciente paga una cita y el cobro queda aprobado.
+              Incluye monto, paciente, médico, modalidad y fecha de la consulta.
+            </p>
+          </div>
+        </div>
+
+        <EmailListField
+          label="Correos a notificar"
+          k="NOTIFY_PAYMENTS_EMAILS"
+          draft={draft}
+          setDraft={setDraft}
+          placeholder="finanzas@medicget.com"
+        />
+      </SectionCard>
+    </div>
+  );
+}
+
+/** Parsea CSV de roles a Set (case-insensitive). */
+function csvSet(raw: string): Set<'PATIENT' | 'DOCTOR' | 'CLINIC'> {
+  const out = new Set<'PATIENT' | 'DOCTOR' | 'CLINIC'>();
+  raw.split(/[,;\n]/).forEach((r) => {
+    const v = r.trim().toUpperCase();
+    if (v === 'PATIENT' || v === 'DOCTOR' || v === 'CLINIC') out.add(v);
+  });
+  return out;
+}
+
+/**
+ * Input estilo "chips" para lista CSV de correos.
+ *   • Mostramos los emails como chips removibles.
+ *   • El usuario tipea, presiona Enter (o coma/espacio) → se agrega.
+ *   • Backspace en input vacío → borra el último.
+ *   • Validamos formato básico al agregar (silenciosamente lo ignora si no es email).
+ */
+function EmailListField({
+  label, k, draft, setDraft, placeholder,
+}: {
+  label:       string;
+  k:           string;
+  draft:       Record<string, string>;
+  setDraft:    (next: Record<string, string>) => void;
+  placeholder?: string;
+}) {
+  const [pending, setPending] = useState('');
+  const emails = parseEmails(draft[k] ?? '');
+  const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
+  const commit = (next: string[]) => {
+    const csv = Array.from(new Set(next.map((e) => e.toLowerCase()))).join(',');
+    setDraft({ ...draft, [k]: csv });
+  };
+
+  const addPending = () => {
+    const v = pending.trim().toLowerCase();
+    if (!v) return;
+    if (!isValidEmail(v)) return;
+    commit([...emails, v]);
+    setPending('');
+  };
+
+  const removeAt = (idx: number) => {
+    commit(emails.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+        {label}
+      </label>
+      <div className="flex flex-wrap items-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-[44px]">
+        {emails.map((e, i) => (
+          <span
+            key={`${e}-${i}`}
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+          >
+            {e}
+            <button
+              type="button"
+              onClick={() => removeAt(i)}
+              className="text-slate-400 hover:text-rose-600"
+              aria-label={`Quitar ${e}`}
+            >
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+        <input
+          type="email"
+          value={pending}
+          onChange={(ev) => setPending(ev.target.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter' || ev.key === ',' || ev.key === ' ') {
+              ev.preventDefault();
+              addPending();
+            } else if (ev.key === 'Backspace' && pending === '' && emails.length > 0) {
+              removeAt(emails.length - 1);
+            }
+          }}
+          onBlur={addPending}
+          placeholder={emails.length === 0 ? (placeholder ?? 'correo@dominio.com') : ''}
+          className="flex-1 min-w-[140px] px-1 py-0.5 bg-transparent text-sm text-slate-800 dark:text-white focus:outline-none"
+        />
+      </div>
+      <p className="text-[11px] text-slate-400 mt-1">
+        Tocá Enter (o coma) para agregar cada correo. Para quitarlos, usá la X de cada chip.
+      </p>
+    </div>
+  );
+}
+
+function parseEmails(raw: string): string[] {
+  return raw
+    .split(/[,;\n]/)
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
 }

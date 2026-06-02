@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Alert } from '@/components/ui/Alert';
 import { PhoneField } from '@/components/ui/PhoneField';
+import { SpecialtyCombobox } from '@/components/ui/SpecialtyCombobox';
 import { useRegistrationDraft } from '@/features/auth/registration-draft';
 import {
   isClean,
@@ -101,10 +102,11 @@ export default function RegisterProfessionalScreen() {
           <FormField
             label="Especialidad"
             error={draft.specialty !== '' ? errors.specialty : null}>
-            <Input
-              placeholder="Cardiología, Pediatría…"
+            <SpecialtyCombobox
               value={draft.specialty}
-              onChangeText={(v) => setDraft({ specialty: v })}
+              onChange={(v) => setDraft({ specialty: v })}
+              placeholder="Buscar o escribir especialidad…"
+              invalid={draft.specialty !== '' && !!errors.specialty}
             />
           </FormField>
 

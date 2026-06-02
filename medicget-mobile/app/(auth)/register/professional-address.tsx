@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
+import { CountryProvinceSelect } from '@/components/ui/CountryProvinceSelect';
 import { LegalConsent } from '@/components/ui/LegalConsent';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -153,30 +154,24 @@ export default function RegisterProfessionalAddressScreen() {
             />
           </FormField>
 
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <FormField
-                label="País"
-                error={draft.country !== '' ? errors.country : null}>
-                <Input
-                  placeholder="Ecuador"
-                  value={draft.country}
-                  onChangeText={(v) => setDraft({ country: v })}
-                />
-              </FormField>
-            </View>
-            <View className="flex-1">
-              <FormField
-                label="Provincia"
-                error={draft.province !== '' ? errors.province : null}>
-                <Input
-                  placeholder="Pichincha"
-                  value={draft.province}
-                  onChangeText={(v) => setDraft({ province: v })}
-                />
-              </FormField>
-            </View>
-          </View>
+          {/* País + provincia → dropdowns conectados al catálogo de
+              ubicaciones (mismo que la web). Reemplaza dos Inputs sueltos
+              donde el usuario tenía que tipear el nombre exacto. */}
+          <CountryProvinceSelect
+            country={draft.country}
+            province={draft.province}
+            onChange={(loc) =>
+              setDraft({
+                country: loc.country ?? '',
+                province: loc.province ?? '',
+              })
+            }
+          />
+          {errors.country || errors.province ? (
+            <Text className="text-xs text-rose-600 -mt-1">
+              {errors.country || errors.province}
+            </Text>
+          ) : null}
 
           <FormField
             label="Ciudad"
