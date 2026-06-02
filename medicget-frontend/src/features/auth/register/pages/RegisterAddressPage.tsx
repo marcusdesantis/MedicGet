@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { MapPin, ChevronLeft } from "lucide-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { ProfilePreviewCard } from "../components/ProfilePreviewCard";
-import { LegalConsent } from "../components/LegalConsent";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { FormField } from "@/components/ui/FormField";
@@ -97,8 +96,10 @@ export const RegisterAddressPage = () => {
     const stepOneValid = isClean(stepOneErrors);
     const locationValid = isClean(locationErrors);
 
-    const [acceptedLegal, setAcceptedLegal] = useState(false);
-    const [legalError, setLegalError] = useState<string | null>(null);
+    // El consentimiento legal (Términos + Privacidad con sus links) se da
+    // en el paso 1 (ProfessionalForm → LegalConsent). Acá solo reenviamos
+    // ese estado al backend. Si el usuario llegó sin aceptar, el chequeo
+    // `stepOneValid` lo manda de vuelta al paso 1.
 
     const handleSubmit = async () => {
         if (!stepOneValid) {
@@ -109,11 +110,6 @@ export const RegisterAddressPage = () => {
             setShowLocErrors(true);
             return;
         }
-        if (!acceptedLegal) {
-            setLegalError("Tenés que aceptar los Términos y la Política de Privacidad.");
-            return;
-        }
-        setLegalError(null);
         setSubmitting(true);
         setSubmitError(null);
 
@@ -280,21 +276,14 @@ export const RegisterAddressPage = () => {
                             )}
                         </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 space-y-4">
-                            <LegalConsent
-                                accepted={acceptedLegal}
-                                onChange={(v) => { setAcceptedLegal(v); if (v) setLegalError(null); }}
-                                error={legalError}
-                            />
-                            <div className="flex flex-col sm:flex-row items-center gap-4">
-                                <Button
-                                    onClick={handleSubmit}
-                                    disabled={submitting || !stepOneValid || !acceptedLegal}
-                                    className="bg-[#1A82FE] hover:bg-[#156cd4] text-white px-8 py-2 rounded-xl text-lg font-bold w-full sm:w-auto shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {submitting ? "Creando cuenta..." : "Finalizar registro"}
-                                </Button>
-                            </div>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 flex flex-col sm:flex-row items-center gap-4">
+                            <Button
+                                onClick={handleSubmit}
+                                disabled={submitting || !stepOneValid}
+                                className="bg-[#1A82FE] hover:bg-[#156cd4] text-white px-8 py-2 rounded-xl text-lg font-bold w-full sm:w-auto shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {submitting ? "Creando cuenta..." : "Finalizar registro"}
+                            </Button>
                         </div>
                     </div>
                 </div>

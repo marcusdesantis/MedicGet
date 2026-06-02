@@ -2,7 +2,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { SpecialtyCombobox } from "@/components/ui/SpecialtyCombobox";
 import PhoneInput from "react-phone-input-2";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { LegalConsent } from "./LegalConsent";
 import type { DoctorDraft } from "../state";
 import type { FieldErrors } from "../validation";
 
@@ -103,17 +103,11 @@ export const ProfessionalForm = ({ form, setForm, errors }: Props) => {
                 )}
             </FormField>
 
-            <div className="flex items-start gap-2 text-sm text-slate-500">
-                <Checkbox
-                    checked={form.terms}
-                    onChange={(v: boolean) => setForm({ terms: v })}
-                >
-                    Acepto los términos y condiciones *
-                </Checkbox>
-            </div>
-            {errors.terms && (
-                <p className="text-xs text-rose-600 -mt-2">{errors.terms}</p>
-            )}
+            <LegalConsent
+                accepted={form.terms}
+                onChange={(v) => setForm({ terms: v })}
+                error={errors.terms}
+            />
         </div>
     );
 };
