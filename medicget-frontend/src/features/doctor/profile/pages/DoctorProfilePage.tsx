@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff, Lock, ArrowRight, ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion, Upload, FileText } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Stethoscope, Mail, Phone, Video, Building2, MessageSquare, Eye, EyeOff, Lock, ArrowRight, ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion, Upload, FileText, Camera, AlertCircle } from 'lucide-react';
 import { Link }         from 'react-router-dom';
 import { toast }        from 'sonner';
 import { PageHeader }   from '@/components/ui/PageHeader';
@@ -612,7 +612,14 @@ function LicenseVerificationSection({
 }) {
   const meta = STATUS_META[status];
   const Icon = meta.icon;
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileRef   = useRef<HTMLInputElement | null>(null);
+  /**
+   * Input SEPARADO para captura por cámara. Un mismo <input type="file">
+   * no puede a la vez aceptar PDF (file picker) y forzar la cámara con
+   * `capture`. Por eso hay dos: uno para "Tomar foto" (camera, image only)
+   * y otro para "Elegir archivo" (file picker incluyendo PDF).
+   */
+  const cameraRef = useRef<HTMLInputElement | null>(null);
 
   // Estado local del card — todo lo de verificación vive acá, no en el form
   // general del perfil. Un solo submit lo persiste y lo manda a revisión.
@@ -621,6 +628,10 @@ function LicenseVerificationSection({
   const [cedula, setCedula]                     = useState(nationalId ?? '');
   const [file, setFile]                         = useState<File | null>(null);
   const [submitting, setSubmitting]             = useState(false);
+  // Feedback inline (además del toast): si el toast queda fuera del
+  // viewport en mobile, el médico igual ve el cartelito acá adentro.
+  const [submitInfo,  setSubmitInfo]            = useState<string | null>(null);
+  const [submitError, setSubmitError]           = useState<string | null>(null);
 
   const isVerified = status === 'VERIFIED';
 
@@ -642,20 +653,25 @@ function LicenseVerificationSection({
    * cédula (ACESS) + si no, sube el documento para revisión manual.
    */
   const handleSubmit = async () => {
+    setSubmitInfo(null);
+    setSubmitError(null);
     if (!licenseNumber.trim()) {
-      toast.error('Ingresá tu código de certificado / licencia.');
+      const m = 'Ingresá tu código de certificado / licencia.';
+      toast.error(m); setSubmitError(m);
       return;
     }
     const ced = cedula.trim();
     if (ced && ced.length !== 10) {
-      toast.error('La cédula debe tener 10 dígitos.');
+      const m = 'La cédula debe tener 10 dígitos.';
+      toast.error(m); setSubmitError(m);
       return;
     }
     // Necesitamos AL MENOS un medio de verificación: cédula (para ACESS) o
     // un documento (para revisión manual). Si ya hay documento cargado de
     // antes, también vale.
     if (!ced && !file && !hasDocument) {
-      toast.error('Ingresá tu cédula o subí tu documento para que podamos verificarte.');
+      const m = 'Ingresá tu cédula o subí tu documento para que podamos verificarte.';
+      toast.error(m); setSubmitError(m);
       return;
     }
 
@@ -672,7 +688,8 @@ function LicenseVerificationSection({
       if (ced) {
         const res = await doctorsApi.requestVerification(doctorId, ced);
         if (res.data.autoVerified) {
-          toast.success('¡Cuenta verificada automáticamente! Ya aparecés en la búsqueda.');
+          const m = '¡Cuenta verificada automáticamente! Ya aparecés en la búsqueda.';
+          toast.success(m); setSubmitInfo(m);
           setFile(null);
           onChanged();
           return;
@@ -684,21 +701,25 @@ function LicenseVerificationSection({
       if (file) {
         const dataUrl = await fileToDataUrl(file);
         await doctorsApi.uploadLicense(doctorId, dataUrl);
-        toast.success('Enviado a verificación. Te avisamos por email cuando se apruebe.');
+        const m = 'Enviado a verificación. Te avisamos por email cuando se apruebe.';
+        toast.success(m); setSubmitInfo(m);
       } else if (hasDocument) {
-        toast.success('Datos actualizados. Tu documento sigue en revisión.');
+        const m = 'Datos actualizados. Tu documento sigue en revisión.';
+        toast.success(m); setSubmitInfo(m);
       } else {
-        toast.info('Guardamos tus datos. Subí tu documento para que el equipo te verifique.');
+        const m = 'Guardamos tus datos. Subí tu documento para que el equipo te verifique.';
+        toast.info(m); setSubmitInfo(m);
       }
       setFile(null);
       onChanged();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })
         ?.response?.data?.error?.message ?? 'Error al enviar la verificación.';
-      toast.error(msg);
+      toast.error(msg); setSubmitError(msg);
     } finally {
       setSubmitting(false);
-      if (inputRef.current) inputRef.current.value = '';
+      if (fileRef.current)   fileRef.current.value   = '';
+      if (cameraRef.current) cameraRef.current.value = '';
     }
   };
 
@@ -794,28 +815,61 @@ function LicenseVerificationSection({
 
           {!isVerified && (
             <FormField label="Documento (título / credencial)">
+              {/* Input para "Tomar foto" — fuerza cámara, solo imagen.
+                  En desktop muchos navegadores ignoran `capture` y abren
+                  el file picker; en móvil abre la cámara trasera. */}
               <input
-                ref={inputRef}
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => pickFile(e.target.files?.[0])}
+                className="hidden"
+              />
+              {/* Input para "Elegir archivo" — file picker general,
+                  acepta también PDF (escaneo del título por ej). */}
+              <input
+                ref={fileRef}
                 type="file"
                 accept={ACCEPTED_TYPES}
                 onChange={(e) => pickFile(e.target.files?.[0])}
                 className="hidden"
               />
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
                 <button
                   type="button"
-                  onClick={() => inputRef.current?.click()}
+                  onClick={() => cameraRef.current?.click()}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition"
+                >
+                  <Camera size={14} /> Tomar foto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition"
                 >
-                  <Upload size={14} />
-                  {hasDocument ? 'Reemplazar documento' : 'Seleccionar documento'}
+                  <Upload size={14} /> Elegir archivo
                 </button>
-                <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 truncate">
-                  <FileText size={12} className="flex-shrink-0" />
-                  {file ? file.name : hasDocument ? 'Ya hay un documento cargado' : 'JPG, PNG, WebP o PDF · máx 5 MB'}
-                </p>
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 truncate">
+                <FileText size={12} className="flex-shrink-0" />
+                {file ? file.name : hasDocument ? 'Ya hay un documento cargado' : 'JPG, PNG, WebP o PDF · máx 5 MB'}
+              </p>
             </FormField>
+          )}
+
+          {/* Feedback inline para el envío — se ve aún si el toast se pierde. */}
+          {submitError && (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-3">
+              <AlertCircle size={16} className="text-rose-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-rose-700 dark:text-rose-300">{submitError}</p>
+            </div>
+          )}
+          {submitInfo && !submitError && (
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3">
+              <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-emerald-700 dark:text-emerald-300">{submitInfo}</p>
+            </div>
           )}
 
           {!isVerified && (
@@ -827,7 +881,7 @@ function LicenseVerificationSection({
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition disabled:opacity-50"
               >
                 {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                Enviar a verificación
+                {submitting ? 'Enviando…' : 'Enviar a verificación'}
               </button>
             </div>
           )}
