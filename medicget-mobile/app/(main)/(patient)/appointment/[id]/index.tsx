@@ -626,11 +626,18 @@ function MedicalRecordCard({ appointmentId }: { appointmentId: string }) {
   }
 
   if (!record) {
+    // Empty state explícito — el paciente NO debe ver placeholders ni
+    // campos vacíos que se confundan con contenido real.
     return (
-      <SectionCard
-        title="Ficha de atención"
-        subtitle="El médico aún no completó la ficha de esta consulta.">
-        <View />
+      <SectionCard title="Ficha de atención">
+        <View className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-5 items-center">
+          <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-center">
+            Tu médico todavía no completó la ficha de esta consulta.
+          </Text>
+          <Text className="text-xs text-slate-500 mt-1 text-center">
+            Cuando la complete, vas a poder verla acá.
+          </Text>
+        </View>
       </SectionCard>
     );
   }

@@ -23,7 +23,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Building2, Loader2, Video, MessageSquare,
   CheckCircle, UserCheck, UserX, Navigation2, Phone, Stethoscope, ExternalLink,
-  AlertCircle, RotateCcw,
+  AlertCircle, RotateCcw, ClipboardEdit,
 } from 'lucide-react';
 import { Avatar }       from '@/components/ui/Avatar';
 import { StatusBadge }  from '@/components/ui/StatusBadge';
@@ -359,11 +359,19 @@ function MedicalRecordSection({
     treatment:          '',
     notes:              '',
   });
-  const [loaded, setLoaded]   = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [loaded, setLoaded]               = useState(false);
+  const [saving, setSaving]               = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [success, setSuccess]             = useState(false);
+  const [editing, setEditing]             = useState(false);
+  /**
+   * `recordExists` = el backend devolvió 200 con un MedicalRecord guardado.
+   * Cuando es false, el paciente ve "ficha pendiente" y el médico arranca
+   * directo en modo edición. Esto evita el bug previo donde los placeholders
+   * ("¿Qué trae al paciente hoy?", "Cefalea, fiebre…") aparecían como si
+   * fueran el contenido real escrito por el médico.
+   */
+  const [recordExists, setRecordExists]   = useState(false);
 
   // Fetch del registro existente. 404 es esperable cuando aún no se creó.
   useEffect(() => {
@@ -381,8 +389,10 @@ function MedicalRecordSection({
           treatment:          r.treatment            ?? '',
           notes:              r.notes                ?? '',
         });
+        setRecordExists(true);
       } catch {
         /* sin registro todavía — form queda vacío */
+        setRecordExists(false);
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -428,64 +438,89 @@ function MedicalRecordSection({
     );
   }
 
-  const disabled = readOnly || (!editing && !!form.reason);
+  // Paciente / clínica viendo una ficha que el médico todavía NO completó.
+  // En lugar de mostrar un formulario disabled con placeholders que parecen
+  // contenido, mostramos un mensaje claro de "pendiente".
+  if (readOnly && !recordExists) {
+    return (
+      <SectionCard title="Ficha de atención">
+        <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-6 text-center">
+          <ClipboardEdit size={26} className="text-slate-400 mx-auto mb-2" />
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            Tu médico todavía no completó la ficha de esta consulta.
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Cuando la complete, vas a poder verla acá.
+          </p>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  // Modo edición: el médico está completando o editando la ficha.
+  // Activo cuando: (a) es médico y todavía no hay registro, o (b) hizo click
+  // en "Editar ficha".
+  const isEditing = !readOnly && (editing || !recordExists);
 
   return (
     <SectionCard
       title="Ficha de atención"
-      subtitle={readOnly ? 'Resumen de la consulta' : 'Completá los datos de la atención'}
+      subtitle={
+        readOnly
+          ? 'Resumen de la consulta'
+          : isEditing
+          ? 'Completá los datos de la atención'
+          : 'Ficha guardada'
+      }
     >
-      <div className="space-y-3">
-        <Field2
-          label="Motivo de la consulta *"
-          value={form.reason}
-          onChange={(v) => setForm({ ...form, reason: v })}
-          disabled={disabled}
-          rows={2}
-          placeholder="¿Qué trae al paciente hoy?"
-        />
-        <Field2
-          label="Síntomas relatados"
-          value={form.symptoms ?? ''}
-          onChange={(v) => setForm({ ...form, symptoms: v })}
-          disabled={disabled}
-          rows={3}
-          placeholder="Cefalea, fiebre, tos seca, etc."
-        />
-        <Field2
-          label="Enfermedades / antecedentes existentes"
-          value={form.existingConditions ?? ''}
-          onChange={(v) => setForm({ ...form, existingConditions: v })}
-          disabled={disabled}
-          rows={2}
-          placeholder="Hipertensión, diabetes tipo 2, asma…"
-        />
-        <Field2
-          label="Diagnóstico / impresión clínica"
-          value={form.diagnosis ?? ''}
-          onChange={(v) => setForm({ ...form, diagnosis: v })}
-          disabled={disabled}
-          rows={2}
-        />
-        <Field2
-          label="Indicaciones / tratamiento"
-          value={form.treatment ?? ''}
-          onChange={(v) => setForm({ ...form, treatment: v })}
-          disabled={disabled}
-          rows={3}
-          placeholder="Medicación, controles, derivaciones…"
-        />
-        {!readOnly && (
+      {isEditing ? (
+        <div className="space-y-3">
+          <Field2
+            label="Motivo de la consulta *"
+            value={form.reason}
+            onChange={(v) => setForm({ ...form, reason: v })}
+            rows={2}
+            placeholder="¿Qué trae al paciente hoy?"
+          />
+          <Field2
+            label="Síntomas relatados"
+            value={form.symptoms ?? ''}
+            onChange={(v) => setForm({ ...form, symptoms: v })}
+            rows={3}
+            placeholder="Cefalea, fiebre, tos seca, etc."
+          />
+          <Field2
+            label="Enfermedades / antecedentes existentes"
+            value={form.existingConditions ?? ''}
+            onChange={(v) => setForm({ ...form, existingConditions: v })}
+            rows={2}
+            placeholder="Hipertensión, diabetes tipo 2, asma…"
+          />
+          <Field2
+            label="Diagnóstico / impresión clínica"
+            value={form.diagnosis ?? ''}
+            onChange={(v) => setForm({ ...form, diagnosis: v })}
+            rows={2}
+            placeholder="Hallazgos y diagnóstico presuntivo o definitivo."
+          />
+          <Field2
+            label="Indicaciones / tratamiento"
+            value={form.treatment ?? ''}
+            onChange={(v) => setForm({ ...form, treatment: v })}
+            rows={3}
+            placeholder="Medicación, controles, derivaciones…"
+          />
           <Field2
             label="Notas privadas del médico"
             value={form.notes ?? ''}
             onChange={(v) => setForm({ ...form, notes: v })}
-            disabled={disabled}
             rows={2}
             placeholder="No se muestran al paciente."
           />
-        )}
-      </div>
+        </div>
+      ) : (
+        <MedicalRecordSummary form={form} includeNotes={!readOnly} />
+      )}
 
       {error && <Alert variant="error" className="mt-3">{error}</Alert>}
       {success && (
@@ -496,14 +531,7 @@ function MedicalRecordSection({
 
       {!readOnly && (
         <div className="mt-4 flex justify-end gap-2">
-          {disabled ? (
-            <button
-              onClick={() => { setEditing(true); setSuccess(false); }}
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700 px-4 py-2"
-            >
-              Editar ficha
-            </button>
-          ) : (
+          {isEditing ? (
             <button
               onClick={save}
               disabled={saving}
@@ -512,6 +540,13 @@ function MedicalRecordSection({
               {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
               Guardar ficha
             </button>
+          ) : (
+            <button
+              onClick={() => { setEditing(true); setSuccess(false); }}
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 px-4 py-2"
+            >
+              Editar ficha
+            </button>
           )}
         </div>
       )}
@@ -519,13 +554,61 @@ function MedicalRecordSection({
   );
 }
 
+/**
+ * Vista de SOLO LECTURA de la ficha. Renderiza los campos como texto plano
+ * — sin inputs, sin placeholders, sin disabled-textareas. Los campos sin
+ * contenido se marcan claramente como "Sin especificar" para que no haya
+ * confusión sobre qué escribió el médico y qué no.
+ */
+function MedicalRecordSummary({
+  form,
+  includeNotes,
+}: {
+  form: MedicalRecordInput;
+  /** Solo el médico ve sus "Notas privadas". El paciente nunca. */
+  includeNotes: boolean;
+}) {
+  const rows: { label: string; value: string | undefined }[] = [
+    { label: 'Motivo de la consulta',                value: form.reason },
+    { label: 'Síntomas relatados',                   value: form.symptoms },
+    { label: 'Enfermedades / antecedentes existentes', value: form.existingConditions },
+    { label: 'Diagnóstico / impresión clínica',      value: form.diagnosis },
+    { label: 'Indicaciones / tratamiento',           value: form.treatment },
+    ...(includeNotes ? [{ label: 'Notas privadas del médico', value: form.notes }] : []),
+  ];
+  return (
+    <div className="space-y-4">
+      {rows.map((r) => (
+        <div key={r.label}>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+            {r.label}
+          </p>
+          {r.value && r.value.trim() ? (
+            <p className="text-sm text-slate-800 dark:text-white whitespace-pre-wrap leading-relaxed">
+              {r.value}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-400 italic">Sin especificar</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Field2 — textarea de entrada para el formulario de edición de la ficha.
+ * Solo se usa en modo edición. La lectura usa `MedicalRecordSummary`
+ * (texto plano, sin placeholders) — eso evita la confusión visual del
+ * paciente que veía los placeholders como si fueran contenido escrito por
+ * el médico.
+ */
 function Field2({
-  label, value, onChange, disabled, rows = 2, placeholder,
+  label, value, onChange, rows = 2, placeholder,
 }: {
   label:       string;
   value:       string;
   onChange:    (v: string) => void;
-  disabled?:   boolean;
   rows?:       number;
   placeholder?: string;
 }) {
@@ -538,9 +621,8 @@ function Field2({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={rows}
-        disabled={disabled}
         placeholder={placeholder}
-        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 dark:disabled:bg-slate-800/60 disabled:cursor-not-allowed resize-none"
+        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none placeholder:italic placeholder:text-slate-400"
       />
     </div>
   );
