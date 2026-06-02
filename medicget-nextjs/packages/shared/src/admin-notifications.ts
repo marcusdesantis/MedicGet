@@ -71,13 +71,13 @@ export async function notifyAdminRegistration(userId: string): Promise<void> {
       extra.push(`Clínica: <strong>${user.clinic.name}</strong>`);
     }
 
-    const subject = `Nuevo registro · ${roleLabel} · ${fullName}`;
+    const subject = `Nuevo registro verificado · ${roleLabel} · ${fullName}`;
     const html = `
       <!doctype html><html><body style="font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;padding:24px">
         <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #e2e8f0">
           <p style="font-size:12px;font-weight:600;color:#2563eb;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px">Aviso operacional</p>
-          <h1 style="font-size:22px;color:#0f172a;margin:0 0 8px">Nuevo registro en MedicGet</h1>
-          <p style="font-size:14px;color:#475569;margin:0 0 16px">Se registró un nuevo <strong>${roleLabel.toLowerCase()}</strong>.</p>
+          <h1 style="font-size:22px;color:#0f172a;margin:0 0 8px">Nuevo ${roleLabel.toLowerCase()} verificado en MedicGet</h1>
+          <p style="font-size:14px;color:#475569;margin:0 0 16px">Un nuevo <strong>${roleLabel.toLowerCase()}</strong> acaba de confirmar su correo y su cuenta ya está activa.</p>
           <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
             <tr><td style="padding:8px 0;color:#64748b;font-size:13px">Nombre</td>
                 <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right">${fullName}</td></tr>
@@ -94,7 +94,7 @@ export async function notifyAdminRegistration(userId: string): Promise<void> {
         </div>
       </body></html>`;
     const text = [
-      `Nuevo registro en MedicGet`,
+      `Nuevo registro verificado en MedicGet`,
       `Rol: ${roleLabel}`,
       `Nombre: ${fullName}`,
       `Email: ${user.email}`,

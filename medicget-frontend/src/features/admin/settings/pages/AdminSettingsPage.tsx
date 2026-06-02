@@ -422,8 +422,9 @@ function NotificationsTab({ draft, setDraft }: TabProps) {
           <div>
             <h3 className="font-bold text-slate-800 dark:text-white">Avisos de nuevos registros</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              A qué correos avisamos cuando alguien se registra en la plataforma,
-              y de qué tipos de usuario.
+              A qué correos avisamos cuando alguien <strong>verifica su cuenta</strong> con
+              el código que le mandamos, y de qué tipos de usuario.
+              No se notifica de cuentas creadas sin confirmar el email.
             </p>
           </div>
         </div>

@@ -189,10 +189,11 @@ export const authService = {
         console.error('[authService.register] verification email failed:', err);
       });
 
-      // Aviso operacional a los admins configurados desde /admin/settings →
-      // tab Notificaciones. Fire-and-forget: si el SMTP falla, el usuario
-      // ya está creado y no se entera del error.
-      void notifyAdminRegistration(user.id).catch(() => {/* logged */});
+      // NOTA: el aviso a admins (notifyAdminRegistration) NO se manda acá.
+      // Se dispara recién en `verifyEmail`, cuando el usuario confirma el
+      // código y la cuenta queda ACTIVE — así los admins solo se enteran
+      // de registros reales (email verificado), no de cuentas spam que se
+      // crean y nunca confirman.
 
       // NO devolvemos token — el usuario debe verificar primero.
       return {
@@ -316,6 +317,12 @@ export const authService = {
 
       const user = await authRepository.findById(record.userId);
       if (!user) return { ok: false, code: 'INTERNAL', message: 'Usuario no encontrado tras verificar' };
+
+      // Aviso operacional a los admins configurados desde /admin/settings
+      // → tab Notificaciones. Lo disparamos acá (y NO en register) para
+      // que solo lleguen avisos de cuentas reales — el código de 6 dígitos
+      // ya valida que el correo existe. Fire-and-forget.
+      void notifyAdminRegistration(user.id).catch(() => {/* logged */});
 
       const jwt = signToken({ sub: user.id, email: user.email, role: user.role });
       return { ok: true, data: { token: jwt, user: sanitizeUser(user)! } };
