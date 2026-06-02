@@ -200,15 +200,124 @@ Lucide vía `lucide-react-native`. Casi todos los iconos del web tienen equivale
 
 `strict: true` y `noUncheckedIndexedAccess: true` en `tsconfig.json`. Si un patch agrega errores, correr `npm run typecheck` antes de commitear.
 
-## Builds nativos
+## Generar APK (build local)
 
-Para generar APK/IPA hace falta cuenta EAS (gratis) y configurar `eas.json`. Comando típico:
+### Prerequisitos
+
+| Herramienta | Versión | Variable de entorno requerida |
+|---|---|---|
+| Node.js | 20+ | — |
+| JDK | 17 | `JAVA_HOME` apuntando al JDK 17 |
+| Android SDK | API 35 | `ANDROID_HOME` apuntando al SDK |
+
+Verificar antes de empezar:
+
+```powershell
+node -v           # >= 20
+java -version     # 17.x
+echo $env:JAVA_HOME
+echo $env:ANDROID_HOME
+```
+
+### 1. Configurar la URL del backend
+
+Editar `.env` en la raíz del proyecto:
 
 ```bash
-npx expo prebuild     # genera carpetas android/ y ios/
-npx eas build -p android --profile preview
-npx eas build -p ios --profile preview
+# Producción
+EXPO_PUBLIC_API_BASE_URL=https://medicget.io/api/v1
+
+# Desarrollo local (emulador Android)
+# EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8080/api/v1
 ```
+
+### 2. Instalar dependencias
+
+```powershell
+npm install
+```
+
+### 3. Generar el proyecto nativo Android
+
+```powershell
+npx expo prebuild --platform android --clean
+```
+
+> **Importante:** `--clean` borra y regenera la carpeta `android/`. Después del prebuild hay que aplicar **siempre** los dos fixes del paso 4 porque se resetean.
+
+### 4. Aplicar fixes en android/ (obligatorio después de cada prebuild)
+
+**Fix 1 — conflicto de libworklets.so** (`android/app/build.gradle`):
+
+Dentro del bloque `packagingOptions > jniLibs`, agregar:
+```groovy
+packagingOptions {
+    jniLibs {
+        useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+        pickFirsts += ['**/libworklets.so']   // ← agregar esta línea
+    }
+}
+```
+
+> `react-native-reanimated` y `react-native-worklets` incluyen el mismo `.so`. Sin esto el build falla con "2 files found with path lib/arm64-v8a/libworklets.so".
+
+**Fix 2 — bundle JS en debug** (`android/gradle.properties`):
+
+```properties
+hermesEnabled=true
+
+bundleInDebug=true   # ← agregar esta línea
+```
+
+> Sin esto el APK debug busca Metro en la red y muestra pantalla en blanco.
+
+### 5. Compilar el APK
+
+**Release** (recomendado para instalar en dispositivos — no necesita keystore propio):
+
+```powershell
+cd android
+.\gradlew.bat assembleRelease
+```
+
+El APK queda en:
+```
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+**Debug** (más rápido, para desarrollo):
+
+```powershell
+cd android
+.\gradlew.bat assembleDebug
+```
+
+```
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### 6. Instalar en el dispositivo
+
+Con el teléfono conectado por USB (modo depuración USB activado):
+
+```powershell
+adb install -r android\app\build\outputs\apk\release\app-release.apk
+```
+
+O copiá el `.apk` al teléfono y abrilo desde el explorador de archivos.
+
+### Notas sobre firma
+
+El `release` build está configurado con el debug keystore (`android/app/debug.keystore`) en `build.gradle`, lo que permite distribuir el APK para pruebas sin necesitar un keystore de producción. Para publicar en Google Play hace falta generar un keystore propio y configurarlo en `signingConfigs.release`.
+
+### Assets (ícono y splash screen)
+
+Los assets están en `assets/images/`:
+- `icon.png` — 1024×1024, ícono del launcher
+- `adaptive-icon.png` — 1024×1024, Android adaptive icon
+- `splash-icon.png` — 1024×1024, imagen de splash screen
+
+Configurados en `app.json`. Si los regenerás, volvé a correr el prebuild.
 
 El `scheme: "medicget"` ya está configurado en `app.json` para los deep-links de PayPhone return. Si cambiás el scheme, actualizar también el `responseUrl` que se manda en [`paymentApi.checkout`](app/(main)/(patient)/appointment/[id]/index.tsx).
 
