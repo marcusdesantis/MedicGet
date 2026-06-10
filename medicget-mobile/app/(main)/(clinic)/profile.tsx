@@ -38,6 +38,7 @@ import { CountryProvinceSelect } from '@/components/ui/CountryProvinceSelect';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/context/AuthContext';
 import { clinicsApi, usersApi } from '@/lib/api';
+import { DeleteAccountSheet } from '@/components/ui/DeleteAccountSheet';
 
 export default function ClinicProfile() {
   const router = useRouter();
@@ -99,6 +100,7 @@ export default function ClinicProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showDeleteSheet, setShowDeleteSheet] = useState(false);
 
   const handleSave = async () => {
     if (!user || !clinicId) return;
@@ -370,6 +372,19 @@ export default function ClinicProfile() {
             Cerrar sesión
           </Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => setShowDeleteSheet(true)}
+          className="items-center py-2">
+          <Text className="text-xs text-slate-400 dark:text-slate-500 underline">
+            Eliminar cuenta
+          </Text>
+        </Pressable>
+
+        <DeleteAccountSheet
+          visible={showDeleteSheet}
+          onClose={() => setShowDeleteSheet(false)}
+        />
       </View>
     </Screen>
   );

@@ -51,6 +51,7 @@ import { CountryProvinceSelect } from '@/components/ui/CountryProvinceSelect';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/context/AuthContext';
 import { initialsFrom } from '@/lib/format';
+import { DeleteAccountSheet } from '@/components/ui/DeleteAccountSheet';
 import {
   doctorsApi,
   usersApi,
@@ -143,6 +144,7 @@ export default function DoctorProfile() {
   const [togglingAvailable, setTogglingAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showDeleteSheet, setShowDeleteSheet] = useState(false);
 
   const initials = initialsFrom(
     form.firstName,
@@ -554,6 +556,19 @@ export default function DoctorProfile() {
             Cerrar sesión
           </Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => setShowDeleteSheet(true)}
+          className="items-center py-2">
+          <Text className="text-xs text-slate-400 dark:text-slate-500 underline">
+            Eliminar cuenta
+          </Text>
+        </Pressable>
+
+        <DeleteAccountSheet
+          visible={showDeleteSheet}
+          onClose={() => setShowDeleteSheet(false)}
+        />
       </View>
     </Screen>
   );

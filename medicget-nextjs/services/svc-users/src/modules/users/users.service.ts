@@ -42,19 +42,40 @@ export async function getUserById(
   return { ok: true, data: user };
 }
 
-// ─── Update user status (soft delete) ────────────────────────────────────────
+// ─── Soft delete ─────────────────────────────────────────────────────────────
 
 export async function softDeleteUser(
   caller: AuthUser,
   targetId: string,
 ): Promise<ServiceResult<unknown>> {
-  if (caller.role !== 'CLINIC') {
-    return { ok: false, code: 'FORBIDDEN', message: 'Only clinic accounts can delete users.' };
+  const isSelf = caller.id === targetId;
+
+  // ADMIN nunca puede eliminar su propia cuenta desde la app.
+  // CLINIC puede eliminar cuentas de otros (comportamiento original).
+  // Cualquier rol puede eliminar la suya propia (excepto ADMIN).
+  if (isSelf && caller.role === 'ADMIN') {
+    return { ok: false, code: 'FORBIDDEN', message: 'Los administradores no pueden eliminar su cuenta desde la app.' };
+  }
+  if (!isSelf && caller.role !== 'CLINIC') {
+    return { ok: false, code: 'FORBIDDEN', message: 'No tienes permiso para eliminar esta cuenta.' };
   }
 
   const user = await repo.findById(targetId);
   if (!user || user.status === 'DELETED') {
-    return { ok: false, code: 'NOT_FOUND', message: 'User not found.' };
+    return { ok: false, code: 'NOT_FOUND', message: 'Usuario no encontrado.' };
+  }
+
+  // Al eliminarse a sí mismo, cancelar citas activas y notificar afectados.
+  if (isSelf) {
+    const entityId =
+      user.role === 'DOCTOR'  ? user.doctor?.id  :
+      user.role === 'PATIENT' ? user.patient?.id :
+      user.role === 'CLINIC'  ? user.clinic?.id  :
+      null;
+
+    if (entityId) {
+      await repo.cancelActiveAppointmentsForDeletion(user.role, entityId);
+    }
   }
 
   const updated = await repo.updateStatus(targetId, 'DELETED');

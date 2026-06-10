@@ -480,6 +480,7 @@ export const usersApi = {
   getById: (id: string) => apiGet<UserDto>(`/users/${id}`),
   updateProfile: (id: string, body: Partial<ProfileDto>) =>
     apiPatch<ProfileDto>(`/users/${id}/profile`, body),
+  deleteAccount: (id: string) => apiDelete(`/users/${id}`),
 };
 
 export const doctorsApi = {

@@ -1,4 +1,5 @@
 import { prisma } from '@medicget/shared/prisma';
+import { createNotification } from '@medicget/shared/notifications';
 import type { PaginationParams } from '@medicget/shared/paginate';
 import { toSkipTake } from '@medicget/shared/paginate';
 import type { Prisma, UserStatus } from '@prisma/client';
@@ -104,4 +105,74 @@ export async function upsertProfile(userId: string, data: UpdateProfileData) {
 
 export async function findProfileByUserId(userId: string) {
   return prisma.profile.findUnique({ where: { userId } });
+}
+
+const ACTIVE_STATUSES = ['PENDING', 'UPCOMING', 'ONGOING'] as const;
+
+/**
+ * Cancela todas las citas activas del usuario que está eliminando su cuenta
+ * y notifica a los afectados. Fire-and-forget seguro: errores de notificación
+ * no detienen la cancelación.
+ */
+export async function cancelActiveAppointmentsForDeletion(
+  role: string,
+  entityId: string,
+): Promise<void> {
+  const where: Prisma.AppointmentWhereInput = {
+    status: { in: [...ACTIVE_STATUSES] },
+    ...(role === 'DOCTOR'  ? { doctorId:  entityId } :
+        role === 'PATIENT' ? { patientId: entityId } :
+                             { clinicId:  entityId }),
+  };
+
+  const appointments = await prisma.appointment.findMany({
+    where,
+    select: {
+      id:       true,
+      patient:  { select: { userId: true } },
+      doctor:   { select: { userId: true } },
+    },
+  });
+
+  if (appointments.length === 0) return;
+
+  const cancelReason =
+    role === 'DOCTOR'  ? 'El médico eliminó su cuenta.' :
+    role === 'PATIENT' ? 'El paciente eliminó su cuenta.' :
+                         'La clínica eliminó su cuenta.';
+
+  await prisma.appointment.updateMany({
+    where: { id: { in: appointments.map((a) => a.id) } },
+    data:  { status: 'CANCELLED', cancelReason },
+  });
+
+  // Notificar a los afectados (best-effort).
+  const notifTitle   = 'Cita cancelada';
+  const notifMessage =
+    role === 'DOCTOR'  ? 'El médico eliminó su cuenta. Tu cita próxima fue cancelada.' :
+    role === 'PATIENT' ? 'El paciente canceló su cuenta. La cita fue cancelada.' :
+                         'La clínica cerró su cuenta. Tu cita fue cancelada.';
+  const pushUrl =
+    role === 'DOCTOR' ? '/patient/appointments' : '/doctor/appointments';
+
+  const recipientIds = [
+    ...new Set(
+      appointments.map((a) =>
+        role === 'PATIENT' ? a.doctor.userId : a.patient.userId,
+      ),
+    ),
+  ];
+
+  await Promise.all(
+    recipientIds.map((userId) =>
+      createNotification({
+        userId,
+        type:    'APPOINTMENT_CANCELLED',
+        title:   notifTitle,
+        message: notifMessage,
+        metadata: { cancelReason },
+        pushUrl,
+      }).catch(() => {}),
+    ),
+  );
 }

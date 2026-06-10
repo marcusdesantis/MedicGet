@@ -35,6 +35,7 @@ import { CountryProvinceSelect } from '@/components/ui/CountryProvinceSelect';
 import { useAuth } from '@/context/AuthContext';
 import { usersApi } from '@/lib/api';
 import { initialsFrom } from '@/lib/format';
+import { DeleteAccountSheet } from '@/components/ui/DeleteAccountSheet';
 
 export default function PatientProfile() {
   const router = useRouter();
@@ -70,6 +71,7 @@ export default function PatientProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showDeleteSheet, setShowDeleteSheet] = useState(false);
 
   const initials = initialsFrom(
     form.firstName,
@@ -261,6 +263,19 @@ export default function PatientProfile() {
             Cerrar sesión
           </Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => setShowDeleteSheet(true)}
+          className="items-center py-2">
+          <Text className="text-xs text-slate-400 dark:text-slate-500 underline">
+            Eliminar cuenta
+          </Text>
+        </Pressable>
+
+        <DeleteAccountSheet
+          visible={showDeleteSheet}
+          onClose={() => setShowDeleteSheet(false)}
+        />
       </View>
     </Screen>
   );
