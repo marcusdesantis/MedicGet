@@ -1,10 +1,3 @@
-/**
- * DeleteAccountSheet — modal de confirmación para eliminar cuenta.
- *
- * Muestra consecuencias según el rol, pide que el usuario escriba "ELIMINAR"
- * para confirmar, llama DELETE /users/:id y hace logout al éxito.
- */
-
 import { useState } from 'react';
 import {
   Modal,
@@ -14,12 +7,10 @@ import {
   View,
   ActivityIndicator,
 } from 'react-native';
-import { AlertTriangle, Trash2, X } from 'lucide-react-native';
+import { AlertTriangle, Eye, EyeOff, Trash2, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
-import { usersApi } from '@/lib/api';
-
-const CONFIRM_WORD = 'ELIMINAR';
+import { authApi, usersApi } from '@/lib/api';
 
 const ROLE_COPY: Record<
   'patient' | 'doctor' | 'clinic',
@@ -64,16 +55,18 @@ export function DeleteAccountSheet({ visible, onClose }: Props) {
   const { user, logout } = useAuth();
   const role = user?.role as 'patient' | 'doctor' | 'clinic' | undefined;
 
-  const [confirmText, setConfirmText] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const copy = role ? ROLE_COPY[role] : null;
-  const canConfirm = confirmText.trim().toUpperCase() === CONFIRM_WORD && !loading;
+  const canConfirm = password.trim().length >= 6 && !loading;
 
   const handleClose = () => {
-    setConfirmText('');
+    setPassword('');
     setError(null);
+    setShowPassword(false);
     onClose();
   };
 
@@ -82,10 +75,18 @@ export function DeleteAccountSheet({ visible, onClose }: Props) {
     setLoading(true);
     setError(null);
     try {
+      // Re-autenticar para confirmar que el usuario conoce su contraseña.
+      await authApi.login(user.email, password.trim());
+    } catch {
+      setError('Contraseña incorrecta. Verificá e intentá de nuevo.');
+      setLoading(false);
+      return;
+    }
+    try {
       await usersApi.deleteAccount(user.id);
       await logout();
       handleClose();
-      router.replace('/(auth)/login');
+      router.replace({ pathname: '/(auth)/login', params: { accountDeleted: '1' } });
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })
@@ -151,19 +152,29 @@ export function DeleteAccountSheet({ visible, onClose }: Props) {
             </Text>
           </View>
 
-          {/* Confirmación */}
+          {/* Contraseña */}
           <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
-            Escribe <Text className="font-bold text-rose-600">ELIMINAR</Text> para confirmar
+            Ingresá tu contraseña para confirmar
           </Text>
-          <TextInput
-            value={confirmText}
-            onChangeText={setConfirmText}
-            placeholder="ELIMINAR"
-            placeholderTextColor="#94a3b8"
-            autoCapitalize="characters"
-            autoCorrect={false}
-            className="border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-base text-slate-900 dark:text-white bg-white dark:bg-slate-800 mb-4"
-          />
+          <View className="flex-row items-center border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 mb-4">
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Tu contraseña actual"
+              placeholderTextColor="#94a3b8"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="flex-1 px-4 py-3 text-base text-slate-900 dark:text-white"
+            />
+            <Pressable
+              onPress={() => setShowPassword((v) => !v)}
+              className="px-3 py-3">
+              {showPassword
+                ? <EyeOff size={18} color="#94a3b8" />
+                : <Eye size={18} color="#94a3b8" />}
+            </Pressable>
+          </View>
 
           {error ? (
             <View className="bg-rose-50 dark:bg-rose-900/20 rounded-xl px-4 py-3 mb-4">

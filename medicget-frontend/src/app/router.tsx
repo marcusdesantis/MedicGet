@@ -54,6 +54,7 @@ import { PaymentCheckoutPage } from '@/features/shared/payment/pages/PaymentChec
 import { PaymentReturnPage }   from '@/features/shared/payment/pages/PaymentReturnPage';
 import { TermsPage } from '@/features/legal/terms/pages/TermsPage';
 import { PrivacyPolicyPage } from '@/features/legal/privacy/pages/PrivacyPolicyPage';
+import { DeleteAccountPage } from '@/features/legal/delete-account/pages/DeleteAccountPage';
 
 // Public directory + detail
 import { PublicDoctorsDirectoryPage } from '@/features/public/doctors/pages/PublicDoctorsDirectoryPage';
@@ -129,9 +130,10 @@ export const router = createBrowserRouter([
   { path: '/register/clinic', element: <RegisterClinicPage /> },
   { path: '/register/clinic/details', element: <RegisterClinicDetailsPage /> },
 
-  // ── Pagina legal publica ──
-  { path: '/terminos', element: <TermsPage /> },
-  { path: '/privacidad', element: <PrivacyPolicyPage /> },
+  // ── Páginas legales públicas ──
+  { path: '/terminos',          element: <TermsPage /> },
+  { path: '/privacidad',        element: <PrivacyPolicyPage /> },
+  { path: '/eliminar-cuenta',   element: <DeleteAccountPage /> },
 
   // ── Payment return (callback de PayPhone) ──
   // Endpoint compartido fuera del ProtectedRoute para que cualquier rol

@@ -7,9 +7,9 @@
  */
 
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { Eye, EyeOff, Stethoscope } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { Modal, Pressable, Text, View } from 'react-native';
+import { CheckCircle2, Eye, EyeOff, Stethoscope } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { AuthLayout } from '@/components/layout/AuthLayout';
 import { AuthCard } from '@/components/ui/Card';
@@ -29,12 +29,14 @@ const ROLE_HOME: Record<UserRole, string> = {
 export default function LoginScreen() {
   const router = useRouter();
   const { login } = useAuth();
+  const { accountDeleted } = useLocalSearchParams<{ accountDeleted?: string }>();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeletedModal, setShowDeletedModal] = useState(accountDeleted === '1');
 
   const handleLogin = async () => {
     if (submitting) return;
@@ -60,6 +62,33 @@ export default function LoginScreen() {
   };
 
   return (
+    <>
+    <Modal
+      visible={showDeletedModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowDeletedModal(false)}>
+      <View className="flex-1 bg-black/50 items-center justify-center px-6">
+        <View className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm items-center gap-4">
+          <View className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 items-center justify-center">
+            <CheckCircle2 size={32} color="#10b981" />
+          </View>
+          <View className="items-center gap-1">
+            <Text className="text-lg font-bold text-slate-900 dark:text-white text-center">
+              Cuenta eliminada
+            </Text>
+            <Text className="text-sm text-slate-500 dark:text-slate-400 text-center leading-5">
+              Tu cuenta ha sido eliminada correctamente. Lamentamos verte partir.
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setShowDeletedModal(false)}
+            className="w-full bg-emerald-600 active:bg-emerald-700 rounded-2xl py-3 items-center">
+            <Text className="text-white font-semibold text-base">Entendido</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
     <AuthLayout>
       <AuthCard>
         {/* Logo + header */}
@@ -143,5 +172,6 @@ export default function LoginScreen() {
         </Text>
       </AuthCard>
     </AuthLayout>
+    </>
   );
 }

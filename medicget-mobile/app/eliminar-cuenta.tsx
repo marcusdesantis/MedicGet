@@ -1,6 +1,6 @@
 /**
- * Pantalla "Política de Privacidad" móvil — renderiza el documento
- * oficial apuntando a https://medicget.io/privacidad.
+ * Pantalla "Eliminar cuenta" móvil — explica el proceso de eliminación
+ * de cuenta y qué ocurre con los datos. Apunta a medicget.io/eliminar-cuenta.
  * En nativo usa WebView; en web usa un iframe (react-native-webview
  * no tiene soporte web).
  */
@@ -9,9 +9,9 @@ import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native
 import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 
-const URL = 'https://medicget.io/privacidad';
+const URL = 'https://medicget.io/eliminar-cuenta';
 
-export default function PrivacidadScreen() {
+export default function EliminarCuentaScreen() {
   const router = useRouter();
   return (
     <View className="flex-1 bg-white dark:bg-slate-950">
@@ -21,14 +21,14 @@ export default function PrivacidadScreen() {
           <ArrowLeft size={22} color="#475569" />
         </Pressable>
         <Text className="text-base font-semibold text-slate-800 dark:text-white">
-          Política de Privacidad
+          Eliminación de cuenta
         </Text>
       </View>
       {Platform.OS === 'web' ? (
         <iframe
           src={URL}
           style={{ flex: 1, border: 'none', width: '100%', height: '100%' }}
-          title="Política de Privacidad"
+          title="Eliminación de cuenta"
         />
       ) : (
         <NativeWebView url={URL} />

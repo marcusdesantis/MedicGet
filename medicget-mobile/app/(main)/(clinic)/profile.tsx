@@ -22,6 +22,7 @@ import {
   MapPin,
   Phone,
   Save,
+  Trash2,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
@@ -375,9 +376,18 @@ export default function ClinicProfile() {
 
         <Pressable
           onPress={() => setShowDeleteSheet(true)}
-          className="items-center py-2">
-          <Text className="text-xs text-slate-400 dark:text-slate-500 underline">
+          className="flex-row items-center justify-center gap-2 bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 rounded-2xl py-3 active:bg-rose-50">
+          <Trash2 size={16} color="#e11d48" />
+          <Text className="text-rose-600 text-sm font-semibold">
             Eliminar cuenta
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.push('/eliminar-cuenta')}
+          className="items-center py-1">
+          <Text className="text-xs text-slate-400 dark:text-slate-500 underline">
+            Conocé más sobre la eliminación de cuenta
           </Text>
         </Pressable>
 
