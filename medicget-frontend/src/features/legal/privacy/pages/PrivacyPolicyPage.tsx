@@ -3,10 +3,12 @@
  *
  * Cumple con:
  *   - Ley Orgánica de Protección de Datos Personales de Ecuador (LOPDP, 2021)
+ *   - Constitución Política del Estado de Bolivia, Art. 130 (Habeas Data)
+ *   - Ley N° 164 General de Telecomunicaciones, TIC de Bolivia (2011), Art. 56
  *   - Google Play Store — User Data Policy y Data Safety requirements
  *   - Requisitos específicos para aplicaciones médicas / de salud
  *
- * Fecha de última actualización: 12 de junio de 2026.
+ * Fecha de última actualización: 15 de junio de 2026.
  * IMPORTANTE: actualizar esta fecha manualmente cada vez que se modifique
  * el contenido — NO usar new Date() para que Google Play vea una fecha estable.
  */
@@ -14,7 +16,7 @@
 import { Link } from 'react-router-dom';
 import { Activity, ArrowLeft } from 'lucide-react';
 
-const LAST_UPDATED = '12 de junio de 2026';
+const LAST_UPDATED = '15 de junio de 2026';
 const CONTACT_EMAIL = 'soportemedicget@abisoft.it';
 
 export function PrivacyPolicyPage() {
@@ -56,7 +58,8 @@ export function PrivacyPolicyPage() {
           </p>
           <p className="text-sm text-amber-700 dark:text-amber-400 leading-relaxed">
             MedicGet trata datos de salud que la Ley Orgánica de Protección de
-            Datos Personales del Ecuador (LOPDP) y Google Play clasifican como
+            Datos Personales del Ecuador (LOPDP), la Constitución Política del
+            Estado de Bolivia (Art. 130) y Google Play clasifican como
             <strong> categoría especial de datos sensibles</strong>. Al
             registrarte y usar la plataforma, otorgás tu <strong>consentimiento
             explícito e informado</strong> para el tratamiento descrito en esta
@@ -98,42 +101,46 @@ export function PrivacyPolicyPage() {
           <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1 mt-2">
             <li>El sitio web en <strong>medicget.io</strong></li>
             <li>La aplicación móvil para Android (disponible en Google Play)</li>
-            <li>La aplicación móvil para iOS (App Store)</li>
           </ul>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
-            Cubre todos los roles de usuario: <strong>paciente</strong>,{' '}
-            <strong>médico</strong> y <strong>clínica</strong>.
+            MedicGet opera actualmente en <strong>Ecuador</strong> y{' '}
+            <strong>Bolivia</strong>. Cubre todos los roles de usuario:{' '}
+            <strong>paciente</strong>, <strong>médico</strong> y <strong>clínica</strong>.
           </p>
 
           {/* ── 3. Base legal ──────────────────────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">3. Base legal del tratamiento</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            Tratamos tus datos sobre las siguientes bases legales, conforme al
-            Art. 7 de la LOPDP:
+            Tratamos tus datos sobre las siguientes bases legales. Según tu país
+            de residencia aplican los marcos normativos indicados:
           </p>
           <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-2 mt-3">
             <li>
-              <strong>Consentimiento explícito (Art. 7 lit. a y Art. 24 LOPDP):</strong>{' '}
+              <strong>Consentimiento explícito:</strong>{' '}
               para el tratamiento de datos de salud (categoría especial), que
               otorgás al registrarte marcando el casillero de aceptación. Es
               libre, específico, informado e inequívoco. Podés retirarlo
-              eliminando tu cuenta.
+              eliminando tu cuenta.{' '}
+              <em className="text-slate-500">(Ecuador: Art. 7 lit. a y Art. 24 LOPDP. Bolivia: Art. 130 Constitución Política del Estado y Art. 56 Ley N° 164.)</em>
             </li>
             <li>
-              <strong>Ejecución de un contrato (Art. 7 lit. b):</strong>{' '}
+              <strong>Ejecución de un contrato:</strong>{' '}
               para los datos necesarios para prestar el servicio (autenticación,
-              reserva de citas, pagos, videollamadas).
+              reserva de citas, pagos, videollamadas).{' '}
+              <em className="text-slate-500">(Ecuador: Art. 7 lit. b LOPDP.)</em>
             </li>
             <li>
-              <strong>Obligación legal (Art. 7 lit. c):</strong>{' '}
+              <strong>Obligación legal:</strong>{' '}
               para conservar registros de pagos y transacciones según las normas
-              tributarias y contables aplicables.
+              tributarias y contables aplicables en cada país.{' '}
+              <em className="text-slate-500">(Ecuador: Art. 7 lit. c LOPDP, normativa SRI. Bolivia: Código Tributario, Art. 59.)</em>
             </li>
             <li>
-              <strong>Interés legítimo (Art. 7 lit. f):</strong>{' '}
+              <strong>Interés legítimo:</strong>{' '}
               para la seguridad de la plataforma, detección de fraudes y
               mantenimiento técnico, siempre que no prevalezcan sobre tus
-              derechos fundamentales.
+              derechos fundamentales.{' '}
+              <em className="text-slate-500">(Ecuador: Art. 7 lit. f LOPDP.)</em>
             </li>
           </ul>
 
@@ -279,8 +286,14 @@ export function PrivacyPolicyPage() {
                 <tr>
                   <td className="px-4 py-3 font-medium">ACESS</td>
                   <td className="px-4 py-3">Ecuador</td>
-                  <td className="px-4 py-3">Verificación de habilitación profesional de médicos</td>
-                  <td className="px-4 py-3">Número de cédula del médico (consulta al registro público oficial).</td>
+                  <td className="px-4 py-3">Verificación de habilitación profesional de médicos ecuatorianos</td>
+                  <td className="px-4 py-3">Número de cédula del médico (consulta al registro público oficial de Ecuador). Solo aplica a médicos registrados en Ecuador.</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-medium">Ministerio de Salud / SEDES</td>
+                  <td className="px-4 py-3">Bolivia</td>
+                  <td className="px-4 py-3">Verificación manual de habilitación profesional de médicos bolivianos</td>
+                  <td className="px-4 py-3">Número de matrícula y documento de licencia del médico. La verificación es realizada manualmente por el equipo de MedicGet consultando el registro del Colegio Médico Departamental correspondiente.</td>
                 </tr>
                 <tr>
                   <td className="px-4 py-3 font-medium">Jitsi Meet (auto-hospedado)</td>
@@ -300,8 +313,17 @@ export function PrivacyPolicyPage() {
             se produce al enviar correos transaccionales a través de{' '}
             <strong>Aruba S.p.A.</strong> (Italia), país miembro de la Unión
             Europea sujeto al <strong>RGPD</strong>, que ofrece un nivel de
-            protección equivalente o superior al exigido por la LOPDP. Esta
-            transferencia cumple con el Art. 54 de la LOPDP.
+            protección equivalente o superior al exigido por la normativa
+            aplicable. Esta transferencia cumple con el Art. 54 de la LOPDP
+            (Ecuador) y con el Art. 130 de la Constitución Política del Estado
+            de Bolivia.
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
+            Los datos de usuarios bolivianos y ecuatorianos se almacenan en los
+            mismos servidores bajo los mismos controles de seguridad. No existe
+            segregación geográfica de datos entre países; ambos conjuntos de
+            datos reciben las mismas medidas de protección descritas en la
+            sección 10.
           </p>
 
           {/* ── 10. Seguridad ─────────────────────────────────────────── */}
@@ -409,9 +431,12 @@ export function PrivacyPolicyPage() {
             con el asunto <em>"Derechos LOPDP – [derecho que querés ejercer]"</em> desde el correo asociado a tu cuenta.
             Respondemos en un plazo máximo de <strong>15 días hábiles</strong>.
             Si considerás que tu solicitud no fue atendida correctamente, podés
-            presentar un reclamo ante la{' '}
-            <strong>Superintendencia de Protección de Datos Personales del Ecuador</strong>.
+            presentar un reclamo ante la autoridad de control de tu país:
           </p>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1 mt-2">
+            <li><strong>Ecuador:</strong> Superintendencia de Protección de Datos Personales.</li>
+            <li><strong>Bolivia:</strong> Defensoría del Pueblo (Art. 218 CPE) o Autoridad de Regulación y Fiscalización de Telecomunicaciones y Transportes (ATT) para aspectos relacionados con servicios digitales (Ley N° 164).</li>
+          </ul>
 
           {/* ── 14. Menores ───────────────────────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">14. Menores de edad</h2>

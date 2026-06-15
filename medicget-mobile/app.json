@@ -2,7 +2,7 @@
   "expo": {
     "name": "MedicGet",
     "slug": "medicget",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "scheme": "medicget",
     "userInterfaceStyle": "automatic",
@@ -20,7 +20,7 @@
     },
     "android": {
       "package": "com.medicget.app",
-      "versionCode": 2,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#2563eb"

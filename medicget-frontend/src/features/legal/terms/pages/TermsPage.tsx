@@ -6,8 +6,12 @@
  *   - Ley Orgánica de Protección de Datos Personales de Ecuador (LOPDP, 2021)
  *   - Ley Orgánica de Defensa del Consumidor (Ecuador)
  *   - Código Civil del Ecuador (responsabilidad, contratos)
+ *   - Constitución Política del Estado de Bolivia, Art. 130 (Habeas Data)
+ *   - Ley N° 164 General de Telecomunicaciones, TIC de Bolivia (2011)
+ *   - Ley N° 453 General de los Derechos de las Usuarias y los Usuarios y de
+ *     las Consumidoras y los Consumidores de Bolivia
  *
- * Fecha de última actualización: 12 de junio de 2026.
+ * Fecha de última actualización: 15 de junio de 2026.
  * IMPORTANTE: actualizar esta fecha manualmente cada vez que se modifique
  * el contenido — NO usar new Date().
  */
@@ -17,7 +21,7 @@ import { Activity, ArrowLeft } from 'lucide-react';
 import { useApi } from '@/hooks/useApi';
 import { publicCommissionApi } from '@/lib/api';
 
-const LAST_UPDATED = '12 de junio de 2026';
+const LAST_UPDATED = '15 de junio de 2026';
 const CONTACT_EMAIL = 'soportemedicget@abisoft.it';
 
 export function TermsPage() {
@@ -64,10 +68,16 @@ export function TermsPage() {
           <p className="text-sm text-red-700 dark:text-red-400 leading-relaxed">
             MedicGet <strong>NO es un servicio de emergencias médicas</strong>.
             Si vos o alguien a tu alrededor está en peligro de vida, llamá de
-            inmediato al número de emergencias de tu localidad
-            (<strong>911 en Ecuador</strong>) o acudí al servicio de urgencias
-            más cercano. La plataforma está diseñada para consultas médicas
-            programadas, no para situaciones de riesgo vital inmediato.
+            inmediato al número de emergencias de tu localidad y acudí al
+            servicio de urgencias más cercano:
+          </p>
+          <ul className="text-sm text-red-700 dark:text-red-400 leading-relaxed list-disc pl-6 mt-2 space-y-1">
+            <li><strong>Ecuador:</strong> 911 (emergencias unificadas)</li>
+            <li><strong>Bolivia:</strong> 110 (Policía Nacional) · 118 (Ambulancias / Cruz Roja) · 119 (Bomberos)</li>
+          </ul>
+          <p className="text-sm text-red-700 dark:text-red-400 leading-relaxed mt-2">
+            La plataforma está diseñada para consultas médicas programadas, no
+            para situaciones de riesgo vital inmediato.
           </p>
         </div>
 
@@ -131,22 +141,33 @@ export function TermsPage() {
           {/* ── 4. Verificación de médicos ───────────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">4. Verificación de habilitación profesional</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            Para garantizar la seguridad de los pacientes, los médicos deben
-            pasar un proceso de verificación antes de aparecer en la búsqueda
-            y recibir reservas:
+            Para garantizar la seguridad de los pacientes, todos los médicos
+            deben pasar un proceso de verificación antes de aparecer en la
+            búsqueda y recibir reservas. El proceso varía según el país:
           </p>
-          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3 list-disc pl-6 space-y-1">
-            <li>Cargan número de licencia / colegiatura, autoridad emisora, cédula y documento (foto del título o credencial).</li>
-            <li>MedicGet consulta automáticamente el registro de <strong>ACESS</strong> (Agencia de Aseguramiento de la Calidad de los Servicios de Salud, Ecuador). Si el match es inequívoco, la verificación es inmediata.</li>
+
+          <h3 className="text-lg font-semibold mt-5 mb-2">Ecuador</h3>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1">
+            <li>El médico carga número de licencia / colegiatura, autoridad emisora, cédula y documento (foto del título o credencial).</li>
+            <li>MedicGet consulta automáticamente el registro de <strong>ACESS</strong> (Agencia de Aseguramiento de la Calidad de los Servicios de Salud y Medicina Prepagada). Si el match es inequívoco, la verificación es inmediata.</li>
             <li>Si la verificación automática no concluye, el equipo administrativo revisa el documento manualmente en un plazo de <strong>24 a 48 horas hábiles</strong>.</li>
-            <li>Un médico no verificado <strong>no aparece en la búsqueda pública</strong> ni puede recibir reservas.</li>
           </ul>
-          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
-            La verificación acredita que el profesional presentó documentación
-            aparentemente válida al momento del registro. MedicGet no garantiza
-            la vigencia continua de la habilitación: es responsabilidad del
-            médico mantener su registro al día y notificar cualquier cambio
-            que afecte su habilitación.
+
+          <h3 className="text-lg font-semibold mt-5 mb-2">Bolivia</h3>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1">
+            <li>El médico carga número de matrícula profesional, Colegio Médico Departamental de inscripción y documento de respaldo (carnet de colegiatura, título en provisión nacional o resolución de habilitación del Ministerio de Salud y Deportes).</li>
+            <li>La verificación es <strong>manual</strong>: el equipo de MedicGet contrasta los datos con el Colegio Médico Departamental correspondiente (COLMEB, COMEB, COMECBA u otro según departamento). Plazo: <strong>24 a 72 horas hábiles</strong>.</li>
+            <li>En caso de duda, MedicGet puede solicitar documentación adicional o contactar directamente al Servicio Departamental de Salud (SEDES) competente.</li>
+          </ul>
+
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-4">
+            En ambos países: un médico no verificado <strong>no aparece en la
+            búsqueda pública</strong> ni puede recibir reservas. La verificación
+            acredita que el profesional presentó documentación aparentemente
+            válida al momento del registro. MedicGet no garantiza la vigencia
+            continua de la habilitación: es responsabilidad del médico mantener
+            su registro al día y notificar cualquier cambio que afecte su
+            habilitación.
           </p>
 
           {/* ── 5. Pagos y comisión ──────────────────────────────────── */}
@@ -158,13 +179,17 @@ export function TermsPage() {
             profesional, no del monto abonado por el paciente.
           </p>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
-            Los cobros se procesan a través de <strong>PayPhone</strong>
-            (pasarela de pago autorizada en Ecuador). MedicGet{' '}
+            Los cobros se procesan a través de pasarelas de pago autorizadas
+            según el país. MedicGet{' '}
             <strong>no almacena datos de tarjeta de crédito ni débito</strong>:
-            esa información la gestiona directamente PayPhone bajo su propia
-            política de seguridad. Al efectuar un pago, aceptás también los
-            términos y condiciones de PayPhone.
+            esa información la gestiona directamente el procesador de pagos bajo
+            su propia política de seguridad. Al efectuar un pago, aceptás
+            también los términos y condiciones del procesador correspondiente:
           </p>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1 mt-2">
+            <li><strong>Ecuador:</strong> <strong>PayPhone</strong> — pasarela de pago autorizada por el Banco Central del Ecuador.</li>
+            <li><strong>Bolivia:</strong> los métodos de pago disponibles se informan en la app al momento del checkout y pueden variar según el procesador habilitado en tu región.</li>
+          </ul>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
             La comisión vigente siempre se refleja en este documento. MedicGet
             notificará con al menos <strong>30 días de anticipación</strong>{' '}
@@ -315,20 +340,32 @@ export function TermsPage() {
           {/* ── 13. Ley aplicable y jurisdicción ────────────────────── */}
           <h2 className="text-2xl font-bold mt-10 mb-3">13. Ley aplicable y jurisdicción</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            Estos Términos se rigen por las leyes de la{' '}
-            <strong>República del Ecuador</strong>, en particular:
+            Estos Términos se rigen por la legislación del país desde el cual
+            el usuario accede y usa MedicGet:
           </p>
-          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1 mt-3">
+
+          <h3 className="text-lg font-semibold mt-5 mb-2">Ecuador</h3>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1">
             <li>Ley Orgánica de Protección de Datos Personales (LOPDP, 2021)</li>
             <li>Ley Orgánica de Defensa del Consumidor</li>
             <li>Código Civil del Ecuador</li>
             <li>Ley de Comercio Electrónico, Firmas Electrónicas y Mensajes de Datos</li>
           </ul>
-          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-3">
+
+          <h3 className="text-lg font-semibold mt-5 mb-2">Bolivia</h3>
+          <ul className="text-slate-600 dark:text-slate-400 leading-relaxed list-disc pl-6 space-y-1">
+            <li>Constitución Política del Estado (2009), Art. 130 (Habeas Data)</li>
+            <li>Ley N° 164 General de Telecomunicaciones, Tecnologías de Información y Comunicación (2011)</li>
+            <li>Ley N° 453 General de los Derechos de las Usuarias y los Usuarios y de las Consumidoras y los Consumidores (2013)</li>
+            <li>Código Civil de Bolivia</li>
+          </ul>
+
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed mt-4">
             Cualquier controversia que no pueda resolverse de forma amigable
-            se someterá a los <strong>jueces y tribunales competentes de
-            Ecuador</strong>, con renuncia a cualquier otro fuero que pudiere
-            corresponder.
+            se someterá a los jueces y tribunales competentes del país del
+            usuario, con renuncia a cualquier otro fuero que pudiere corresponder.
+            Para usuarios ecuatorianos: <strong>tribunales competentes de Ecuador</strong>.
+            Para usuarios bolivianos: <strong>tribunales competentes de Bolivia</strong>.
           </p>
 
           {/* ── 14. Fuerza mayor ─────────────────────────────────────── */}

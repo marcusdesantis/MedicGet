@@ -197,7 +197,9 @@ export function DeleteAccountPage() {
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
             Los registros de pago se conservan durante 7 años en formato anonimizado
             (sin nombre, correo ni datos de contacto) por obligación de la normativa
-            fiscal ecuatoriana. No es posible eximirse de este requisito legal.
+            fiscal aplicable en cada país (Ecuador: normativa SRI / Código Tributario;
+            Bolivia: Código Tributario, Art. 59). No es posible eximirse de este
+            requisito legal.
           </p>
         </div>
 
