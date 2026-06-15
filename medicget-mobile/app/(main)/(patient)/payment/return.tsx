@@ -26,6 +26,7 @@ export default function PaymentReturn() {
     id?: string | string[];
     clientTransactionId?: string | string[];
     appointmentId?: string | string[];
+    ppStatus?: string | string[];
   }>();
 
   const payphoneId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -36,11 +37,22 @@ export default function PaymentReturn() {
     (Array.isArray(params.clientTransactionId)
       ? params.clientTransactionId[0]
       : params.clientTransactionId);
+  const ppStatus = Array.isArray(params.ppStatus) ? params.ppStatus[0] : params.ppStatus;
 
-  const [status, setStatus] = useState<ConfirmStatus>('loading');
-  const [message, setMessage] = useState<string | null>(null);
+  // PayPhone envía status=3 para cancelado, status=2 para rechazado.
+  // Si el status no es 1 (aprobado) y no hay payphoneId, es un rechazo/cancelación.
+  const isCancelledByPayPhone =
+    (ppStatus && ppStatus !== '1') || !payphoneId;
+
+  const [status, setStatus] = useState<ConfirmStatus>(
+    isCancelledByPayPhone ? 'failed' : 'loading',
+  );
+  const [message, setMessage] = useState<string | null>(
+    isCancelledByPayPhone ? 'El pago fue cancelado o rechazado. Podés intentarlo de nuevo.' : null,
+  );
 
   useEffect(() => {
+    if (isCancelledByPayPhone) return;
     let cancelled = false;
     (async () => {
       if (!appointmentId) {
@@ -56,8 +68,14 @@ export default function PaymentReturn() {
         });
         if (cancelled) return;
         if (res.data.status === 'PAID') setStatus('paid');
-        else if (res.data.status === 'PENDING') setStatus('pending');
-        else setStatus('failed');
+        else if (res.data.status === 'PENDING') {
+          // PayPhone devuelve PENDING cuando aún está procesando.
+          // Lo tratamos como fallo para que el usuario pueda reintentar.
+          setStatus('failed');
+          setMessage('El pago no fue aprobado. Si el banco descontó el monto, contactá a soporte.');
+        } else {
+          setStatus('failed');
+        }
       } catch (err: unknown) {
         if (cancelled) return;
         const msg =
@@ -70,7 +88,7 @@ export default function PaymentReturn() {
     return () => {
       cancelled = true;
     };
-  }, [appointmentId, payphoneId]);
+  }, [appointmentId, payphoneId, isCancelledByPayPhone]);
 
   return (
     <Screen>

@@ -965,6 +965,7 @@ function PaymentCard({
         <Text className="text-white font-semibold">Pagar ahora</Text>
       </Pressable>
 
+      {/* Botón "Ya pagué — confirmar": oculto temporalmente, se habilitará en el futuro.
       <Pressable
         onPress={handleManualConfirm}
         disabled={confirming}
@@ -983,6 +984,8 @@ function PaymentCard({
         Si el banco confirmó la transacción pero la cita sigue pendiente,
         tocá "Ya pagué" para confirmarla.
       </Text>
+      */}
+
     </View>
   );
 }

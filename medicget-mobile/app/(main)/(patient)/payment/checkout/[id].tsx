@@ -147,9 +147,9 @@ function buildCheckoutHtml(session: CheckoutSessionDto): string {
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload || null }));
         }
       }
-      var SENTINEL = 'medicget-payment-return.invalid';
       function isReturnUrl(u) {
-        return typeof u === 'string' && u.indexOf(SENTINEL) !== -1;
+        return typeof u === 'string' &&
+          u.indexOf('medicget.io/payment/return') !== -1;
       }
       // Override window.location setter (href, replace, assign).
       try {
@@ -278,17 +278,11 @@ export default function PaymentCheckout() {
   const [stubConfirming, setStubConfirming] = useState(false);
   const intercepted = useRef(false);
 
-  // PayPhone rechaza `responseUrl` que no sea HTTPS (es razonable —
-  // valida la URL antes de aceptar la transacción). Usamos un dominio
-  // sentinel HTTPS reservado (`.invalid` está garantizado por RFC 6761
-  // a no resolver nunca) que nunca contacta a un servidor real. El
-  // WebView intercepta la navegación a esa URL con
-  // `onShouldStartLoadWithRequest` antes de que falle el DNS, extrae
-  // los query params (`?id=...&clientTransactionId=...`) y navega a la
-  // pantalla nativa de confirmación.
+  // PayPhone siempre redirige al URL configurado en el panel de comercio
+  // (medicget.io/payment/return) ignorando el responseUrl del constructor
+  // del widget. Lo interceptamos directamente en el WebView.
   const responseUrl = useMemo(
-    () =>
-      `https://medicget-payment-return.invalid/return?appointmentId=${id}`,
+    () => `https://medicget.io/payment/return?appointmentId=${id}`,
     [id],
   );
 
@@ -361,8 +355,7 @@ export default function PaymentCheckout() {
     (url: string): boolean => {
       if (intercepted.current) return true;
       if (!url) return false;
-      // El sentinel es `https://medicget-payment-return.invalid/return?...`
-      if (!url.startsWith('https://medicget-payment-return.invalid')) {
+      if (!url.includes('medicget.io/payment/return')) {
         return false;
       }
       intercepted.current = true;
@@ -385,6 +378,8 @@ export default function PaymentCheckout() {
       if (payphoneId) target.set('id', payphoneId);
       const ctx = params.get('clientTransactionId');
       if (ctx) target.set('clientTransactionId', ctx);
+      const ppStatus = params.get('status');
+      if (ppStatus) target.set('ppStatus', ppStatus);
       // Cerramos el modal del WebView antes de navegar — RN puede
       // mostrar artefactos visuales si dejamos el modal abierto
       // mientras navegamos.

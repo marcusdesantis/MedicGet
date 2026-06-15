@@ -244,16 +244,17 @@ export const paymentService = {
       return { ok: true, data: { status: 'PAID' } };
     }
 
-    if (result.status === 'Rejected' || result.status === 'Cancelled') {
-      await prisma.payment.update({
-        where: { appointmentId: appt.id },
-        data:  { status: 'FAILED' },
-      });
-      return { ok: true, data: { status: 'FAILED' } };
+    if (result.status === 'Pending') {
+      // PayPhone aún no terminó de procesar — raro pero posible.
+      return { ok: true, data: { status: 'PENDING' } };
     }
 
-    // Pending — PayPhone will notify later. Leave the row alone.
-    return { ok: true, data: { status: 'PENDING' } };
+    // Cualquier otro status (Rejected, Cancelled, Error, Annulled, etc.) → fallo.
+    await prisma.payment.update({
+      where: { appointmentId: appt.id },
+      data:  { status: 'FAILED' },
+    });
+    return { ok: true, data: { status: 'FAILED' } };
   },
 
   /**

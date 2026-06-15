@@ -9,7 +9,7 @@
  *     pantalla de éxito con CTA "Pagar ahora".
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert as RNAlert,
@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import {
+  AlertCircle,
   ArrowLeft,
   Building2,
   Calendar as CalendarIcon,
@@ -41,10 +42,12 @@ import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { useApi } from '@/hooks/useApi';
+import { useRefetchOnFocus } from '@/hooks/useRefetchOnFocus';
 import { useAuth } from '@/context/AuthContext';
 import {
   appointmentsApi,
   doctorsApi,
+  type AppointmentDto,
   type AppointmentModality,
   type DoctorDto,
   type SlotDto,
@@ -54,7 +57,7 @@ import {
   isSlotPastInTz,
   tzShortLabel,
 } from '@/lib/timezone';
-import { dayKey, profileInitials } from '@/lib/format';
+import { dayKey, fmtMedDate, profileInitials } from '@/lib/format';
 
 const MODALITY_LABEL: Record<AppointmentModality, string> = {
   ONLINE: 'Videollamada',
@@ -99,6 +102,7 @@ export default function DoctorDetail() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const { user } = useAuth();
+  const patientId = user?.dto.patient?.id;
 
   const days = useMemo(() => buildDayStrip(), []);
   const [selectedDay, setSelectedDay] = useState(days[0]!.key);
@@ -115,6 +119,15 @@ export default function DoctorDetail() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
+  // Snapshot de la info de la cita recién creada. Guardamos en el momento
+  // del éxito porque `doc`, `selectedDay` y `bookingSlot` pueden cambiar
+  // si el usuario navega a otro médico (misma instancia de componente en
+  // el navigator de Tabs).
+  const [confirmedInfo, setConfirmedInfo] = useState<{
+    doctorName: string;
+    dayLabel: string;
+    time: string;
+  } | null>(null);
   // Cuando el backend devuelve CONFLICT por una cita previa del MISMO
   // paciente (PENDING sin pagar), guardamos su id para ofrecer
   // acciones inline ("Pagar la pendiente" / "Cancelar y volver a
@@ -125,6 +138,50 @@ export default function DoctorDetail() {
     status: string;
   } | null>(null);
   const [cancellingConflict, setCancellingConflict] = useState(false);
+
+  // undefined = verificando, null = libre para reservar, AppointmentDto = bloqueado
+  const [activeAppt, setActiveAppt] = useState<AppointmentDto | null | undefined>(undefined);
+
+  const checkActiveAppointment = useCallback(async () => {
+    if (!patientId) { setActiveAppt(null); return; }
+    try {
+      const [pendingRes, upcomingRes, ongoingRes] = await Promise.all([
+        appointmentsApi.list({ status: 'PENDING', limit: 1 }),
+        appointmentsApi.list({ status: 'UPCOMING', limit: 1 }),
+        appointmentsApi.list({ status: 'ONGOING', limit: 1 }),
+      ]);
+      const found =
+        (pendingRes.data.data[0] as AppointmentDto | undefined) ??
+        (upcomingRes.data.data[0] as AppointmentDto | undefined) ??
+        (ongoingRes.data.data[0] as AppointmentDto | undefined) ??
+        null;
+      setActiveAppt(found);
+    } catch {
+      setActiveAppt(null); // fail-open: si falla la verificación, permitimos reservar
+    }
+  }, [patientId]);
+
+  useEffect(() => {
+    checkActiveAppointment();
+  }, [checkActiveAppointment]);
+
+  // Cuando el paciente vuelve al foco (ej: canceló desde la tab de citas)
+  // re-verificamos para desbloquear la reserva si corresponde.
+  useRefetchOnFocus(checkActiveAppointment);
+
+  // Este componente es un Tab screen, por lo que el navegador reutiliza
+  // la misma instancia cuando el usuario abre otro médico. Reseteamos
+  // todo el estado de reserva cuando cambia el id del médico para que
+  // no se mezclen datos de citas anteriores con el médico nuevo.
+  useEffect(() => {
+    setBookingSlot(null);
+    setNotes('');
+    setSubmitError(null);
+    setConfirmedId(null);
+    setConfirmedInfo(null);
+    setConflict(null);
+    setCancellingConflict(false);
+  }, [id]);
 
   useEffect(() => {
     setBookingSlot(null);
@@ -180,7 +237,6 @@ export default function DoctorDetail() {
   const doctorTz = countryToTimezone(profile?.country);
   const doctorTzLabel = tzShortLabel(doctorTz);
   const hasPhysicalAddress = !!doc.clinic?.id || !!profile?.address;
-  const patientId = user?.dto.patient?.id;
 
   const handleBook = () => {
     RNAlert.alert(
@@ -210,6 +266,14 @@ export default function DoctorDetail() {
         notes: notes.trim() || undefined,
       });
       setConfirmedId(res.data.id);
+      setConfirmedInfo({
+        doctorName: fullName(doc),
+        dayLabel: days.find((d) => d.key === selectedDay)?.sublabel ?? selectedDay,
+        time: bookingSlot.time,
+      });
+      // Re-verificamos desde el list API (que incluye relaciones completas)
+      // para que el bloqueo funcione correctamente si el usuario navega a otro médico.
+      void checkActiveAppointment();
     } catch (err: unknown) {
       const errBody = (err as {
         response?: {
@@ -258,6 +322,8 @@ export default function DoctorDetail() {
       });
       setConflict(null);
       setSubmitError(null);
+      // Re-verificamos cita activa: si cancelamos la única pendiente, se desbloquea la reserva.
+      await checkActiveAppointment();
       // Refrescamos los slots del día para reflejar el slot liberado.
       slotsState.refetch();
     } catch (err: unknown) {
@@ -362,223 +428,9 @@ export default function DoctorDetail() {
           </Alert>
         ) : null}
 
-        <SectionCard
-          title="¿Cómo querés atenderte?"
-          subtitle="Elegí la modalidad antes de seleccionar el horario">
-          <View className="gap-2">
-            <ModalityOption
-              value="ONLINE"
-              selected={modality}
-              onSelect={setModality}
-              icon={<Video size={18} color="#2563eb" />}
-              label="Videollamada"
-              description={
-                doc.modalities?.includes('ONLINE')
-                  ? 'Atención remota desde tu casa'
-                  : 'No disponible para este médico'
-              }
-              disabled={!doc.modalities?.includes('ONLINE')}
-            />
-            <ModalityOption
-              value="PRESENCIAL"
-              selected={modality}
-              onSelect={setModality}
-              icon={<Building2 size={18} color="#2563eb" />}
-              label="Presencial"
-              description={
-                !doc.modalities?.includes('PRESENCIAL')
-                  ? 'No disponible para este médico'
-                  : hasPhysicalAddress
-                    ? doc.clinic?.name ?? 'En el consultorio'
-                    : 'Sin consultorio configurado'
-              }
-              disabled={
-                !doc.modalities?.includes('PRESENCIAL') || !hasPhysicalAddress
-              }
-            />
-            <ModalityOption
-              value="CHAT"
-              selected={modality}
-              onSelect={setModality}
-              icon={<MessageSquare size={18} color="#2563eb" />}
-              label="Chat"
-              description={
-                doc.modalities?.includes('CHAT')
-                  ? 'Mensajería en vivo'
-                  : 'No disponible para este médico'
-              }
-              disabled={!doc.modalities?.includes('CHAT')}
-            />
-          </View>
-        </SectionCard>
-
-        <SectionCard
-          title="Selecciona un día"
-          subtitle="Próximos 7 días">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View className="flex-row gap-2">
-              {days.map((d) => {
-                const selected = selectedDay === d.key;
-                return (
-                  <Pressable
-                    key={d.key}
-                    onPress={() => setSelectedDay(d.key)}
-                    className={`items-center justify-center py-3 px-3 rounded-xl border min-w-[64px] ${
-                      selected
-                        ? 'bg-blue-600 border-blue-600'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
-                    }`}>
-                    <Text
-                      className={`text-[10px] font-semibold uppercase ${
-                        selected
-                          ? 'text-white'
-                          : 'text-slate-600 dark:text-slate-300'
-                      }`}>
-                      {d.label}
-                    </Text>
-                    <Text
-                      className={`text-[11px] mt-0.5 ${
-                        selected
-                          ? 'text-white/90'
-                          : 'text-slate-600 dark:text-slate-300'
-                      }`}>
-                      {d.sublabel}
-                    </Text>
-                    {d.isToday ? (
-                      <Text
-                        className={`text-[9px] mt-0.5 ${
-                          selected ? 'text-white/80' : 'text-slate-400'
-                        }`}>
-                        hoy
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </SectionCard>
-
-        <SectionCard
-          title="Horarios disponibles"
-          subtitle={`Horas en ${doctorTzLabel} (zona horaria del médico)`}>
-          <SlotsGrid
-            state={slotsState.state}
-            selectedDay={selectedDay}
-            isFirstDay={selectedDay === days[0]!.key}
-            doctorTz={doctorTz}
-            bookingSlot={bookingSlot}
-            onSelectSlot={setBookingSlot}
-          />
-        </SectionCard>
-
-        {bookingSlot && !confirmedId ? (
-          <SectionCard
-            title="Confirmar reserva"
-            subtitle="Revisa los datos antes de continuar">
-            <Row label="Médico" value={fullName(doc)} />
-            <Row label="Especialidad" value={doc.specialty} />
-            <Row label="Modalidad" value={MODALITY_LABEL[modality]} />
-            <Row
-              label="Centro"
-              value={doc.clinic?.name ?? 'Profesional independiente'}
-            />
-            <Row
-              label="Fecha y hora"
-              value={`${days.find((d) => d.key === selectedDay)?.sublabel} · ${bookingSlot.time}`}
-            />
-            <Row label="Duración" value={`${doc.consultDuration} min`} />
-            <Row
-              label="Precio"
-              value={
-                doc.pricePerConsult > 0
-                  ? `$${doc.pricePerConsult.toFixed(2)}`
-                  : 'Gratuito'
-              }
-              bold
-            />
-
-            <View className="mt-3">
-              <Text className="text-xs font-medium text-slate-500 mb-1">
-                Notas (opcional)
-              </Text>
-              <TextInput
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                placeholder="Motivo de la consulta..."
-                placeholderTextColor="#94a3b8"
-                className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 min-h-[80px]"
-                textAlignVertical="top"
-              />
-            </View>
-
-            {submitError ? (
-              <View className="mt-3">
-                <Alert variant="error">{submitError}</Alert>
-              </View>
-            ) : null}
-
-            {conflict ? (
-              <View className="mt-3 rounded-2xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
-                <Text className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                  Ya tenés una reserva en este horario
-                </Text>
-                <Text className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                  Tu reserva anterior quedó pendiente. Podés terminar el
-                  pago o cancelarla y reservar de nuevo.
-                </Text>
-                <View className="flex-row gap-2 mt-3">
-                  <Pressable
-                    onPress={() =>
-                      router.push(
-                        `/(main)/(patient)/payment/checkout/${conflict.appointmentId}` as never,
-                      )
-                    }
-                    className="flex-1 bg-amber-600 active:bg-amber-700 py-2 rounded-lg items-center">
-                    <Text className="text-white text-sm font-semibold">
-                      Pagar la pendiente
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={cancelConflict}
-                    disabled={cancellingConflict}
-                    className="flex-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 py-2 rounded-lg items-center">
-                    <Text className="text-rose-600 text-sm font-semibold">
-                      {cancellingConflict ? 'Cancelando…' : 'Cancelar y reintentar'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            ) : null}
-
-            <View className="mt-4 gap-2">
-              <Button
-                onPress={handleBook}
-                disabled={submitting || !patientId || !!conflict}
-                loading={submitting}
-                fullWidth>
-                Confirmar reserva
-              </Button>
-              <Button
-                variant="ghost"
-                onPress={() => setBookingSlot(null)}
-                disabled={submitting}
-                fullWidth>
-                Cancelar
-              </Button>
-            </View>
-
-            {!patientId ? (
-              <Text className="mt-3 text-xs text-rose-600 text-center">
-                No se detectó tu perfil de paciente. Vuelve a iniciar sesión.
-              </Text>
-            ) : null}
-          </SectionCard>
-        ) : null}
-
+        {/* ── Área de reserva: condicional según estado del paciente ── */}
         {confirmedId ? (
+          // Acaba de reservar exitosamente en esta sesión
           <SectionCard
             title="¡Reserva creada!"
             subtitle="Tenés 15 minutos para completar el pago">
@@ -586,10 +438,10 @@ export default function DoctorDetail() {
               <CheckCircle2 size={22} color="#10b981" />
               <View className="flex-1">
                 <Text className="text-sm text-slate-700 dark:text-slate-300">
-                  Tu cita con {fullName(doc)} se reservó para el{' '}
+                  Tu cita con {confirmedInfo?.doctorName} se reservó para el{' '}
                   <Text className="font-bold">
-                    {days.find((d) => d.key === selectedDay)?.sublabel} a las{' '}
-                    {bookingSlot?.time}
+                    {confirmedInfo?.dayLabel} a las{' '}
+                    {confirmedInfo?.time}
                   </Text>
                   .
                 </Text>
@@ -601,7 +453,6 @@ export default function DoctorDetail() {
                   . Si no pagás en 15 minutos, el horario se libera
                   automáticamente.
                 </Text>
-
                 <View className="mt-4 gap-2">
                   <Button
                     onPress={() => router.replace('/(main)/(patient)/appointments')}
@@ -612,7 +463,279 @@ export default function DoctorDetail() {
               </View>
             </View>
           </SectionCard>
-        ) : null}
+        ) : activeAppt === undefined ? (
+          // Verificando si tiene cita activa
+          <View className="items-center py-8">
+            <ActivityIndicator size="small" color="#2563eb" />
+          </View>
+        ) : activeAppt ? (
+          // Tiene una cita activa → bloquear nueva reserva
+          <SectionCard title="Ya tenés una cita activa">
+            <View className="flex-row items-start gap-3">
+              <AlertCircle size={22} color="#f59e0b" />
+              <View className="flex-1">
+                <Text className="text-sm text-slate-700 dark:text-slate-300">
+                  Solo podés tener una cita activa a la vez. Para reservar
+                  con este médico, primero completá o cancelá tu cita
+                  pendiente.
+                </Text>
+                <View className="mt-3 bg-slate-50 dark:bg-slate-800 rounded-xl p-3 gap-1">
+                  {(() => {
+                    const p = activeAppt.doctor?.user?.profile;
+                    const docName = `Dr. ${[p?.firstName, p?.lastName].filter(Boolean).join(' ')}`.trim() || 'Médico';
+                    const statusLabel: Record<string, string> = {
+                      PENDING: 'Pendiente de pago',
+                      UPCOMING: 'Confirmada',
+                      ONGOING: 'En curso',
+                    };
+                    return (
+                      <>
+                        <Text className="text-xs text-slate-500">Médico</Text>
+                        <Text className="text-sm font-semibold text-slate-800 dark:text-white">
+                          {docName}
+                        </Text>
+                        <Text className="text-xs text-slate-500 mt-1">Fecha y hora</Text>
+                        <Text className="text-sm font-semibold text-slate-800 dark:text-white">
+                          {fmtMedDate(activeAppt.date)} · {activeAppt.time}
+                        </Text>
+                        <Text className="text-xs text-slate-500 mt-1">Estado</Text>
+                        <Text className="text-sm font-semibold text-amber-600">
+                          {statusLabel[activeAppt.status] ?? activeAppt.status}
+                        </Text>
+                      </>
+                    );
+                  })()}
+                </View>
+                <View className="mt-4">
+                  <Button
+                    onPress={() => router.replace('/(main)/(patient)/appointments')}
+                    fullWidth>
+                    Ver mis citas
+                  </Button>
+                </View>
+              </View>
+            </View>
+          </SectionCard>
+        ) : (
+          // Sin cita activa → flujo normal de reserva
+          <>
+            <SectionCard
+              title="¿Cómo querés atenderte?"
+              subtitle="Elegí la modalidad antes de seleccionar el horario">
+              <View className="gap-2">
+                <ModalityOption
+                  value="ONLINE"
+                  selected={modality}
+                  onSelect={setModality}
+                  icon={<Video size={18} color="#2563eb" />}
+                  label="Videollamada"
+                  description={
+                    doc.modalities?.includes('ONLINE')
+                      ? 'Atención remota desde tu casa'
+                      : 'No disponible para este médico'
+                  }
+                  disabled={!doc.modalities?.includes('ONLINE')}
+                />
+                <ModalityOption
+                  value="PRESENCIAL"
+                  selected={modality}
+                  onSelect={setModality}
+                  icon={<Building2 size={18} color="#2563eb" />}
+                  label="Presencial"
+                  description={
+                    !doc.modalities?.includes('PRESENCIAL')
+                      ? 'No disponible para este médico'
+                      : hasPhysicalAddress
+                        ? doc.clinic?.name ?? 'En el consultorio'
+                        : 'Sin consultorio configurado'
+                  }
+                  disabled={
+                    !doc.modalities?.includes('PRESENCIAL') || !hasPhysicalAddress
+                  }
+                />
+                <ModalityOption
+                  value="CHAT"
+                  selected={modality}
+                  onSelect={setModality}
+                  icon={<MessageSquare size={18} color="#2563eb" />}
+                  label="Chat"
+                  description={
+                    doc.modalities?.includes('CHAT')
+                      ? 'Mensajería en vivo'
+                      : 'No disponible para este médico'
+                  }
+                  disabled={!doc.modalities?.includes('CHAT')}
+                />
+              </View>
+            </SectionCard>
+
+            <SectionCard
+              title="Selecciona un día"
+              subtitle="Próximos 7 días">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View className="flex-row gap-2">
+                  {days.map((d) => {
+                    const selected = selectedDay === d.key;
+                    return (
+                      <Pressable
+                        key={d.key}
+                        onPress={() => setSelectedDay(d.key)}
+                        className={`items-center justify-center py-3 px-3 rounded-xl border min-w-[64px] ${
+                          selected
+                            ? 'bg-blue-600 border-blue-600'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+                        }`}>
+                        <Text
+                          className={`text-[10px] font-semibold uppercase ${
+                            selected
+                              ? 'text-white'
+                              : 'text-slate-600 dark:text-slate-300'
+                          }`}>
+                          {d.label}
+                        </Text>
+                        <Text
+                          className={`text-[11px] mt-0.5 ${
+                            selected
+                              ? 'text-white/90'
+                              : 'text-slate-600 dark:text-slate-300'
+                          }`}>
+                          {d.sublabel}
+                        </Text>
+                        {d.isToday ? (
+                          <Text
+                            className={`text-[9px] mt-0.5 ${
+                              selected ? 'text-white/80' : 'text-slate-400'
+                            }`}>
+                            hoy
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </SectionCard>
+
+            <SectionCard
+              title="Horarios disponibles"
+              subtitle={`Horas en ${doctorTzLabel} (zona horaria del médico)`}>
+              <SlotsGrid
+                state={slotsState.state}
+                selectedDay={selectedDay}
+                isFirstDay={selectedDay === days[0]!.key}
+                doctorTz={doctorTz}
+                bookingSlot={bookingSlot}
+                onSelectSlot={setBookingSlot}
+              />
+            </SectionCard>
+
+            {bookingSlot ? (
+              <SectionCard
+                title="Confirmar reserva"
+                subtitle="Revisa los datos antes de continuar">
+                <Row label="Médico" value={fullName(doc)} />
+                <Row label="Especialidad" value={doc.specialty} />
+                <Row label="Modalidad" value={MODALITY_LABEL[modality]} />
+                <Row
+                  label="Centro"
+                  value={doc.clinic?.name ?? 'Profesional independiente'}
+                />
+                <Row
+                  label="Fecha y hora"
+                  value={`${days.find((d) => d.key === selectedDay)?.sublabel} · ${bookingSlot.time}`}
+                />
+                <Row label="Duración" value={`${doc.consultDuration} min`} />
+                <Row
+                  label="Precio"
+                  value={
+                    doc.pricePerConsult > 0
+                      ? `$${doc.pricePerConsult.toFixed(2)}`
+                      : 'Gratuito'
+                  }
+                  bold
+                />
+
+                <View className="mt-3">
+                  <Text className="text-xs font-medium text-slate-500 mb-1">
+                    Notas (opcional)
+                  </Text>
+                  <TextInput
+                    value={notes}
+                    onChangeText={setNotes}
+                    multiline
+                    numberOfLines={3}
+                    placeholder="Motivo de la consulta..."
+                    placeholderTextColor="#94a3b8"
+                    className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 min-h-[80px]"
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                {submitError ? (
+                  <View className="mt-3">
+                    <Alert variant="error">{submitError}</Alert>
+                  </View>
+                ) : null}
+
+                {conflict ? (
+                  <View className="mt-3 rounded-2xl border-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+                    <Text className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                      Ya tenés una reserva en este horario
+                    </Text>
+                    <Text className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      Tu reserva anterior quedó pendiente. Podés terminar el
+                      pago o cancelarla y reservar de nuevo.
+                    </Text>
+                    <View className="flex-row gap-2 mt-3">
+                      <Pressable
+                        onPress={() =>
+                          router.push(
+                            `/(main)/(patient)/payment/checkout/${conflict.appointmentId}` as never,
+                          )
+                        }
+                        className="flex-1 bg-amber-600 active:bg-amber-700 py-2 rounded-lg items-center">
+                        <Text className="text-white text-sm font-semibold">
+                          Pagar la pendiente
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={cancelConflict}
+                        disabled={cancellingConflict}
+                        className="flex-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 py-2 rounded-lg items-center">
+                        <Text className="text-rose-600 text-sm font-semibold">
+                          {cancellingConflict ? 'Cancelando…' : 'Cancelar y reintentar'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+
+                <View className="mt-4 gap-2">
+                  <Button
+                    onPress={handleBook}
+                    disabled={submitting || !patientId || !!conflict}
+                    loading={submitting}
+                    fullWidth>
+                    Confirmar reserva
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onPress={() => setBookingSlot(null)}
+                    disabled={submitting}
+                    fullWidth>
+                    Cancelar
+                  </Button>
+                </View>
+
+                {!patientId ? (
+                  <Text className="mt-3 text-xs text-rose-600 text-center">
+                    No se detectó tu perfil de paciente. Vuelve a iniciar sesión.
+                  </Text>
+                ) : null}
+              </SectionCard>
+            ) : null}
+          </>
+        )}
       </View>
     </Screen>
   );
