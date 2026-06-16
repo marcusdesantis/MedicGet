@@ -1,0 +1,6 @@
+{
+  "name": "react-native-worklets",
+  "version": "0.3.0",
+  "description": "Shim: worklets are bundled in react-native-reanimated 3.17+",
+  "main": "index.js"
+}

@@ -44,6 +44,7 @@
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0",
     "react-native-webview": "13.13.5",
+    "react-native-worklets": "file:patches/react-native-worklets",
     "zod": "^3.23.8"
   },
   "devDependencies": {
