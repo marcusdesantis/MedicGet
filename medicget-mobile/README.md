@@ -28,15 +28,15 @@ medicget-mobile/
 
 | Pieza | Versión | Notas |
 |---|---|---|
-| Expo | ~52.0.0 | New Architecture habilitada |
-| React Native | 0.76.9 | |
-| expo-router | ~4.0.0 | File-based routing + typed routes |
-| NativeWind | ^4.1.23 | Tailwind classes en JSX, mismo `tailwind.config.js` que el web |
+| Expo | ^53.0.0 | New Architecture habilitada, SDK 53 trae soporte 16KB page size |
+| React Native | 0.79.6 | React 19.0.0 |
+| expo-router | ~5.1.11 | File-based routing + typed routes |
+| NativeWind | ^4.2.3 | Tailwind classes en JSX, mismo `tailwind.config.js` que el web |
 | Axios | ^1.7.9 | Mismo cliente que el web, con token cacheado en memoria |
-| expo-secure-store | ~14.0.1 | JWT persistido seguro (Keychain/Keystore) |
-| expo-image-picker | ~16.0.6 | Avatar uploader + adjuntos imagen en chat |
-| expo-document-picker | ~13.0.3 | Adjuntos PDF en chat |
-| expo-clipboard | ~7.0.1 | Copiar passwords temporales (admin) |
+| expo-secure-store | ~14.2.4 | JWT persistido seguro (Keychain/Keystore) |
+| expo-image-picker | ~16.1.4 | Avatar uploader + adjuntos imagen en chat |
+| expo-document-picker | ~13.1.6 | Adjuntos PDF en chat |
+| expo-clipboard | ~7.1.5 | Copiar passwords temporales (admin) |
 | lucide-react-native | ^0.460.0 | Iconografía |
 
 ## Requisitos
@@ -247,19 +247,15 @@ npx expo prebuild --platform android --clean
 
 ### 4. Aplicar fixes en android/ (obligatorio después de cada prebuild)
 
-**Fix 1 — conflicto de libworklets.so** (`android/app/build.gradle`):
+**Fix 1 — shim de react-native-worklets** (`package.json`):
 
-Dentro del bloque `packagingOptions > jniLibs`, agregar:
-```groovy
-packagingOptions {
-    jniLibs {
-        useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
-        pickFirsts += ['**/libworklets.so']   // ← agregar esta línea
-    }
-}
+`nativewind` (vía `react-native-css-interop`) carga el plugin babel `react-native-worklets/plugin` aunque en Reanimated 3.17+ los worklets ya están integrados en `react-native-reanimated`. Para evitar el error de compilación sin instalar el paquete real (que genera un conflicto de nombre C++ con reanimated), el repo incluye un shim en `patches/react-native-worklets/`. Verificar que `package.json` tenga:
+
+```json
+"react-native-worklets": "file:patches/react-native-worklets"
 ```
 
-> `react-native-reanimated` y `react-native-worklets` incluyen el mismo `.so`. Sin esto el build falla con "2 files found with path lib/arm64-v8a/libworklets.so".
+Después de cualquier `npm install`, confirmar que `node_modules/react-native-worklets/plugin.js` existe y es el shim (no el paquete real).
 
 **Fix 2 — bundle JS en debug** (`android/gradle.properties`):
 
@@ -273,23 +269,35 @@ bundleInDebug=true   # ← agregar esta línea
 
 ### 5. Compilar el APK
 
-**Release** (recomendado para instalar en dispositivos — no necesita keystore propio):
+**Release** (recomendado para instalar en dispositivos):
 
 ```powershell
 cd android
-.\gradlew.bat assembleRelease
+.\gradlew.bat assembleRelease --no-daemon --project-cache-dir "C:\Temp\medicget-gradle-cache"
 ```
+
+> En Windows, el flag `--project-cache-dir` evita un `AccessDeniedException` de Windows Defender al renombrar directorios temporales de Gradle. El directorio se crea automáticamente.
 
 El APK queda en:
 ```
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
+**AAB para Play Store** (solo cuando el APK release fue probado y aprobado):
+
+```powershell
+.\gradlew.bat bundleRelease --no-daemon --project-cache-dir "C:\Temp\medicget-gradle-cache"
+```
+
+```
+android/app/build/outputs/bundle/release/app-release.aab
+```
+
 **Debug** (más rápido, para desarrollo):
 
 ```powershell
 cd android
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleDebug --no-daemon --project-cache-dir "C:\Temp\medicget-gradle-cache"
 ```
 
 ```
@@ -308,7 +316,16 @@ O copiá el `.apk` al teléfono y abrilo desde el explorador de archivos.
 
 ### Notas sobre firma
 
-El `release` build está configurado con el debug keystore (`android/app/debug.keystore`) en `build.gradle`, lo que permite distribuir el APK para pruebas sin necesitar un keystore de producción. Para publicar en Google Play hace falta generar un keystore propio y configurarlo en `signingConfigs.release`.
+El `release` build ya está configurado con el **keystore de producción** (`android/medicget-release.jks`, CN=MedicGet, O=Abisoft). Las credenciales viven en `android/gradle.properties` (nunca commiteado — excluido en `.gitignore`). Las variables son:
+
+```properties
+MEDICGET_STORE_FILE=medicget-release.jks
+MEDICGET_KEY_ALIAS=medicget
+MEDICGET_STORE_PASSWORD=...
+MEDICGET_KEY_PASSWORD=...
+```
+
+Si clonás el repo en una máquina nueva, pedí el `gradle.properties` y el `medicget-release.jks` de forma segura — sin ellos el release build falla.
 
 ### Assets (ícono y splash screen)
 

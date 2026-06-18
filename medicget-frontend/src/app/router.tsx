@@ -56,6 +56,11 @@ import { TermsPage } from '@/features/legal/terms/pages/TermsPage';
 import { PrivacyPolicyPage } from '@/features/legal/privacy/pages/PrivacyPolicyPage';
 import { DeleteAccountPage } from '@/features/legal/delete-account/pages/DeleteAccountPage';
 
+// Landing pages
+import { MedicosTelemedicinaPage } from '@/features/landing/medicos-telemedicina/pages/MedicosTelemedicinaPage';
+import { CitaMedicaOnlinePage }    from '@/features/landing/cita-medica-online/pages/CitaMedicaOnlinePage';
+import { ClinicasTelemedicinaPage } from '@/features/landing/clinicas-telemedicina/pages/ClinicasTelemedicinaPage';
+
 // Public directory + detail
 import { PublicDoctorsDirectoryPage } from '@/features/public/doctors/pages/PublicDoctorsDirectoryPage';
 import { PublicDoctorDetailPage }     from '@/features/public/doctors/pages/PublicDoctorDetailPage';
@@ -134,6 +139,11 @@ export const router = createBrowserRouter([
   { path: '/terminos',          element: <TermsPage /> },
   { path: '/privacidad',        element: <PrivacyPolicyPage /> },
   { path: '/eliminar-cuenta',   element: <DeleteAccountPage /> },
+
+  // ── Landing pages ──
+  { path: '/medicos-telemedicina',  element: <MedicosTelemedicinaPage /> },
+  { path: '/cita-medica-online',    element: <CitaMedicaOnlinePage /> },
+  { path: '/clinicas-telemedicina', element: <ClinicasTelemedicinaPage /> },
 
   // ── Payment return (callback de PayPhone) ──
   // Endpoint compartido fuera del ProtectedRoute para que cualquier rol

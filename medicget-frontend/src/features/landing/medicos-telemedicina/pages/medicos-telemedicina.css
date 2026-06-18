@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+.medicos-landing{
+  --teal-900:#0c4a5a;--teal-800:#0f5d70;--teal-700:#0e7490;--teal-600:#0891b2;
+  --teal-500:#14a8c4;--teal-50:#ecfdff;
+  --orange-500:#e88a16;--orange-600:#d97706;--orange-400:#f5a623;
+  --navy:#0f3a4d;--ink:#13344a;--muted:#5b7488;--line:#e4eef2;
+  --white:#fff;--card-shadow:0 18px 45px -22px rgba(12,74,90,.45);
+  --radius:16px;
+  font-family:'Inter',system-ui,sans-serif;
+  color:var(--ink);
+  background:var(--white);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.medicos-landing *{margin:0;padding:0;box-sizing:border-box}
+.medicos-landing h1,.medicos-landing h2,.medicos-landing h3,.medicos-landing h4,.medicos-landing .brand{font-family:'Poppins',sans-serif}
+.medicos-landing a{text-decoration:none;color:inherit}
+.medicos-landing img,.medicos-landing svg{display:block;max-width:100%}
+.medicos-landing .container{width:min(1180px,92%);margin-inline:auto}
+.medicos-landing .btn{display:inline-flex;align-items:center;gap:.5rem;font-family:'Poppins';font-weight:600;border:none;cursor:pointer;border-radius:10px;padding:.85rem 1.6rem;font-size:1rem;transition:.25s transform,.25s box-shadow,.25s background}
+.medicos-landing .btn-primary{background:linear-gradient(180deg,var(--orange-400),var(--orange-600));color:#fff;box-shadow:0 12px 26px -10px rgba(217,119,6,.7)}
+.medicos-landing .btn-primary:hover{transform:translateY(-2px);box-shadow:0 18px 32px -10px rgba(217,119,6,.75)}
+.medicos-landing .eyebrow{font-family:'Poppins';font-weight:600;letter-spacing:.12em;text-transform:uppercase;font-size:.78rem;color:var(--teal-600)}
+
+/* HEADER */
+.medicos-landing header{position:sticky;top:0;z-index:50;background:linear-gradient(120deg,var(--teal-900),var(--teal-700));backdrop-filter:blur(6px)}
+.medicos-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:.9rem 0}
+.medicos-landing .brand{display:flex;align-items:center;gap:.6rem;color:#fff;font-weight:700;font-size:1.3rem}
+.medicos-landing .brand .logo{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--teal-500),var(--teal-600));display:grid;place-items:center;box-shadow:0 6px 16px -6px rgba(0,0,0,.5)}
+.medicos-landing .nav-links{display:flex;align-items:center;gap:2rem;list-style:none}
+.medicos-landing .nav-links a{color:#dff3f7;font-weight:500;font-size:.96rem;position:relative;padding:.2rem 0}
+.medicos-landing .nav-links a.active,.medicos-landing .nav-links a:hover{color:#fff}
+.medicos-landing .nav-links a.active::after,.medicos-landing .nav-links a:hover::after{content:"";position:absolute;left:0;bottom:-4px;width:100%;height:2px;background:var(--orange-400);border-radius:2px}
+.medicos-landing .nav-cta{display:flex;align-items:center;gap:1rem}
+.medicos-landing .burger{display:none;background:none;border:none;cursor:pointer;flex-direction:column;gap:5px}
+.medicos-landing .burger span{width:26px;height:2.5px;background:#fff;border-radius:2px;transition:.3s}
+
+/* HERO */
+.medicos-landing .hero{position:relative;background:linear-gradient(120deg,#e9f7fb 0%,#dff0f6 55%,#cfe8f0 100%)}
+.medicos-landing .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:2rem;align-items:end;padding:4.2rem 0 0}
+.medicos-landing .hero h1{font-size:clamp(2.3rem,4.6vw,3.7rem);line-height:1.08;color:var(--navy);font-weight:800;letter-spacing:-.01em}
+.medicos-landing .hero p.lead{margin:1.4rem 0;font-size:1.18rem;color:#3f6072;max-width:33ch}
+.medicos-landing .hero .sub{margin-top:1.2rem;color:var(--teal-700);font-weight:600;font-family:'Poppins'}
+.medicos-landing .hero-copy{padding-bottom:4rem}
+.medicos-landing .hero-art{position:relative}
+.medicos-landing .doc-card{position:relative}
+.medicos-landing .doc-card img{width:100%;max-height:500px;object-fit:contain;object-position:bottom center;display:block}
+.medicos-landing .badge-float{position:absolute;background:#fff;border-radius:14px;padding:.7rem .9rem;box-shadow:0 14px 30px -14px rgba(12,74,90,.5);display:flex;align-items:center;gap:.6rem;font-size:.85rem;font-weight:600;font-family:'Poppins';color:var(--navy)}
+.medicos-landing .badge-float .dot{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--teal-50);color:var(--teal-600)}
+.medicos-landing .badge-1{top:18px;left:-14px;animation:floaty-m 5s ease-in-out infinite}
+.medicos-landing .badge-2{bottom:30px;right:-10px;animation:floaty-m 5s ease-in-out infinite .8s}
+@keyframes floaty-m{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+
+/* FEATURES */
+.medicos-landing .features{padding:3rem 0;background:#fff}
+.medicos-landing .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem}
+.medicos-landing .feature-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:1.6rem;transition:.3s;box-shadow:0 10px 30px -24px rgba(12,74,90,.6)}
+.medicos-landing .feature-card:hover{transform:translateY(-6px);box-shadow:0 22px 44px -26px rgba(12,74,90,.65);border-color:#cfe6ec}
+.medicos-landing .feature-ico{width:52px;height:52px;border-radius:12px;display:grid;place-items:center;margin-bottom:1rem;background:var(--teal-50);color:var(--teal-600)}
+.medicos-landing .feature-card.accent .feature-ico{background:#fff3e0;color:var(--orange-600)}
+.medicos-landing .feature-card h3{font-size:1.12rem;color:var(--navy);margin-bottom:.4rem}
+.medicos-landing .feature-card p{color:var(--muted);font-size:.96rem}
+
+/* HOW */
+.medicos-landing .how{padding:4.5rem 0 5rem;background:linear-gradient(180deg,#eef8fb,#ffffff)}
+.medicos-landing .section-head{text-align:center;margin-bottom:3rem}
+.medicos-landing .section-head h2{font-size:clamp(1.9rem,3.4vw,2.6rem);color:var(--navy)}
+.medicos-landing .section-head p{color:var(--muted);margin-top:.6rem}
+.medicos-landing .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.6rem}
+.medicos-landing .step{background:#fff;border-radius:var(--radius);padding:2rem 1.7rem;box-shadow:var(--card-shadow);position:relative;border:1px solid var(--line)}
+.medicos-landing .step .num{font-family:'Poppins';font-weight:800;font-size:2.6rem;color:#cfe6ec;line-height:1}
+.medicos-landing .step .step-ico{position:absolute;top:1.6rem;right:1.6rem;color:var(--teal-600)}
+.medicos-landing .step h3{margin:.6rem 0 .4rem;color:var(--navy);font-size:1.2rem}
+.medicos-landing .step .divider{height:2px;background:linear-gradient(90deg,var(--teal-500),transparent);width:60%;margin:.8rem 0}
+.medicos-landing .step p{color:var(--muted)}
+
+/* STATS */
+.medicos-landing .stats{padding:3rem 0;background:#fff}
+.medicos-landing .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem;text-align:center}
+.medicos-landing .stat .v{font-family:'Poppins';font-weight:800;font-size:2.4rem;color:var(--teal-700)}
+.medicos-landing .stat .l{color:var(--muted);font-size:.95rem}
+
+/* CTA BAND */
+.medicos-landing .cta-band{position:relative;padding:4.5rem 0;background:linear-gradient(120deg,var(--teal-700),var(--teal-500));overflow:hidden;text-align:center;color:#fff}
+.medicos-landing .cta-band::before{content:"";position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M20 0v40M0 20h40' stroke='%23ffffff' stroke-opacity='.06' stroke-width='1'/%3E%3C/svg%3E")}
+.medicos-landing .cta-band h2{position:relative;font-size:clamp(1.8rem,3.4vw,2.5rem);max-width:20ch;margin-inline:auto}
+.medicos-landing .cta-band .deco{position:absolute;height:1px;background:rgba(255,255,255,.5);width:120px;top:50%}
+.medicos-landing .cta-band .btn{position:relative;margin-top:1.8rem}
+
+/* FAQ */
+.medicos-landing .faq{padding:4.5rem 0;background:#f7fcfd}
+.medicos-landing .faq-wrap{max-width:760px;margin-inline:auto}
+.medicos-landing .faq-item{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:.9rem;overflow:hidden}
+.medicos-landing .faq-q{width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:1.2rem 1.4rem;font-family:'Poppins';font-weight:600;color:var(--navy);font-size:1.02rem;display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.medicos-landing .faq-q .chev{transition:.3s;color:var(--teal-600);flex-shrink:0}
+.medicos-landing .faq-a{max-height:0;overflow:hidden;transition:max-height .35s ease;color:var(--muted)}
+.medicos-landing .faq-a p{padding:0 1.4rem 1.2rem}
+.medicos-landing .faq-item.open .faq-a{max-height:240px}
+.medicos-landing .faq-item.open .chev{transform:rotate(180deg)}
+
+/* FOOTER */
+.medicos-landing footer{background:linear-gradient(160deg,var(--teal-900),#0a3744);color:#cfe6ec;padding:3.5rem 0 1.5rem}
+.medicos-landing .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:2rem;padding-bottom:2rem;border-bottom:1px solid rgba(255,255,255,.12)}
+.medicos-landing .foot-grid h4{color:#fff;margin-bottom:1rem;font-size:1rem;letter-spacing:.04em}
+.medicos-landing .foot-grid ul{list-style:none}
+.medicos-landing .foot-grid li{margin-bottom:.6rem}
+.medicos-landing .foot-grid a{color:#bcdde5;font-size:.94rem}
+.medicos-landing .foot-grid a:hover{color:#fff}
+.medicos-landing .foot-brand p{margin-top:.8rem;color:#a9d0da;font-size:.94rem;max-width:32ch}
+.medicos-landing .socials{display:flex;gap:.7rem;margin-top:1rem}
+.medicos-landing .socials a{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;color:#fff;transition:.25s}
+.medicos-landing .socials a:hover{background:var(--orange-500);transform:translateY(-3px)}
+.medicos-landing .copy{text-align:center;padding-top:1.3rem;color:#8fbcc7;font-size:.86rem}
+
+@media(max-width:920px){
+  .medicos-landing .hero-grid{grid-template-columns:1fr;text-align:center}
+  .medicos-landing .hero p.lead{margin-inline:auto}
+  .medicos-landing .hero-art{max-width:440px;margin-inline:auto}
+  .medicos-landing .feature-grid,.medicos-landing .steps{grid-template-columns:1fr}
+  .medicos-landing .stats-grid{grid-template-columns:repeat(2,1fr);gap:2rem}
+  .medicos-landing .foot-grid{grid-template-columns:1fr 1fr}
+  .medicos-landing .nav-links,.medicos-landing .nav-cta .btn{display:none}
+  .medicos-landing .burger{display:flex}
+  .medicos-landing .nav-links.show{display:flex;position:absolute;top:64px;left:0;width:100%;flex-direction:column;background:var(--teal-800);padding:1.2rem 1.5rem;gap:1.1rem}
+  .medicos-landing .nav-links.show a{color:#fff}
+}
+@media(max-width:520px){
+  .medicos-landing .foot-grid{grid-template-columns:1fr}
+  .medicos-landing .stats-grid{grid-template-columns:1fr 1fr}
+}

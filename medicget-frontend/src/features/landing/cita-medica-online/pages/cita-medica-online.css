@@ -1,0 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+.pacientes-landing{
+  --blue-900:#13366b;--blue-800:#1b478a;--blue-700:#2160b8;--blue-600:#2f6fd0;
+  --blue-500:#3b82e6;--blue-50:#eaf2fd;
+  --green-600:#2fa84f;--green-500:#3cb960;--green-400:#54c878;
+  --ink:#13243f;--navy:#15315e;--muted:#5a6b85;--line:#e6edf6;
+  --white:#fff;--shadow:0 18px 45px -22px rgba(19,54,107,.45);
+  --radius:16px;
+  font-family:'Inter',system-ui,sans-serif;
+  color:var(--ink);
+  background:var(--white);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.pacientes-landing *{margin:0;padding:0;box-sizing:border-box}
+.pacientes-landing h1,.pacientes-landing h2,.pacientes-landing h3,.pacientes-landing h4,.pacientes-landing .brand{font-family:'Poppins',sans-serif}
+.pacientes-landing a{text-decoration:none;color:inherit}
+.pacientes-landing img,.pacientes-landing svg{display:block;max-width:100%}
+.pacientes-landing .container{width:min(1180px,92%);margin-inline:auto}
+.pacientes-landing .btn{display:inline-flex;align-items:center;gap:.5rem;font-family:'Poppins';font-weight:600;border:none;cursor:pointer;border-radius:10px;padding:.85rem 1.6rem;font-size:1rem;transition:.25s}
+.pacientes-landing .btn-green{background:linear-gradient(180deg,var(--green-500),var(--green-600));color:#fff;box-shadow:0 12px 26px -10px rgba(47,168,79,.7)}
+.pacientes-landing .btn-green:hover{transform:translateY(-2px);box-shadow:0 18px 32px -10px rgba(47,168,79,.75)}
+.pacientes-landing .eyebrow{font-family:'Poppins';font-weight:600;letter-spacing:.12em;text-transform:uppercase;font-size:.78rem;color:var(--blue-600)}
+
+/* HEADER */
+.pacientes-landing header{position:sticky;top:0;z-index:50;background:#fff;box-shadow:0 4px 18px -12px rgba(19,54,107,.4)}
+.pacientes-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:.85rem 0}
+.pacientes-landing .brand{display:flex;align-items:center;gap:.55rem;color:var(--navy);font-weight:700;font-size:1.3rem}
+.pacientes-landing .brand .logo{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--green-500),var(--blue-500));display:grid;place-items:center;box-shadow:0 6px 14px -6px rgba(47,168,79,.6)}
+.pacientes-landing .brand .io{color:var(--green-600)}
+.pacientes-landing .nav-links{display:flex;align-items:center;gap:2rem;list-style:none}
+.pacientes-landing .nav-links a{color:var(--navy);font-weight:500;font-size:.96rem;position:relative;padding:.2rem 0}
+.pacientes-landing .nav-links a.active,.pacientes-landing .nav-links a:hover{color:var(--blue-700)}
+.pacientes-landing .nav-links a.active::after,.pacientes-landing .nav-links a:hover::after{content:"";position:absolute;left:0;bottom:-4px;width:100%;height:2px;background:var(--green-500);border-radius:2px}
+.pacientes-landing .btn-login{background:linear-gradient(180deg,var(--green-500),var(--green-600));color:#fff;padding:.6rem 1.3rem;border-radius:8px;font-family:'Poppins';font-weight:600}
+.pacientes-landing .nav-cta{display:flex;align-items:center;gap:1rem}
+.pacientes-landing .burger{display:none;background:none;border:none;cursor:pointer;flex-direction:column;gap:5px}
+.pacientes-landing .burger span{width:26px;height:2.5px;background:var(--navy);border-radius:2px}
+
+/* HERO */
+.pacientes-landing .hero{background:linear-gradient(115deg,var(--blue-700),var(--blue-500));color:#fff;position:relative}
+.pacientes-landing .hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:end;padding:4rem 0 0}
+.pacientes-landing .hero h1{font-size:clamp(2.2rem,4.4vw,3.5rem);line-height:1.1;font-weight:800;letter-spacing:-.01em}
+.pacientes-landing .hero p.lead{margin:1.3rem 0 1.8rem;font-size:1.15rem;color:#dbe8fb;max-width:36ch}
+.pacientes-landing .hero-copy{padding-bottom:9rem}
+.pacientes-landing .hero-art{position:relative}
+.pacientes-landing .photo-card{position:relative}
+.pacientes-landing .photo-card img{width:100%;height:auto;display:block}
+.pacientes-landing .chip{position:absolute;background:#fff;color:var(--navy);border-radius:12px;padding:.6rem .85rem;font-family:'Poppins';font-weight:600;font-size:.82rem;display:flex;align-items:center;gap:.5rem;box-shadow:0 14px 30px -14px rgba(0,0,0,.4)}
+.pacientes-landing .chip .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--green-400);color:#fff}
+.pacientes-landing .chip-1{top:16px;left:-12px;animation:fl-p 5s ease-in-out infinite}
+.pacientes-landing .chip-2{bottom:24px;right:-10px;animation:fl-p 5s ease-in-out infinite .9s}
+@keyframes fl-p{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+
+/* TRUST */
+.pacientes-landing .trust{background:#fff;padding:2.2rem 0}
+.pacientes-landing .trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+.pacientes-landing .trust-item{display:flex;gap:1rem;align-items:center}
+.pacientes-landing .trust-item .tic{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;flex-shrink:0}
+.pacientes-landing .t1 .tic{background:#e9f3ff;color:var(--blue-600)}
+.pacientes-landing .t2 .tic{background:#e7f8ec;color:var(--green-600)}
+.pacientes-landing .t3 .tic{background:#eaf4ff;color:var(--blue-700)}
+.pacientes-landing .trust-item h3{font-size:1.05rem;color:var(--navy)}
+.pacientes-landing .trust-item p{color:var(--muted);font-size:.92rem}
+
+/* HOW */
+.pacientes-landing .how{padding:4.5rem 0;background:linear-gradient(180deg,#eef5ff,#fff)}
+.pacientes-landing .section-head{text-align:center;margin-bottom:3rem}
+.pacientes-landing .section-head h2{font-size:clamp(1.9rem,3.4vw,2.5rem);color:var(--blue-700)}
+.pacientes-landing .section-head p{color:var(--muted);margin-top:.5rem}
+.pacientes-landing .steps-img img{width:100%;height:auto;display:block}
+
+/* TESTIMONIALS */
+.pacientes-landing .testi{padding:4.5rem 0;background:linear-gradient(180deg,#fff,#eaf3ff)}
+.pacientes-landing .testi-track{position:relative;max-width:760px;margin:0 auto}
+.pacientes-landing .testi-slide{display:none;background:#fff;border-radius:20px;padding:2.4rem;box-shadow:var(--shadow);align-items:center;gap:1.8rem}
+.pacientes-landing .testi-slide.active{display:flex;animation:fade-p .5s}
+@keyframes fade-p{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.pacientes-landing .testi-avatar{width:96px;height:96px;border-radius:50%;flex-shrink:0;overflow:hidden;box-shadow:0 10px 24px -12px rgba(19,54,107,.5)}
+.pacientes-landing .testi-q{font-size:1.12rem;color:var(--ink);font-style:italic;line-height:1.55}
+.pacientes-landing .testi-name{margin-top:.9rem;font-family:'Poppins';font-weight:600;color:var(--blue-700)}
+.pacientes-landing .stars{color:#f5b919;margin-bottom:.6rem;letter-spacing:2px}
+.pacientes-landing .dots{display:flex;justify-content:center;gap:.6rem;margin-top:1.6rem}
+.pacientes-landing .dots button{width:11px;height:11px;border-radius:50%;border:none;background:#bcd3f0;cursor:pointer;transition:.25s}
+.pacientes-landing .dots button.active{background:var(--blue-700);transform:scale(1.2)}
+
+/* CTA */
+.pacientes-landing .cta{position:relative;padding:4.5rem 0;text-align:center;color:#fff;background:linear-gradient(120deg,var(--blue-700),#2aa3c4);overflow:hidden}
+.pacientes-landing .cta::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 20%,rgba(255,255,255,.12),transparent 40%)}
+.pacientes-landing .cta h2{position:relative;font-size:clamp(1.7rem,3.3vw,2.4rem);max-width:24ch;margin:0 auto 1.6rem}
+.pacientes-landing .cta .btn{position:relative}
+
+/* FOOTER */
+.pacientes-landing footer{background:#fff;color:var(--muted);padding:3rem 0 1.4rem;border-top:1px solid var(--line)}
+.pacientes-landing .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:2rem;padding-bottom:2rem;border-bottom:1px solid var(--line)}
+.pacientes-landing .foot-grid h4{color:var(--navy);margin-bottom:1rem;font-size:1rem}
+.pacientes-landing .foot-grid ul{list-style:none}
+.pacientes-landing .foot-grid li{margin-bottom:.55rem}
+.pacientes-landing .foot-grid a{color:var(--muted);font-size:.93rem}
+.pacientes-landing .foot-grid a:hover{color:var(--blue-700)}
+.pacientes-landing .foot-brand p{margin-top:.7rem;font-size:.93rem;max-width:30ch}
+.pacientes-landing .socials{display:flex;gap:.7rem;margin-top:1rem}
+.pacientes-landing .socials a{width:38px;height:38px;border-radius:50%;background:var(--blue-50);display:grid;place-items:center;color:var(--blue-600);transition:.25s}
+.pacientes-landing .socials a:hover{background:var(--blue-600);color:#fff;transform:translateY(-3px)}
+.pacientes-landing .copy{text-align:center;padding-top:1.2rem;font-size:.85rem;color:#8a9bb5}
+
+@media(max-width:920px){
+  .pacientes-landing .hero-grid{grid-template-columns:1fr;text-align:center}
+  .pacientes-landing .hero p.lead{margin-inline:auto}
+  .pacientes-landing .hero-art{max-width:430px;margin:1rem auto 0}
+  .pacientes-landing .trust-grid{grid-template-columns:1fr}
+  .pacientes-landing .testi-slide{flex-direction:column;text-align:center}
+  .pacientes-landing .foot-grid{grid-template-columns:1fr 1fr}
+  .pacientes-landing .nav-links,.pacientes-landing .nav-cta .btn-login{display:none}
+  .pacientes-landing .burger{display:flex}
+  .pacientes-landing .nav-links.show{display:flex;position:absolute;top:62px;left:0;width:100%;flex-direction:column;background:#fff;padding:1.2rem 1.5rem;gap:1.1rem;box-shadow:0 14px 24px -16px rgba(0,0,0,.4)}
+}
+@media(max-width:520px){
+  .pacientes-landing .foot-grid{grid-template-columns:1fr}
+}
