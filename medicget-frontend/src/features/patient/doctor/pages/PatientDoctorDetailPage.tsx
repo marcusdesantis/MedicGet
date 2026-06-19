@@ -45,26 +45,41 @@ function isSlotPast(
   return isSlotPastInTz(dayKey, slotTime, tz, bufferMin);
 }
 
+/** Formatea una clave YYYY-MM-DD como texto legible ("lun. 16 jun."). */
+function formatDay(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('es-ES', {
+    weekday: 'short', day: '2-digit', month: 'short',
+  });
+}
+
+/** Nombre del mes + año para el encabezado del calendario. */
+function monthLabel(year: number, month: number): string {
+  return new Date(year, month, 1)
+    .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+}
+
 /**
- * Builds the upcoming-7-days strip used as the day picker. Today first, then
- * the next 6 days. Each entry has a visible label ("Lun 06") and the
- * machine-friendly key the API expects.
+ * Genera la cuadrícula del mes. Devuelve filas de 7 celdas (Lu-Do).
+ * Las celdas vacías al inicio/fin del mes tienen `key: null`.
  */
-function buildDayStrip(): { label: string; sublabel: string; key: string; isToday: boolean }[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days: { label: string; sublabel: string; key: string; isToday: boolean }[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    days.push({
-      label:    d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', ''),
-      sublabel: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-      key:      dayKey(d),
-      isToday:  i === 0,
-    });
-  }
-  return days;
+function buildCalendarGrid(year: number, month: number): ({ key: string } | null)[][] {
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Dom
+  // Convertimos a Lu=0 … Do=6
+  const startOffset = (firstDay + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: ({ key: string } | null)[] = [
+    ...Array(startOffset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = new Date(year, month, i + 1);
+      return { key: dayKey(d) };
+    }),
+  ];
+  // Rellenar hasta múltiplo de 7
+  while (cells.length % 7 !== 0) cells.push(null);
+  const rows: ({ key: string } | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+  return rows;
 }
 
 function fullName(d?: DoctorDto): string {
@@ -95,8 +110,12 @@ export function PatientDoctorDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const days     = useMemo(() => buildDayStrip(), []);
-  const [selectedDay, setSelectedDay] = useState(days[0].key);
+  const todayKey  = useMemo(() => dayKey(new Date()), []);
+  const [selectedDay,    setSelectedDay]    = useState(todayKey);
+  const [calendarCursor, setCalendarCursor] = useState(() => {
+    const t = new Date();
+    return { year: t.getFullYear(), month: t.getMonth() };
+  });
 
   const doctorState = useApi<DoctorDto>(() => doctorsApi.getById(id!), [id]);
   const slotsState  = useApi<SlotDto[]>(
@@ -353,27 +372,99 @@ export function PatientDoctorDetailPage() {
             </div>
           </SectionCard>
 
-          <SectionCard
-            title="Selecciona un día"
-            subtitle="Próximos 7 días"
-          >
-            <div className="grid grid-cols-7 gap-2">
-              {days.map((d) => (
-                <button
-                  key={d.key}
-                  onClick={() => setSelectedDay(d.key)}
-                  className={`flex flex-col items-center justify-center py-3 rounded-xl border text-xs transition ${
-                    selectedDay === d.key
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-md'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  <span className="font-semibold uppercase">{d.label}</span>
-                  <span className="text-[11px] mt-0.5 opacity-80">{d.sublabel}</span>
-                  {d.isToday && <span className="text-[10px] mt-0.5 opacity-70">hoy</span>}
-                </button>
-              ))}
-            </div>
+          <SectionCard title="Selecciona un día" subtitle="Hasta 3 meses disponibles — no se pueden seleccionar fechas pasadas">
+            {(() => {
+              const { year, month } = calendarCursor;
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const maxDate = new Date(today); maxDate.setMonth(today.getMonth() + 3);
+              const isFirstMonth = year === today.getFullYear() && month === today.getMonth();
+              const isLastMonth  = year === maxDate.getFullYear() && month === maxDate.getMonth();
+              const rows = buildCalendarGrid(year, month);
+              const DAY_HEADERS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+
+              const prevMonth = () => {
+                if (isFirstMonth) return;
+                setCalendarCursor(c => {
+                  const d = new Date(c.year, c.month - 1, 1);
+                  return { year: d.getFullYear(), month: d.getMonth() };
+                });
+              };
+              const nextMonth = () => {
+                if (isLastMonth) return;
+                setCalendarCursor(c => {
+                  const d = new Date(c.year, c.month + 1, 1);
+                  return { year: d.getFullYear(), month: d.getMonth() };
+                });
+              };
+
+              return (
+                <div className="select-none">
+                  {/* Header mes */}
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      onClick={prevMonth}
+                      disabled={isFirstMonth}
+                      className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      aria-label="Mes anterior"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 capitalize text-sm">
+                      {monthLabel(year, month)}
+                    </span>
+                    <button
+                      onClick={nextMonth}
+                      disabled={isLastMonth}
+                      className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      aria-label="Mes siguiente"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                  </div>
+
+                  {/* Encabezado días */}
+                  <div className="grid grid-cols-7 mb-1">
+                    {DAY_HEADERS.map(h => (
+                      <div key={h} className="text-center text-[11px] font-semibold text-slate-400 uppercase py-1">{h}</div>
+                    ))}
+                  </div>
+
+                  {/* Cuadrícula */}
+                  {rows.map((row, ri) => (
+                    <div key={ri} className="grid grid-cols-7">
+                      {row.map((cell, ci) => {
+                        if (!cell) return <div key={ci} />;
+                        const [cy, cm, cd] = cell.key.split('-').map(Number);
+                        const cellDate = new Date(cy, cm - 1, cd);
+                        const isPast     = cellDate < today;
+                        const isTooFar   = cellDate > maxDate;
+                        const disabled   = isPast || isTooFar;
+                        const isSelected = cell.key === selectedDay;
+                        const isToday    = cell.key === todayKey;
+                        return (
+                          <button
+                            key={cell.key}
+                            onClick={() => !disabled && setSelectedDay(cell.key)}
+                            disabled={disabled}
+                            className={`m-0.5 h-10 rounded-lg text-sm font-medium transition
+                              ${disabled
+                                ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                                : isSelected
+                                  ? 'bg-blue-600 text-white shadow-md'
+                                  : isToday
+                                    ? 'border-2 border-blue-400 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30'
+                                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                          >
+                            {cd}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </SectionCard>
 
           <SectionCard
@@ -398,7 +489,7 @@ export function PatientDoctorDetailPage() {
               const allSlots = slotsState.state.data.filter((s) => !s.isBooked && !s.isBlocked);
               const free     = allSlots.filter((s) => !isSlotPast(selectedDay, s.time, doctorTz, 15));
 
-              const isToday      = selectedDay === days[0].key;
+              const isToday      = selectedDay === todayKey;
               const allWentBy    = isToday && allSlots.length > 0 && free.length === 0;
               const passedCount  = allSlots.length - free.length;
 
@@ -452,7 +543,7 @@ export function PatientDoctorDetailPage() {
                 <Row label="Especialidad"  value={doc.specialty} />
                 <Row label="Modalidad"     value={MODALITY_LABEL[modality]} />
                 <Row label="Centro"        value={doc.clinic?.name ?? 'Profesional independiente'} />
-                <Row label="Fecha y hora"  value={`${days.find((d) => d.key === selectedDay)?.sublabel} · ${bookingSlot.time}`} />
+                <Row label="Fecha y hora"  value={`${formatDay(selectedDay)} · ${bookingSlot.time}`} />
                 <Row label="Duración"      value={`${doc.consultDuration} min`} />
                 <Row label="Precio"        value={doc.pricePerConsult > 0 ? `$${doc.pricePerConsult.toFixed(2)}` : 'Gratuito'} bold />
               </div>
@@ -536,7 +627,7 @@ export function PatientDoctorDetailPage() {
                 <div className="flex-1">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
                     Tu cita con {fullName(doc)} se reservó para el{' '}
-                    <strong>{days.find((d) => d.key === selectedDay)?.sublabel} a las {bookingSlot?.time}</strong>.
+                    <strong>{formatDay(selectedDay)} a las {bookingSlot?.time}</strong>.
                   </p>
                   <p className="mt-2 text-xs text-slate-500">
                     Estado: <span className="font-semibold text-amber-600">PENDIENTE DE PAGO</span>.
