@@ -31,6 +31,7 @@ export const doctorsRepository = {
     const where: Record<string, unknown> = {
       licenseVerificationStatus: 'VERIFIED',
       status:                    'ACTIVE',
+      user:                      { status: 'ACTIVE' },
     };
 
     if (filters.specialty) {
