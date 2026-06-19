@@ -247,41 +247,41 @@ function DemographicsCard({
 
   return (
     <CardContainer>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div>
+        <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Datos clínicos básicos</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {hasData
-              ? 'Esta información ayuda al médico a tener contexto antes de tu consulta.'
-              : 'Completá tu fecha de nacimiento y tipo de sangre — el médico los va a poder ver al atenderte.'}
-          </p>
+          {!editing ? (
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+            >
+              <Edit3 size={11} /> {hasData ? 'Editar' : 'Completar'}
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-2 py-1 rounded disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                Guardar
+              </button>
+              <button
+                onClick={cancel}
+                disabled={saving}
+                className="text-xs font-medium px-2 py-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
         </div>
-        {!editing ? (
-          <button
-            onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline flex-shrink-0"
-          >
-            <Edit3 size={11} /> {hasData ? 'Editar' : 'Completar'}
-          </button>
-        ) : (
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={save}
-              disabled={saving}
-              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-2 py-1 rounded disabled:opacity-50"
-            >
-              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-              Guardar
-            </button>
-            <button
-              onClick={cancel}
-              disabled={saving}
-              className="text-xs font-medium px-2 py-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              Cancelar
-            </button>
-          </div>
-        )}
+        <p className="text-xs text-slate-400 mt-0.5">
+          {hasData
+            ? 'Esta información ayuda al médico a tener contexto antes de tu consulta.'
+            : 'Completá tu fecha de nacimiento y tipo de sangre — el médico los va a poder ver al atenderte.'}
+        </p>
       </div>
 
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">

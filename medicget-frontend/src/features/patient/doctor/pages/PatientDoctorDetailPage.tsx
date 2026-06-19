@@ -372,54 +372,45 @@ export function PatientDoctorDetailPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Selecciona un día" subtitle="Hasta 3 meses disponibles — no se pueden seleccionar fechas pasadas">
+          <SectionCard title="Selecciona un día" subtitle="Disponible hasta 3 meses — los días pasados no son seleccionables">
             {(() => {
               const { year, month } = calendarCursor;
               const today = new Date(); today.setHours(0, 0, 0, 0);
-              const maxDate = new Date(today); maxDate.setMonth(today.getMonth() + 3);
-              const isFirstMonth = year === today.getFullYear() && month === today.getMonth();
-              const isLastMonth  = year === maxDate.getFullYear() && month === maxDate.getMonth();
+              // Último día del tercer mes (mes actual + 2 = 3 meses en total)
+              const lastAllowed = new Date(today.getFullYear(), today.getMonth() + 3, 0);
               const rows = buildCalendarGrid(year, month);
               const DAY_HEADERS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 
-              const prevMonth = () => {
-                if (isFirstMonth) return;
-                setCalendarCursor(c => {
-                  const d = new Date(c.year, c.month - 1, 1);
-                  return { year: d.getFullYear(), month: d.getMonth() };
-                });
-              };
-              const nextMonth = () => {
-                if (isLastMonth) return;
-                setCalendarCursor(c => {
-                  const d = new Date(c.year, c.month + 1, 1);
-                  return { year: d.getFullYear(), month: d.getMonth() };
-                });
-              };
+              // Genera las 3 pestañas de mes: mes actual, +1, +2
+              const monthTabs = [0, 1, 2].map(offset => {
+                const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                return {
+                  year:  d.getFullYear(),
+                  month: d.getMonth(),
+                  label: d.toLocaleDateString('es-ES', { month: 'long' }),
+                };
+              });
 
               return (
                 <div className="select-none">
-                  {/* Header mes */}
-                  <div className="flex items-center justify-between mb-4">
-                    <button
-                      onClick={prevMonth}
-                      disabled={isFirstMonth}
-                      className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                      aria-label="Mes anterior"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </button>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 capitalize text-sm">
-                      {monthLabel(year, month)}
-                    </span>
-                    <button
-                      onClick={nextMonth}
-                      disabled={isLastMonth}
-                      className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                      aria-label="Mes siguiente"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </button>
+                  {/* Pestañas de mes */}
+                  <div className="flex gap-2 mb-5">
+                    {monthTabs.map(tab => {
+                      const isActive = tab.year === year && tab.month === month;
+                      return (
+                        <button
+                          key={`${tab.year}-${tab.month}`}
+                          onClick={() => setCalendarCursor({ year: tab.year, month: tab.month })}
+                          className={`flex-1 py-2 rounded-xl text-sm font-semibold capitalize transition border ${
+                            isActive
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-300 dark:hover:border-blue-700'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
                   </div>
 
                   {/* Encabezado días */}
@@ -437,7 +428,7 @@ export function PatientDoctorDetailPage() {
                         const [cy, cm, cd] = cell.key.split('-').map(Number);
                         const cellDate = new Date(cy, cm - 1, cd);
                         const isPast     = cellDate < today;
-                        const isTooFar   = cellDate > maxDate;
+                        const isTooFar   = cellDate > lastAllowed;
                         const disabled   = isPast || isTooFar;
                         const isSelected = cell.key === selectedDay;
                         const isToday    = cell.key === todayKey;
@@ -446,15 +437,15 @@ export function PatientDoctorDetailPage() {
                             key={cell.key}
                             onClick={() => !disabled && setSelectedDay(cell.key)}
                             disabled={disabled}
-                            className={`m-0.5 h-10 rounded-lg text-sm font-medium transition
-                              ${disabled
+                            className={`m-0.5 h-10 rounded-lg text-sm font-medium transition ${
+                              disabled
                                 ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
                                 : isSelected
                                   ? 'bg-blue-600 text-white shadow-md'
                                   : isToday
                                     ? 'border-2 border-blue-400 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30'
                                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                              }`}
+                            }`}
                           >
                             {cd}
                           </button>
