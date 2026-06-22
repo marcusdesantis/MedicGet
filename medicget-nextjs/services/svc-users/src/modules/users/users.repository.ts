@@ -76,11 +76,33 @@ export async function findById(id: string) {
 }
 
 export async function updateStatus(id: string, status: UserStatus) {
-  return prisma.user.update({
-    where: { id },
-    data: { status },
-    include: userWithProfile,
-  });
+  const user = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  if (!user) throw new Error('User not found');
+
+  // Al eliminar, anonimizamos el email para liberar la constraint @unique
+  // y permitir que alguien (incluido el mismo usuario) vuelva a registrarse
+  // con ese correo. El registro queda en BD para auditoría con el email
+  // anonimizado. Mismo comportamiento que svc-admin setUserStatus.
+  const userUpdate =
+    status === 'DELETED'
+      ? { status, email: `deleted_${id}@deleted.invalid` }
+      : { status };
+
+  // Sincronizar el status de la tabla hija (Doctor/Clinic/Patient) para que
+  // no queden en ACTIVE tras la eliminación de la cuenta.
+  const ops: Prisma.PrismaPromise<unknown>[] = [
+    prisma.user.update({ where: { id }, data: userUpdate, include: userWithProfile }),
+  ];
+  if (user.role === 'DOCTOR') {
+    ops.push(prisma.doctor.update({ where: { userId: id }, data: { status } }));
+  } else if (user.role === 'CLINIC') {
+    ops.push(prisma.clinic.update({ where: { userId: id }, data: { status } }));
+  } else if (user.role === 'PATIENT') {
+    ops.push(prisma.patient.update({ where: { userId: id }, data: { status } }));
+  }
+
+  const [updatedUser] = await prisma.$transaction(ops);
+  return updatedUser;
 }
 
 export async function upsertProfile(userId: string, data: UpdateProfileData) {

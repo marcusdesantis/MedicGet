@@ -30,7 +30,8 @@
     "prisma:deploy": "prisma migrate deploy --schema=./prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema=./prisma/schema.prisma",
     "prisma:seed": "ts-node --project ./prisma/tsconfig.seed.json prisma/seed.ts",
-    "prisma:reset": "prisma migrate reset --force --schema=./prisma/schema.prisma"
+    "prisma:reset": "prisma migrate reset --force --schema=./prisma/schema.prisma",
+    "fix:emails": "ts-node --project ./prisma/tsconfig.seed.json prisma/fix-deleted-emails.ts"
   },
   "prisma": {
     "seed": "ts-node --project ./prisma/tsconfig.seed.json prisma/seed.ts"
