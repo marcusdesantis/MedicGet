@@ -188,8 +188,28 @@ export const adminService = {
     const userData: Prisma.UserUpdateInput = {};
     if (input.email  !== undefined) userData.email  = input.email.trim().toLowerCase();
     if (input.status !== undefined) userData.status = input.status;
+    // Al eliminar (status=DELETED), anonimizamos el email para liberar la
+    // constraint @unique y permitir un nuevo registro con ese correo. El panel
+    // admin borra vía PATCH {status:'DELETED'} (este método), no vía DELETE,
+    // así que la anonimización tiene que vivir también acá. Si el admin pasó
+    // un email explícito en el mismo patch, respetamos ese (no lo pisamos).
+    if (input.status === 'DELETED' && input.email === undefined) {
+      userData.email = `deleted_${id}@deleted.invalid`;
+    }
     if (Object.keys(userData).length > 0) {
       ops.push(prisma.user.update({ where: { id }, data: userData }));
+    }
+
+    // Sincronizar el status de la tabla hija (Doctor/Clinic/Patient) al borrar,
+    // para que no queden en ACTIVE tras la eliminación.
+    if (input.status === 'DELETED') {
+      if (existing.role === 'DOCTOR') {
+        ops.push(prisma.doctor.updateMany({ where: { userId: id }, data: { status: 'DELETED' } }));
+      } else if (existing.role === 'CLINIC') {
+        ops.push(prisma.clinic.updateMany({ where: { userId: id }, data: { status: 'DELETED' } }));
+      } else if (existing.role === 'PATIENT') {
+        ops.push(prisma.patient.updateMany({ where: { userId: id }, data: { status: 'DELETED' } }));
+      }
     }
 
     // ─── Profile ───────────────────────────────────────────────────────
